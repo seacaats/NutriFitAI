@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "NutriFit AI",
+    "slug": "nutrifit-ai-web",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/nutrifit-logo.png",
+    "scheme": "nutrifitai",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/images/nutrifit-logo.png"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/nutrifit-logo.png",
+        "backgroundColor": "#208AEF"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/nutrifit-logo.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#208AEF",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 76
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
