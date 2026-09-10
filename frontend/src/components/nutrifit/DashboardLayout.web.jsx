@@ -12,6 +12,7 @@ const MENU_ITEMS = [
   { name: "Workouts", icon: "barbell-outline", route: "/workouts" },
   { name: "AI Coach", icon: "hardware-chip-outline", route: "/ai-coach" },
   { name: "Progress", icon: "bar-chart-outline", route: "/progress" },
+  { name: "Steps", icon: "footsteps-outline", route: "/steps" },
   { name: "Profile", icon: "person-outline", route: "/profile" },
 ];
 
@@ -21,6 +22,7 @@ const PAGE_DESCRIPTIONS = {
   Workouts: "Stay active and reach your fitness goals.",
   "AI Coach": "Get personalized guidance from your AI fitness coach.",
   Progress: "Track your health and fitness progress.",
+  Steps: "Follow your daily movement, goals, and walking streaks.",
   Profile: "Manage your personal information and preferences.",
 };
 

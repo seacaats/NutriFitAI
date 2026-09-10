@@ -1,4 +1,5 @@
 import DashboardLayout from "@components/nutrifit/DashboardLayout";
+import FoodAnalysisChat from "@components/nutrifit/FoodAnalysisChat";
 import { useTheme } from "@context/ThemeContext";
 import { radii } from "@theme/nutrifit";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,7 +10,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 
 const DETECTED_FOOD = { name: "Lasagna", grams: "250g" };
-const NUTRITION = { kcal: 120, protein: "26.4g", carbs: "31.8g", fat: "18.8g" };
+const NUTRITION = { kcal: 520, protein: "26.4g", carbs: "51.8g", fat: "23.8g" };
 
 export default function FoodScannerScreen() {
   const { darkMode, shell: c } = useTheme();
@@ -86,6 +87,10 @@ export default function FoodScannerScreen() {
           <Pressable style={styles.addBtn}>
             <Text style={styles.addBtnText}>Add to Meal</Text>
           </Pressable>
+
+          <View style={styles.chatSection}>
+            <FoodAnalysisChat food={DETECTED_FOOD} nutrition={NUTRITION} darkMode={darkMode} />
+          </View>
         </>
       ) : (
         <>
@@ -187,4 +192,5 @@ const styles = StyleSheet.create({
 
   addBtn: { marginTop: 28, borderRadius: radii.sm, backgroundColor: "#4CAF2F", paddingVertical: 14, alignItems: "center" },
   addBtnText: { fontSize: 15, fontWeight: "700", color: "#ffffff" },
+  chatSection: { marginTop: 16, marginBottom: 16 },
 });

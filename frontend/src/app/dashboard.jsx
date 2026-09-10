@@ -68,6 +68,16 @@ export default function DashboardScreen() {
             <Ionicons name="hardware-chip" size={20} color="#fff" />
           </View>
         </Pressable>
+      
+      <Pressable onPress = {() => router.push("/workouts")} style={[styles.shortcutCard, { backgroundColor: "#e7f9df" }]}>
+        <View style={styles.shortcutText}>
+          <Text style={styles.shortcutTitle}>Workout Planner</Text>
+          <Text style={styles.shortcutSub}>Plan your workouts</Text>
+        </View>
+        <View style={[styles.shortcutIconBox, { backgroundColor: "#4CAF2F" }]}>
+          <Ionicons name="barbell" size={20} color="#fff" />
+        </View>
+      </Pressable>
       </View>
 
       {/* Today's Plan */}
@@ -134,7 +144,7 @@ const styles = StyleSheet.create({
   shortcutRow: { flexDirection: "row", gap: 12, marginBottom: 16 },
   shortcutCard: { flex: 1, borderRadius: radii.sm, padding: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   shortcutText: { flexShrink: 1 },
-  shortcutTitle: { fontSize: 13, fontWeight: "700", color: "#1a1a1a" },
+  shortcutTitle: { fontSize: 12, fontWeight: "700", color: "#1a1a1a" },
   shortcutSub: { fontSize: 10, color: "#4b5563", marginTop: 2 },
   shortcutIconBox: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
 
