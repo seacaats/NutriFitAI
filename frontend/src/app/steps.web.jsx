@@ -3,7 +3,7 @@ import { useTheme } from "@context/ThemeContext";
 import { radii } from "@theme/nutrifit";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 const RANGE_DATA = {
@@ -30,6 +30,9 @@ const RECENT_ACTIVITIES = [
 const formatNumber = (value) => new Intl.NumberFormat("en-US").format(value);
 
 export default function StepsScreen() {
+  const { width } = useWindowDimensions();
+  const narrow = width < 900;
+  const phone = width < 620;
   const { darkMode } = useTheme();
   const [range, setRange] = useState("Week");
   const [isTracking, setIsTracking] = useState(false);
@@ -58,7 +61,7 @@ export default function StepsScreen() {
 
   return (
     <DashboardLayout>
-      <View style={styles.pageHeader}>
+      <View style={[styles.pageHeader, narrow && styles.pageHeaderNarrow]}>
         <View>
           <Text style={[styles.eyebrow, { color: palette.muted }]}>ACTIVITY</Text>
           <Text style={[styles.pageTitle, { color: palette.text }]}>Steps</Text>
@@ -100,9 +103,9 @@ export default function StepsScreen() {
         <MetricCard icon="time-outline" label="Active time" value="1h 14" suffix="min" palette={palette} />
       </View>
 
-      <View style={styles.contentRow}>
+      <View style={[styles.contentRow, narrow && styles.stackRow]}>
         <View style={[styles.chartCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <View style={styles.chartHeader}>
+          <View style={[styles.chartHeader, phone && styles.chartHeaderPhone]}>
             <View>
               <Text style={[styles.sectionTitle, { color: palette.text }]}>Step activity</Text>
               <Text style={[styles.sectionSubtitle, { color: palette.muted }]}>Your movement across this {range.toLowerCase()}</Text>
@@ -164,7 +167,7 @@ export default function StepsScreen() {
         </View>
         <View style={styles.activityList}>
           {RECENT_ACTIVITIES.map((activity, index) => (
-            <View key={activity.title} style={[styles.activityRow, index > 0 && { borderTopColor: palette.border, borderTopWidth: 1 }]}>
+            <View key={activity.title} style={[styles.activityRow, phone && styles.activityRowPhone, index > 0 && { borderTopColor: palette.border, borderTopWidth: 1 }]}>
               <View style={[styles.activityIcon, { backgroundColor: palette.soft }]}><Ionicons name={activity.icon} size={20} color="#4CAF2F" /></View>
               <View style={styles.activityInfo}>
                 <Text style={[styles.activityTitle, { color: palette.text }]}>{activity.title}</Text>
@@ -199,19 +202,21 @@ function ActivityMetric({ value, label, palette }) {
 }
 
 const styles = StyleSheet.create({
-  pageHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 20 },
+  pageHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginBottom: 20 },
+  pageHeaderNarrow: { flexWrap: "wrap", alignItems: "flex-start" },
+  stackRow: { flexDirection: "column" },
   eyebrow: { fontSize: 10, fontWeight: "800", letterSpacing: 1.3 }, pageTitle: { marginTop: 2, fontSize: 28, fontWeight: "800" }, pageSubtitle: { marginTop: 4, fontSize: 13 },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 8 }, syncPill: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 }, liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#4CAF2F" }, syncText: { color: "#4f7150", fontSize: 10, fontWeight: "700" },
   startButton: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, backgroundColor: "#4CAF2F" }, pauseButton: { backgroundColor: "#ef7d22" }, startButtonText: { color: "#ffffff", fontSize: 11, fontWeight: "800" },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, rowGap: { flexDirection: "row", alignItems: "center", gap: 13 },
-  heroRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 }, heroCard: { minWidth: 330, flex: 2.2, borderWidth: 1, borderRadius: radii.md, padding: 18 },
+  heroRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 }, heroCard: { minWidth: 280, flex: 2.2, borderWidth: 1, borderRadius: radii.md, padding: 18 },
   stepIcon: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: "#4CAF2F" }, cardKicker: { fontSize: 9, fontWeight: "800", letterSpacing: 1 }, heroValue: { fontSize: 30, lineHeight: 34, fontWeight: "800" }, goalPercent: { color: "#4CAF2F", fontSize: 20, fontWeight: "800" },
   goalTrack: { height: 9, borderRadius: 5, overflow: "hidden", marginTop: 17 }, goalFill: { height: 9, borderRadius: 5, backgroundColor: "#4CAF2F" }, goalCopy: { fontSize: 10, marginTop: 9 }, goalCopyStrong: { fontSize: 10, fontWeight: "700", marginTop: 9 }, sessionSteps: { marginTop: 8, color: "#4CAF2F", fontSize: 10, fontWeight: "800" },
   metricCard: { minWidth: 145, flex: 1, borderWidth: 1, borderRadius: radii.md, padding: 16 }, metricIcon: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" }, metricLabel: { marginTop: 12, fontSize: 10, fontWeight: "700" }, metricValueRow: { flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 3 }, metricValue: { fontSize: 22, fontWeight: "800" }, metricSuffix: { fontSize: 10, fontWeight: "600" },
-  contentRow: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 12 }, chartCard: { minWidth: 520, flex: 2.2, borderWidth: 1, borderRadius: radii.md, padding: 18 }, chartHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, sectionTitle: { fontSize: 17, fontWeight: "800" }, sectionSubtitle: { marginTop: 3, fontSize: 10 },
+  contentRow: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 12 }, chartCard: { minWidth: 280, flex: 2.2, borderWidth: 1, borderRadius: radii.md, padding: 18 }, chartHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }, chartHeaderPhone: { flexDirection: "column", alignItems: "flex-start" }, sectionTitle: { fontSize: 17, fontWeight: "800" }, sectionSubtitle: { marginTop: 3, fontSize: 10 },
   rangeTabs: { flexDirection: "row", padding: 3, borderRadius: 8 }, rangeTab: { borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 }, rangeTabActive: { backgroundColor: "#4CAF2F" }, rangeText: { fontSize: 10, fontWeight: "700" },
   chartStats: { flexDirection: "row", alignItems: "center", gap: 22, marginTop: 18 }, chartStatValue: { fontSize: 17, fontWeight: "800" }, chartStatLabel: { marginTop: 2, fontSize: 9 }, statDivider: { width: 1, height: 30 }, chartWrap: { height: 220, marginTop: 14 },
   challengeCard: { minWidth: 250, flex: 1, borderRadius: radii.md, padding: 20, backgroundColor: "#244c1b" }, challengeIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" }, challengeKicker: { marginTop: 28, color: "#aeda9d", fontSize: 9, fontWeight: "800", letterSpacing: 1.1 }, challengeTitle: { marginTop: 5, color: "#ffffff", fontSize: 21, fontWeight: "800" }, challengeCopy: { marginTop: 8, color: "#cde8c2", fontSize: 11, lineHeight: 17 },
   challengeNumbers: { flexDirection: "row", alignItems: "baseline", marginTop: 22 }, challengeCurrent: { color: "#ffffff", fontSize: 19, fontWeight: "800" }, challengeGoal: { color: "#aeda9d", fontSize: 10, fontWeight: "600" }, challengeTrack: { height: 8, backgroundColor: "rgba(255,255,255,0.18)", borderRadius: 4, overflow: "hidden", marginTop: 8 }, challengeFill: { height: 8, borderRadius: 4, backgroundColor: "#9ed67e" }, challengeFooter: { flexDirection: "row", gap: 6, alignItems: "center", marginTop: 13 }, challengeFooterText: { color: "#cde8c2", fontSize: 10, fontWeight: "600" },
-  recentCard: { marginTop: 12, borderWidth: 1, borderRadius: radii.md, padding: 18 }, filterButton: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 7 }, filterText: { fontSize: 10, fontWeight: "700" }, activityList: { marginTop: 13 }, activityRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 }, activityIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" }, activityInfo: { flex: 1, minWidth: 180 }, activityTitle: { fontSize: 12, fontWeight: "700" }, activityDate: { marginTop: 3, fontSize: 9 }, activityMetric: { width: 100 }, activityMetricValue: { fontSize: 12, fontWeight: "800" }, activityMetricLabel: { marginTop: 2, fontSize: 8 },
+  recentCard: { marginTop: 12, borderWidth: 1, borderRadius: radii.md, padding: 18 }, filterButton: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 7 }, filterText: { fontSize: 10, fontWeight: "700" }, activityList: { marginTop: 13 }, activityRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 }, activityRowPhone: { flexWrap: "wrap" }, activityIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" }, activityInfo: { flex: 1, minWidth: 180 }, activityTitle: { fontSize: 12, fontWeight: "700" }, activityDate: { marginTop: 3, fontSize: 9 }, activityMetric: { width: 100 }, activityMetricValue: { fontSize: 12, fontWeight: "800" }, activityMetricLabel: { marginTop: 2, fontSize: 8 },
 });

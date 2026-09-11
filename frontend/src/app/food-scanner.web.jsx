@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 const RECENT_SCANS = [
   { name: "Mixed Fruits", calories: "250 kcal", time: "Today, 12:45 PM" },
@@ -18,6 +18,8 @@ const DETECTED_FOOD = { name: "Lasagna", grams: "250g" };
 const NUTRITION = { kcal: 520, protein: "26.4g", carbs: "51.8g", fat: "23.8g" };
 
 export default function FoodScannerScreen() {
+  const { width } = useWindowDimensions();
+  const narrow = width < 900;
   const { darkMode } = useTheme();
 
   const [selectedImage, setSelectedImage] = useState(null);
@@ -57,7 +59,7 @@ export default function FoodScannerScreen() {
 
   return (
     <DashboardLayout>
-      <View style={styles.row}>
+      <View style={[styles.row, narrow && styles.stackRow]}>
         {/* Scan Area */}
         <View style={[styles.card, card, styles.flexHalf]}>
           <Text style={[styles.heading, textColor]}>Scan Food</Text>
@@ -117,7 +119,7 @@ export default function FoodScannerScreen() {
       </View>
 
       {selectedImage && (
-        <View style={styles.analysisRow}>
+        <View style={[styles.analysisRow, narrow && styles.stackRow]}>
           <View style={[styles.card, card, styles.resultCard]}>
             <View style={styles.resultHeader}>
               <View style={styles.detectedIcon}><Ionicons name="checkmark" size={18} color="#ffffff" /></View>
@@ -172,6 +174,7 @@ function RecentScan({ name, calories, time, dark, borderColor, textColor }) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: 16 },
+  stackRow: { flexDirection: "column" },
   flexHalf: { flex: 1 },
   flex1: { flex: 1 },
   card: { borderRadius: radii.sm, borderWidth: 1, padding: 16 },

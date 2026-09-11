@@ -5,7 +5,7 @@ import { useTheme } from "@context/ThemeContext";
 import { radii } from "@theme/nutrifit";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 
 const CALORIE_DATA = [
@@ -34,6 +34,9 @@ const MEALS = [
 ];
 
 export default function DashboardScreen() {
+  const { width } = useWindowDimensions();
+  const narrow = width < 980;
+  const phone = width < 620;
   const { darkMode } = useTheme();
   const [water, setWater] = useState(1.8);
   const [workoutStarted, setWorkoutStarted] = useState(false);
@@ -56,9 +59,9 @@ export default function DashboardScreen() {
   return (
     <DashboardLayout>
       {/* Stats */}
-      <View style={styles.statsRow}>
+      <View style={[styles.statsRow, narrow && styles.wrapRow]}>
         {/* Daily Calories */}
-        <View style={[styles.card, styles.statCard, card]}>
+        <View style={[styles.card, styles.statCard, narrow && styles.statCardNarrow, phone && styles.fullWidth, card]}>
           <View style={styles.rowBetween}>
             <Text style={[styles.cardLabel, textColor]}>Daily Calories</Text>
             <Text style={styles.pctGreen}>84%</Text>
@@ -80,7 +83,7 @@ export default function DashboardScreen() {
         </View>
 
         {/* Hydration */}
-        <View style={[styles.card, styles.statCard, card]}>
+        <View style={[styles.card, styles.statCard, narrow && styles.statCardNarrow, phone && styles.fullWidth, card]}>
           <View style={styles.rowGap}>
             <Ionicons name="water" size={20} color="#2b7fff" />
             <Text style={[styles.cardLabel, textColor]}>Hydration</Text>
@@ -101,7 +104,7 @@ export default function DashboardScreen() {
         </View>
 
         {/* Steps */}
-        <View style={[styles.card, styles.statCard, card]}>
+        <View style={[styles.card, styles.statCard, narrow && styles.statCardNarrow, phone && styles.fullWidth, card]}>
           <View style={styles.rowGap}>
             <Ionicons name="footsteps" size={21} color="#00a63e" />
             <Text style={[styles.cardLabel, textColor]}>Steps</Text>
@@ -145,7 +148,7 @@ export default function DashboardScreen() {
       </View>
 
       {/* Today's Plan */}
-      <View style={styles.lowerRow}>
+      <View style={[styles.lowerRow, narrow && styles.stackRow]}>
         <View style={[styles.card, card, styles.flexHalf]}>
           <View style={styles.rowBetween}>
             <Text style={[styles.sectionTitle, textColor]}>Todays Plan</Text>
@@ -155,9 +158,9 @@ export default function DashboardScreen() {
           </View>
 
           <Text style={[styles.subheading, textColor]}>Meals</Text>
-          <View style={styles.mealsRow}>
+          <View style={[styles.mealsRow, phone && styles.wrapRow]}>
             {MEALS.map((m) => (
-              <View key={m.title} style={[styles.mealCard, { borderColor: card.borderColor }]}>
+              <View key={m.title} style={[styles.mealCard, phone && styles.mealCardPhone, { borderColor: card.borderColor }]}>
                 <View style={[styles.mealImgPlaceholder, trackBg]} />
                 <View style={styles.mealInfo}>
                   <Text style={[styles.mealTitle, textColor]}>{m.title}</Text>
@@ -168,7 +171,7 @@ export default function DashboardScreen() {
           </View>
 
           <Text style={[styles.subheading, textColor, { marginTop: 12 }]}>Workout</Text>
-          <View style={[styles.workoutRow, { borderColor: card.borderColor }]}>
+          <View style={[styles.workoutRow, phone && styles.workoutRowPhone, { borderColor: card.borderColor }]}>
             <View style={[styles.workoutIconBox, trackBg]}>
               <Ionicons name="barbell" size={22} color="#6a7282" />
             </View>
@@ -219,7 +222,7 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          <View style={styles.insightCardsRow}>
+          <View style={[styles.insightCardsRow, phone && styles.stackRow]}>
             {/* Macronutrient Distribution */}
             <View style={[styles.card, card, styles.flexHalf]}>
               <Text style={[styles.chartLabel, textColor]}>Macronutrient Distribution</Text>
@@ -291,6 +294,10 @@ function LegendRow({ color, label, value, textColor }) {
 const styles = StyleSheet.create({
   card: { borderRadius: radii.sm, borderWidth: 1, padding: 12 },
   statCard: { flex: 1},
+  statCardNarrow: { minWidth: 220 },
+  fullWidth: { width: "100%", minWidth: 0, flexBasis: "auto", boxSizing: "border-box" },
+  wrapRow: { flexWrap: "wrap" },
+  stackRow: { flexDirection: "column" },
   flex1: { flex: 1 },
   flexHalf: { flex: 1 },
   rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
@@ -336,12 +343,14 @@ const styles = StyleSheet.create({
 
   mealsRow: { flexDirection: "row", gap: 8, marginTop: 8 },
   mealCard: { flex: 1, borderRadius: 6, borderWidth: 1, overflow: "hidden" },
+  mealCardPhone: { minWidth: "47%" },
   mealImgPlaceholder: { height: 64 },
   mealInfo: { padding: 4 },
   mealTitle: { fontSize: 10, fontWeight: "700" },
   mealCalories: { fontSize: 8, color: "#6a7282" },
 
   workoutRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 8, borderRadius: radii.sm, borderWidth: 1, padding: 8 },
+  workoutRowPhone: { flexWrap: "wrap" },
   workoutIconBox: { width: 80, height: 80, borderRadius: 6, alignItems: "center", justifyContent: "center" },
   workoutTitle: { fontSize: 15, fontWeight: "700" },
   workoutMeta: { fontSize: 12, color: "#6a7282" },

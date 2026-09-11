@@ -3,7 +3,7 @@ import DashboardLayout from "@components/nutrifit/DashboardLayout";
 import { useTheme } from "@context/ThemeContext";
 import { radii } from "@theme/nutrifit";
 import { Ionicons } from "@expo/vector-icons";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 const WEIGHT_DATA = [
   { label: "Week 1", value: 72.5 },
@@ -36,6 +36,9 @@ const ACHIEVEMENTS = [
 ];
 
 export default function ProgressScreen() {
+  const { width } = useWindowDimensions();
+  const narrow = width < 980;
+  const phone = width < 620;
   const { darkMode } = useTheme();
 
   const card = {
@@ -54,9 +57,9 @@ export default function ProgressScreen() {
       </View>
 
       {/* Summary*/}
-      <View style={styles.summaryRow}>
+      <View style={[styles.summaryRow, styles.wrapRow]}>
         {SUMMARY_CARDS.map((item) => (
-          <View key={item.title} style={[styles.card, card, styles.flex1]}>
+          <View key={item.title} style={[styles.card, card, styles.summaryCard, phone && styles.fullWidth]}>
             <View style={styles.summaryHeader}>
               <Ionicons name={item.icon} size={20} color={item.iconColor} />
               <Text style={[styles.summaryTitle, textColor]}>{item.title}</Text>
@@ -74,7 +77,7 @@ export default function ProgressScreen() {
       </View>
 
       {/* Progress */}
-      <View style={styles.mainRow}>
+      <View style={[styles.mainRow, narrow && styles.stackRow]}>
         <View style={[styles.card, card, styles.flex1]}>
           <View style={styles.rowBetween}>
             <View>
@@ -155,7 +158,7 @@ export default function ProgressScreen() {
 
         <View style={styles.achievementsGrid}>
           {ACHIEVEMENTS.map((item) => (
-            <Achievement key={item.title} {...item} borderColor={card.borderColor} textColor={textColor} darkMode={darkMode} />
+            <Achievement key={item.title} {...item} borderColor={card.borderColor} textColor={textColor} darkMode={darkMode} compact={narrow} phone={phone} />
           ))}
         </View>
       </View>
@@ -180,9 +183,9 @@ function ProgressBar({ label, value, width, textColor, trackBg }) {
   );
 }
 
-function Achievement({ title, description, icon, borderColor, textColor, darkMode }) {
+function Achievement({ title, description, icon, borderColor, textColor, darkMode, compact, phone }) {
   return (
-    <View style={[styles.achievementCard, { borderColor }]}>
+    <View style={[styles.achievementCard, compact && styles.achievementCardCompact, phone && styles.fullWidth, { borderColor }]}>
       <View style={styles.achievementRow}>
         <View style={[styles.achievementIcon, { backgroundColor: darkMode ? "#2c3a28" : "#f0faeb" }]}>
           <Text style={styles.achievementEmoji}>{icon}</Text>
@@ -199,6 +202,9 @@ function Achievement({ title, description, icon, borderColor, textColor, darkMod
 
 const styles = StyleSheet.create({
   flex1: { flex: 1 },
+  wrapRow: { flexWrap: "wrap" },
+  stackRow: { flexDirection: "column" },
+  fullWidth: { width: "100%", minWidth: 0, boxSizing: "border-box" },
   card: { borderRadius: radii.sm, borderWidth: 1, padding: 16 }, // p-4
   rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   alignRight: { alignItems: "flex-end" },
@@ -211,6 +217,7 @@ const styles = StyleSheet.create({
 
   // Summary
   summaryRow: { flexDirection: "row", gap: 12 }, // gap-3
+  summaryCard: { flexGrow: 1, flexBasis: 190, minWidth: 180 },
   summaryHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
   summaryTitle: { fontSize: 12, fontWeight: "600" }, // text-xs font-semibold
   summaryValueRow: { flexDirection: "row", alignItems: "baseline", marginTop: 16 }, // mt-4
@@ -256,6 +263,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 12, // p-3
   },
+  achievementCardCompact: { width: "48%" },
   achievementRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   achievementIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   achievementEmoji: { fontSize: 18 },

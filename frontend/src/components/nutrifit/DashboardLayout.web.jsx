@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter, usePathname } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 
 const MENU_ITEMS = [
@@ -30,18 +30,23 @@ export default function DashboardLayout({ children, logoSource = require("@/asse
   const router = useRouter();
   const pathname = usePathname();
   const { darkMode, toggleTheme, tokens, shell: c } = useTheme();
+  const { width } = useWindowDimensions();
   const { radii, spacing } = tokens;
   const styles = useMemo(() => createStyles(radii, spacing), [radii, spacing]);
 
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [hoveredNav, setHoveredNav] = useState(null);
+  const [showMobileNav, setShowMobileNav] = useState(false);
+  const isMobile = width < 720;
+  const isCompact = width >= 720 && width < 1100;
 
   const currentPage = MENU_ITEMS.find((item) => item.route === pathname)?.name || "Dashboard";
 
   const handleNavigation = (route) => {
     setShowProfileMenu(false);
     setShowNotifications(false);
+    setShowMobileNav(false);
     router.push(route);
   };
 
@@ -70,12 +75,13 @@ export default function DashboardLayout({ children, logoSource = require("@/asse
 
   return (
     <View style={[styles.outer, { backgroundColor: c.shellBg }]}>
-      <View style={[styles.shell, { backgroundColor: c.cardBg }]}>
+      <View style={[styles.shell, isMobile && styles.shellMobile, { backgroundColor: c.cardBg }]}>
         {/* Sidebar */}
-        <View style={[styles.sidebar, { backgroundColor: c.sidebarBg }]}>
-          <View style={styles.logoRow}>
+        <View style={[styles.sidebar, isCompact && styles.sidebarCompact, isMobile && styles.sidebarMobile, isMobile && !showMobileNav && styles.hidden, { backgroundColor: c.sidebarBg }]}>
+          <View style={[styles.logoRow, isCompact && styles.logoRowCompact]}>
             <Image source={logoSource} style={styles.logoImg} contentFit="contain" />
-            <Text style={[styles.logoText, { color: c.primary }]}>NutriFit AI</Text>
+            {!isCompact && <Text style={[styles.logoText, { color: c.primary }]}>NutriFit AI</Text>}
+            {isMobile && <Pressable accessibilityLabel="Close navigation" onPress={() => setShowMobileNav(false)} style={styles.closeNavBtn}><Ionicons name="close" size={24} color={c.sidebarText} /></Pressable>}
           </View>
 
           <View style={styles.nav}>
@@ -98,7 +104,7 @@ export default function DashboardLayout({ children, logoSource = require("@/asse
                   ]}
                 >
                   <Ionicons name={item.icon} size={20} color={active || hovered ? c.primary : c.inactiveNavText} />
-                  <Text style={[styles.navText, { color: active || hovered ? c.primary : c.inactiveNavText }]}>{item.name}</Text>
+                  {!isCompact && <Text style={[styles.navText, { color: active || hovered ? c.primary : c.inactiveNavText }]}>{item.name}</Text>}
                 </Pressable>
               );
             })}
@@ -111,15 +117,16 @@ export default function DashboardLayout({ children, logoSource = require("@/asse
             style={[styles.logoutBtn, hoveredNav === "__logout" && { backgroundColor: c.logoutHoverBg }]}
           >
             <Ionicons name="log-out-outline" size={20} color={c.danger} />
-            <Text style={[styles.navText, { color: c.danger }]}>Log Out</Text>
+            {!isCompact && <Text style={[styles.navText, { color: c.danger }]}>Log Out</Text>}
           </Pressable>
         </View>
 
         {/* Main Content */}
         <View style={[styles.content, { backgroundColor: c.contentBg }]}>
-          <View style={styles.header}>
-            <View>
-              <Text style={[styles.greeting, { color: c.sidebarText }]}>Good Morning, John! 👋</Text>
+          <View style={[styles.header, (isCompact || isMobile) && styles.headerCompact, isMobile && styles.headerMobile]}>
+            <View style={[styles.headerIntro, isMobile && styles.headerIntroMobile]}>
+              {isMobile && <Pressable accessibilityLabel="Open navigation" onPress={() => setShowMobileNav(true)} style={styles.menuBtn}><Ionicons name="menu" size={24} color={c.sidebarText} /></Pressable>}
+              <Text numberOfLines={1} style={[styles.greeting, isMobile && styles.greetingMobile, { color: c.sidebarText }]}>Good Morning, John! 👋</Text>
               <Text style={[styles.pageDesc, { color: c.headerDescText }]}>{PAGE_DESCRIPTIONS[currentPage]}</Text>
             </View>
 
@@ -159,7 +166,7 @@ export default function DashboardLayout({ children, logoSource = require("@/asse
               </View>
 
               {/* Profile */}
-              <View style={styles.triggerWrap}>
+              {!isMobile && <View style={styles.triggerWrap}>
                 <Pressable
                   onPress={toggleProfileMenu}
                   onHoverIn={() => setHoveredNav("__profile")}
@@ -169,7 +176,7 @@ export default function DashboardLayout({ children, logoSource = require("@/asse
                   <View style={[styles.avatar, { backgroundColor: c.avatarBg }]}>
                     <Ionicons name="person" size={20} color={c.white} />
                   </View>
-                  <Text style={[styles.profileName, { color: c.sidebarText }]}>John Lim</Text>
+                  {!isCompact && !isMobile && <Text style={[styles.profileName, { color: c.sidebarText }]}>John Lim</Text>}
                   <Ionicons
                     name="chevron-down"
                     size={16}
@@ -224,15 +231,15 @@ export default function DashboardLayout({ children, logoSource = require("@/asse
                     </Pressable>
                   </View>
                 )}
-              </View>
+              </View>}
             </View>
           </View>
 
           {/* Single shared backdrop — catches taps anywhere else in the content area */}
-          {anyMenuOpen && <Pressable style={styles.backdrop} onPress={closeMenus} />}
+          {(anyMenuOpen || (isMobile && showMobileNav)) && <Pressable style={styles.backdrop} onPress={() => { closeMenus(); setShowMobileNav(false); }} />}
 
           {/* Page content */}
-          <ScrollView style={[styles.main, { backgroundColor: c.rightBg }]} contentContainerStyle={styles.mainContent}>
+          <ScrollView style={[styles.main, { backgroundColor: c.rightBg }]} contentContainerStyle={[styles.mainContent, (isCompact || isMobile) && styles.mainContentCompact, isMobile && styles.mainContentMobile]}>
             {children}
           </ScrollView>
         </View>
@@ -245,10 +252,16 @@ function createStyles(radii, spacing) {
   return StyleSheet.create({
   outer: { flex: 1, padding: 8 },
   shell: { flex: 1, flexDirection: "row", borderRadius: radii.sm, overflow: "hidden" },
+  shellMobile: { borderRadius: 0 },
+  hidden: { display: "none" },
 
   // Sidebar
   sidebar: { width: 235, flexShrink: 0, flexDirection: "column" },
+  sidebarCompact: { width: 76 },
+  sidebarMobile: { position: "absolute", left: 0, top: 0, bottom: 0, width: 260, zIndex: 100, elevation: 100 },
   logoRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: 20, paddingVertical: 24 },
+  logoRowCompact: { justifyContent: "center", paddingHorizontal: 12 },
+  closeNavBtn: { marginLeft: "auto", padding: 8 },
   logoImg: { width: 40, height: 40 },
   logoText: { fontSize: 20, fontWeight: "800" },
   nav: { marginTop: 28, flex: 1, gap: 8, paddingHorizontal: 12 },
@@ -259,7 +272,13 @@ function createStyles(radii, spacing) {
   // Main Content
   content: { flex: 1, minWidth: 0, flexDirection: "column" },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 32, paddingVertical: 20, zIndex: 40, elevation: 40 },
+  headerCompact: { paddingHorizontal: 20 },
+  headerMobile: { paddingHorizontal: 16, paddingVertical: 14 },
+  headerIntro: { flex: 1, minWidth: 0 },
+  headerIntroMobile: { paddingLeft: 40 },
+  menuBtn: { position: "absolute", left: 0, top: 0, padding: 4 },
   greeting: { fontSize: 24, fontWeight: "800" },
+  greetingMobile: { fontSize: 18 },
   pageDesc: { fontSize: 13, marginTop: 4 },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 16 },
 
@@ -299,5 +318,7 @@ function createStyles(radii, spacing) {
 
   main: { flex: 1 },
   mainContent: { paddingHorizontal: 32, paddingBottom: 32 },
+  mainContentCompact: { paddingHorizontal: 20 },
+  mainContentMobile: { paddingHorizontal: 16, paddingBottom: 24 },
 });
 }

@@ -7,6 +7,8 @@ import {
   fetchExerciseInfo,
   fetchExerciseInfoPage,
   getEnglishTranslation,
+  hasEnglishTranslation,
+  isBlockedLocalizedExercise,
   getExerciseImage,
   getExerciseImages,
   getMuscleNames,
@@ -23,6 +25,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -31,6 +34,9 @@ import {
 // ──────────────────────────────────────────────
 export default function WorkoutsScreen() {
   const { darkMode } = useTheme();
+  const { width } = useWindowDimensions();
+  const narrow = width < 980;
+  const phone = width < 620;
 
   const card = {
     backgroundColor: darkMode ? "#222222" : "#ffffff",
@@ -92,9 +98,11 @@ export default function WorkoutsScreen() {
           const results = infoPage.results || [];
 
           for (const info of results) {
+            if (!hasEnglishTranslation(info)) continue;
             const realImage = getExerciseImages(info)[0];
             if (!realImage) continue; // skip exercises without a real image
             const { name, description } = getEnglishTranslation(info);
+            if (isBlockedLocalizedExercise(name)) continue;
             collected.push({
               id: info.id,
               name,
@@ -130,8 +138,9 @@ export default function WorkoutsScreen() {
   );
 
   // Client-side search
+  const englishExercises = exercises.filter((exercise) => !isBlockedLocalizedExercise(exercise.name));
   const filtered = searchQuery
-    ? exercises.filter(
+    ? englishExercises.filter(
         (e) =>
           e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           e.muscles.some((m) =>
@@ -139,7 +148,7 @@ export default function WorkoutsScreen() {
           ) ||
           e.category.toLowerCase().includes(searchQuery.toLowerCase()),
       )
-    : exercises;
+    : englishExercises;
 
   // Open detail modal
   const openDetail = async (exerciseId, cardImage) => {
@@ -193,7 +202,7 @@ export default function WorkoutsScreen() {
       </View>
 
       {/* Search + Stats Row */}
-      <View style={styles.topRow}>
+      <View style={[styles.topRow, narrow && styles.topRowNarrow]}>
         {/* Search Bar */}
         <View style={[styles.searchBar, card]}>
           <Ionicons name="search" size={18} color="#6a7282" />
@@ -314,6 +323,8 @@ export default function WorkoutsScreen() {
                 textColor={textColor}
                 darkMode={darkMode}
                 onPress={() => openDetail(exercise.id, exercise.image)}
+                narrow={narrow}
+                phone={phone}
               />
             ))}
           </View>
@@ -398,7 +409,7 @@ function CategoryPill({ label, icon, active, onPress, darkMode }) {
 // ──────────────────────────────────────────────
 // Exercise Card (grid tile for web)
 // ──────────────────────────────────────────────
-function ExerciseCard({ exercise, card, textColor, darkMode, onPress }) {
+function ExerciseCard({ exercise, card, textColor, darkMode, onPress, narrow, phone }) {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -408,6 +419,8 @@ function ExerciseCard({ exercise, card, textColor, darkMode, onPress }) {
       onHoverOut={() => setHovered(false)}
       style={[
         styles.exerciseCard,
+        narrow && styles.exerciseCardNarrow,
+        phone && styles.exerciseCardPhone,
         card,
         hovered && {
           transform: [{ scale: 1.02 }],
@@ -509,6 +522,8 @@ function ExerciseDetailModal({
   onClose,
   darkMode,
 }) {
+  const { width } = useWindowDimensions();
+  const narrow = width < 720;
   const bg = darkMode ? "#1a1a1a" : "#ffffff";
   const textColor = { color: darkMode ? "#ffffff" : "#111111" };
 
@@ -520,7 +535,7 @@ function ExerciseDetailModal({
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { backgroundColor: bg }]}>
+        <View style={[styles.modalContent, narrow && styles.modalContentNarrow, { backgroundColor: bg }]}>
           {/* Close button */}
           <Pressable style={styles.modalClose} onPress={onClose}>
             <Ionicons
@@ -543,11 +558,12 @@ function ExerciseDetailModal({
               contentContainerStyle={{ paddingBottom: 32 }}
             >
               {/* Two-column: image left, info right */}
-              <View style={styles.modalTopRow}>
+              <View style={[styles.modalTopRow, narrow && styles.modalTopRowNarrow]}>
                 {/* Image */}
                 <View
                   style={[
                     styles.modalImage,
+                    narrow && styles.modalImageNarrow,
                     { backgroundColor: darkMode ? "#222" : "#f3f4f6" },
                   ]}
                 >
@@ -557,7 +573,7 @@ function ExerciseDetailModal({
                       exercise.category,
                       exercise.name,
                     )}
-                    style={styles.modalImg}
+                    style={[styles.modalImg, narrow && styles.modalImgNarrow]}
                   />
                 </View>
 
@@ -758,6 +774,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     alignItems: "center",
   },
+  topRowNarrow: { flexDirection: "column", alignItems: "stretch" },
   searchBar: {
     flex: 1,
     flexDirection: "row",
@@ -820,6 +837,8 @@ const styles = StyleSheet.create({
     cursor: "pointer",
     transitionDuration: "150ms",
   },
+  exerciseCardNarrow: { width: "calc(50% - 7px)" },
+  exerciseCardPhone: { width: "100%" },
   exerciseImage: {
     height: 140,
     alignItems: "center",
@@ -891,6 +910,7 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 16,
   },
+  modalContentNarrow: { width: "calc(100% - 24px)", maxHeight: "92%", padding: 18 },
   modalClose: {
     alignSelf: "flex-end",
     padding: 4,
@@ -900,6 +920,7 @@ const styles = StyleSheet.create({
   modalLoader: { alignItems: "center", paddingVertical: 60 },
 
   modalTopRow: { flexDirection: "row", gap: 24 },
+  modalTopRowNarrow: { flexDirection: "column", gap: 16 },
   modalImage: {
     width: 280,
     height: 240,
@@ -909,6 +930,8 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   modalImg: { width: 280, height: 240 },
+  modalImageNarrow: { width: "100%", height: 210 },
+  modalImgNarrow: { width: "100%", height: 210 },
   modalInfoCol: { flex: 1 },
 
   modalTitle: { fontSize: 24, fontWeight: "800", marginBottom: 10 },

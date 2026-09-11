@@ -3,12 +3,14 @@ import { useTheme } from "@context/ThemeContext";
 import { radii } from "@theme/nutrifit";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 
 const GOAL_OPTIONS = ["Lose Weight", "Maintain Weight", "Gain Muscle", "Improve Fitness"];
 const ACTIVITY_OPTIONS = ["Sedentary", "Lightly Active", "Moderately Active", "Very Active"];
 
 export default function ProfileScreen() {
+  const { width } = useWindowDimensions();
+  const narrow = width < 900;
   const { darkMode } = useTheme();
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -54,7 +56,7 @@ export default function ProfileScreen() {
   return (
     <DashboardLayout>
       {/* Page Header */}
-      <View style={styles.pageHeader}>
+      <View style={[styles.pageHeader, narrow && styles.wrapRow]}>
         <View>
           <Text style={[styles.pageTitle, textColor]}>Profile</Text>
           <Text style={styles.pageSubtitle}>Manage your personal information and fitness goals.</Text>
@@ -81,7 +83,7 @@ export default function ProfileScreen() {
       )}
 
       {/* Profile Content */}
-      <View style={styles.contentRow}>
+      <View style={[styles.contentRow, narrow && styles.stackRow]}>
         <View style={[styles.card, card, styles.flex1]}>
           <View style={styles.avatarWrap}>
             <View style={[styles.avatarCircle, { backgroundColor: darkMode ? "#364153" : "#e5e7eb" }]}>
@@ -157,7 +159,7 @@ export default function ProfileScreen() {
       <View style={[styles.card, card, styles.sectionSpacing]}>
         <Text style={[styles.sectionTitle, textColor]}>Fitness Summary</Text>
 
-        <View style={styles.summaryRow}>
+        <View style={[styles.summaryRow, styles.wrapRow]}>
           <SummaryCard icon="locate" title="Current Goal" value={profile.goal} card={card} textColor={textColor} />
           <SummaryCard icon="pulse" title="Activity Level" value={profile.activity} card={card} textColor={textColor} />
           <SummaryCard icon="barbell" title="Current Weight" value={`${profile.weight} kg`} card={card} textColor={textColor} />
@@ -252,6 +254,8 @@ const styles = StyleSheet.create({
   flex1: { flex: 1 },
   flex2: { flex: 2 },
   rowGap: { flexDirection: "row", alignItems: "center", gap: 8 },
+  wrapRow: { flexWrap: "wrap" },
+  stackRow: { flexDirection: "column" },
 
   // Header
   pageHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }, // mb-5
@@ -295,7 +299,7 @@ const styles = StyleSheet.create({
 
   // Fields
   fieldsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16, marginTop: 20 }, // mt-5 gap-4
-  fieldHalf: { width: "47%" }, // grid-cols-2
+  fieldHalf: { flexGrow: 1, flexBasis: 260, minWidth: 0 }, // responsive two-column grid
   fieldLabel: { fontSize: 12, fontWeight: "600" },
   input: {
     marginTop: 8, // mt-2
@@ -317,7 +321,7 @@ const styles = StyleSheet.create({
 
   // Summary
   summaryRow: { flexDirection: "row", gap: 12, marginTop: 16 }, // mt-4 gap-3
-  summaryCard: { flex: 1, borderRadius: radii.sm, borderWidth: 1, padding: 16 },
+  summaryCard: { flexGrow: 1, flexBasis: 190, minWidth: 0, borderRadius: radii.sm, borderWidth: 1, padding: 16 },
   summaryTitle: { fontSize: 12, fontWeight: "600" },
   summaryValue: { marginTop: 12, fontSize: 13, fontWeight: "700" }, // mt-3
 });

@@ -5,7 +5,7 @@ import { useTheme } from "@context/ThemeContext";
 import { radii } from "@theme/nutrifit";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 
 const PERIODS = ["Week", "Month", "3 Months", "Year"];
@@ -51,6 +51,8 @@ const ACHIEVEMENTS = [
 export default function ProgressScreen() {
   const { shell: c } = useTheme();
   const [period, setPeriod] = useState("Week");
+  const { width } = useWindowDimensions();
+  const compact = width < 400;
 
   const card = { backgroundColor: c.cardBg, borderColor: c.dropdownBorder };
   const textColor = { color: c.sidebarText };
@@ -129,7 +131,7 @@ export default function ProgressScreen() {
       </View>
 
       {/* Charts/Graphs*/}
-      <View style={styles.midRow}>
+      <View style={[styles.midRow, compact && styles.midRowCompact]}>
         {/* Macronutrient Distribution */}
         <View style={[styles.card, card, styles.flex1]}>
           <Text style={[styles.sectionTitle, textColor]}>Macronutrient Distribution</Text>
@@ -243,6 +245,7 @@ const styles = StyleSheet.create({
 
   // Donut/Graphs
   midRow: { flexDirection: "row", gap: 12, marginBottom: 12 },
+  midRowCompact: { flexDirection: "column" },
   donutWrap: { alignItems: "center", justifyContent: "center", marginTop: 12 },
   legend: { marginTop: 12, gap: 8 },
   legendRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },

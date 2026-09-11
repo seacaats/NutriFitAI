@@ -4,7 +4,7 @@ import { radii } from "@theme/nutrifit";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { Pressable, StyleSheet, Switch, Text, useWindowDimensions, View } from "react-native";
 
 
 const OVERVIEW = [
@@ -25,6 +25,8 @@ export default function ProfileScreen() {
   const { darkMode, toggleTheme, shell: c } = useTheme();
   const router = useRouter();
   const [notifications, setNotifications] = useState(true);
+  const { width } = useWindowDimensions();
+  const compact = width < 380;
 
   const card = { backgroundColor: c.cardBg, borderColor: c.dropdownBorder };
   const textColor = { color: c.sidebarText };
@@ -47,7 +49,7 @@ export default function ProfileScreen() {
           <Ionicons name="pencil" size={16} color="#ffffff" />
         </Pressable>
 
-        <View style={styles.bannerRow}>
+        <View style={[styles.bannerRow, compact && styles.bannerRowCompact]}>
           <View style={[styles.avatarCircle, { backgroundColor: c.avatarBg }]}>
             <Ionicons name="person" size={40} color="#9ca3af" />
           </View>
@@ -77,9 +79,9 @@ export default function ProfileScreen() {
       <View style={[styles.card, card, styles.overviewCard]}>
         <Text style={[styles.cardTitle, textColor]}>My Overview</Text>
 
-        <View style={styles.overviewRow}>
+        <View style={[styles.overviewRow, compact && styles.overviewRowCompact]}>
           {OVERVIEW.map((item) => (
-            <View key={item.label} style={[styles.overviewBox, { borderColor: card.borderColor }]}>
+            <View key={item.label} style={[styles.overviewBox, compact && styles.overviewBoxCompact, { borderColor: card.borderColor }]}>
               <View style={styles.overviewLabelRow}>
                 <Ionicons name={item.icon} size={13} color="#4CAF2F" />
                 <Text style={[styles.overviewLabel, textColor]}>{item.label}</Text>
@@ -185,6 +187,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   bannerRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  bannerRowCompact: { flexDirection: "column", alignItems: "flex-start" },
   avatarCircle: { width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center" },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   name: { fontSize: 19, fontWeight: "800", color: "#ffffff" },
@@ -201,7 +204,9 @@ const styles = StyleSheet.create({
 
   // Overview
   overviewRow: { flexDirection: "row", gap: 8 },
+  overviewRowCompact: { flexWrap: "wrap" },
   overviewBox: { flex: 1, borderRadius: radii.sm, borderWidth: 1, padding: 8 },
+  overviewBoxCompact: { flexBasis: "47%" },
   overviewLabelRow: { flexDirection: "row", alignItems: "center", gap: 4, flexWrap: "wrap" },
   overviewLabel: { fontSize: 10, fontWeight: "600" },
   overviewValue: { fontSize: 15, fontWeight: "800", marginTop: 8 },
@@ -215,6 +220,6 @@ const styles = StyleSheet.create({
   rowIcon: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   rowIconPlain: { width: 22 },
   rowLabel: { flex: 1, fontSize: 14, fontWeight: "700" },
-  rowValue: { fontSize: 12, color: "#6a7282", marginRight: 4 },
+  rowValue: { maxWidth: "42%", flexShrink: 1, textAlign: "right", fontSize: 12, color: "#6a7282", marginRight: 4 },
   logoutText: { color: "#fb2c36" },
 });

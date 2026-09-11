@@ -36,9 +36,7 @@ export default function DonutChart({
               strokeDashoffset={dashOffset}
               fill="none"
               // rotate -90deg so the first segment starts at 12 o'clock, like conic-gradient's 0deg
-              rotation={-90}
-              originX={size / 2}
-              originY={size / 2}
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
             />
           );
         })}

@@ -1,7 +1,7 @@
 import { useTheme } from "@context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
 import { usePathname, useRouter } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // insets to avoid overlapping with device
@@ -19,14 +19,17 @@ export default function DashboardLayout({ children, hideTabBar = false, scrollab
   const pathname = usePathname();
   const { shell: c } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const horizontalPadding = width < 360 ? 12 : width >= 768 ? 24 : 16;
+  const contentStyle = [styles.content, { paddingTop: insets.top + 16, paddingHorizontal: horizontalPadding }];
 
   const content = scrollable ? (
-    <ScrollView style={styles.flex1} contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}>
+    <ScrollView style={styles.flex1} contentContainerStyle={contentStyle}>
       {children}
     </ScrollView>
   ) : (
-    <View style={[styles.flex1, { paddingTop: insets.top + 16 }]}>
-      {children}
+    <View style={[styles.flex1, { paddingTop: insets.top + 16, paddingHorizontal: horizontalPadding }]}>
+      <View style={styles.nonScrollableContent}>{children}</View>
     </View>
   );
 
@@ -35,8 +38,8 @@ export default function DashboardLayout({ children, hideTabBar = false, scrollab
       {content}
 
       {!hideTabBar && (
-        <View style={[styles.tabBar, { backgroundColor: c.cardBg, borderTopColor: c.dropdownBorder, paddingBottom: 8 + insets.bottom }]}>
-          {TABS.map((tab) => {
+        <View style={[styles.tabBarShell, { backgroundColor: c.cardBg, borderTopColor: c.dropdownBorder, paddingBottom: 8 + insets.bottom }]}>
+          <View style={styles.tabBar}>{TABS.map((tab) => {
             const active = pathname === tab.route;
             const color = active ? c.primary : c.inactiveNavText;
             return (
@@ -45,7 +48,7 @@ export default function DashboardLayout({ children, hideTabBar = false, scrollab
                 <Text style={[styles.tabLabel, { color }]}>{tab.name}</Text>
               </Pressable>
             );
-          })}
+          })}</View>
         </View>
       )}
     </View>
@@ -55,11 +58,17 @@ export default function DashboardLayout({ children, hideTabBar = false, scrollab
 const styles = StyleSheet.create({
   outer: { flex: 1 },
   flex1: { flex: 1 },
-  content: { padding: 16, paddingBottom: 24 },
+  content: { width: "100%", maxWidth: 900, alignSelf: "center", paddingBottom: 24 },
+  nonScrollableContent: { flex: 1, width: "100%", maxWidth: 900, alignSelf: "center" },
 
-  tabBar: {
-    flexDirection: "row",
+  tabBarShell: {
     borderTopWidth: 1,
+  },
+  tabBar: {
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
+    flexDirection: "row",
     paddingTop: 8,
   },
   tabBtn: { flex: 1, alignItems: "center", gap: 2 },

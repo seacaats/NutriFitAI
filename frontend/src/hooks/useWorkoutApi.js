@@ -126,6 +126,23 @@ export function getEnglishTranslation(info) {
   };
 }
 
+/** Return true only when wger provides a real English title for the record. */
+export function hasEnglishTranslation(info) {
+  return Boolean(info?.translations?.some((translation) => translation.language === LANG && translation.name?.trim()));
+}
+
+/**
+ * wger currently marks a small number of localized records as English.
+ * Block known bad titles so they cannot leak into either cached or fresh lists.
+ */
+export function isBlockedLocalizedExercise(name = "") {
+  const normalized = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return normalized.includes("puente de gluteos");
+}
+
 /**
  * Helper: get the first image URL from exerciseinfo response.
  */

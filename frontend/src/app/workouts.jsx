@@ -8,6 +8,8 @@ import {
   fetchExerciseInfo,
   fetchExerciseInfoPage,
   getEnglishTranslation,
+  hasEnglishTranslation,
+  isBlockedLocalizedExercise,
   getExerciseImage,
   getExerciseImages,
   getMuscleNames,
@@ -90,9 +92,11 @@ export default function WorkoutsScreen() {
           const results = infoPage.results || [];
 
           for (const info of results) {
+            if (!hasEnglishTranslation(info)) continue;
             const realImage = getExerciseImages(info)[0];
             if (!realImage) continue; // skip exercises without a real image
             const { name, description } = getEnglishTranslation(info);
+            if (isBlockedLocalizedExercise(name)) continue;
             collected.push({
               id: info.id,
               name,
@@ -128,8 +132,9 @@ export default function WorkoutsScreen() {
   );
 
   // Search filtering (client-side on loaded exercises)
+  const englishExercises = exercises.filter((exercise) => !isBlockedLocalizedExercise(exercise.name));
   const filtered = searchQuery
-    ? exercises.filter(
+    ? englishExercises.filter(
         (e) =>
           e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           e.muscles.some((m) =>
@@ -137,7 +142,7 @@ export default function WorkoutsScreen() {
           ) ||
           e.category.toLowerCase().includes(searchQuery.toLowerCase()),
       )
-    : exercises;
+    : englishExercises;
 
   // Open exercise detail modal
   const openDetail = async (exerciseId, cardImage) => {

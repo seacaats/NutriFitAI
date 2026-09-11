@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 
 const DETECTED_FOOD = { name: "Lasagna", grams: "250g" };
@@ -14,6 +14,8 @@ const NUTRITION = { kcal: 520, protein: "26.4g", carbs: "51.8g", fat: "23.8g" };
 
 export default function FoodScannerScreen() {
   const { darkMode, shell: c } = useTheme();
+  const { width } = useWindowDimensions();
+  const compact = width < 380;
 
   const [selectedImage, setSelectedImage] = useState(null);
 
@@ -61,7 +63,7 @@ export default function FoodScannerScreen() {
           </View>
 
           {/* Detected Food */}
-          <View style={styles.detectedRow}>
+          <View style={[styles.detectedRow, compact && styles.detectedRowCompact]}>
             <View style={styles.detectedLeft}>
               <Text style={[styles.detectedHeading, textColor]}>Detected Food</Text>
               <View style={styles.detectedItemRow}>
@@ -175,6 +177,7 @@ const styles = StyleSheet.create({
   },
 
   detectedRow: { flexDirection: "row", gap: 12, marginTop: 28, alignItems: "flex-start" },
+  detectedRowCompact: { flexDirection: "column" },
   detectedLeft: { flex: 1 },
   detectedHeading: { fontSize: 15, fontWeight: "700" },
   detectedItemRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 },

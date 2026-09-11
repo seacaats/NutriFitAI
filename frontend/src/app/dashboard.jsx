@@ -3,12 +3,14 @@ import { useTheme } from "@context/ThemeContext";
 import { radii } from "@theme/nutrifit";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 
 export default function DashboardScreen() {
   const { shell: c } = useTheme();
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const compact = width < 380;
 
   const card = { backgroundColor: c.cardBg, borderColor: c.dropdownBorder };
   const trackBg = { backgroundColor: c.dropdownBorder };
@@ -48,7 +50,7 @@ export default function DashboardScreen() {
       </View>
 
       {/*  */}
-      <View style={styles.shortcutRow}>
+      <View style={[styles.shortcutRow, compact && styles.shortcutRowCompact]}>
         <Pressable onPress={() => router.push("/food-scanner")} style={[styles.shortcutCard, { backgroundColor: "#e7f9df" }]}>
           <View style={styles.shortcutText}>
             <Text style={styles.shortcutTitle}>Scan Food</Text>
@@ -142,6 +144,7 @@ const styles = StyleSheet.create({
   macroFill: { height: 4, borderRadius: 2 },
 
   shortcutRow: { flexDirection: "row", gap: 12, marginBottom: 16 },
+  shortcutRowCompact: { flexDirection: "column" },
   shortcutCard: { flex: 1, borderRadius: radii.sm, padding: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   shortcutText: { flexShrink: 1 },
   shortcutTitle: { fontSize: 12, fontWeight: "700", color: "#1a1a1a" },
