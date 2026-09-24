@@ -4,6 +4,8 @@ import {
   fetchExerciseInfo,
   fetchExerciseInfoPage,
   getEnglishTranslation,
+  hasEnglishTranslation,
+  isBlockedLocalizedExercise,
   getExerciseImage,
   getExerciseImages,
   getMuscleNames,
