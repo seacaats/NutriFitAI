@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "NutriFit AI",
+    "name": "NutriFitAI",
     "slug": "nutrifit-ai-web",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,14 +8,22 @@
     "scheme": "nutrifitai",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/images/nutrifit-logo.png"
+      "icon": "./assets/images/nutrifit-logo.png",
+      "infoPlist": {
+        "NSMotionUsageDescription": "NutriFit reads your step count so it can track your daily activity against your goals."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/nutrifit-logo.png",
         "backgroundColor": "#208AEF"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.nutrifitaiweb",
+      "permissions": [
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.health.READ_STEPS"
+      ]
     },
     "web": {
       "output": "static",
@@ -34,11 +42,31 @@
       "expo-font",
       "expo-image",
       "expo-status-bar",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "react-native-health-connect",
+        { "permissions": ["android.permission.health.READ_STEPS"] }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "minSdkVersion": 26
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "bb0cc26c-8a46-4de0-9e92-ec5b73643c77"
+      }
     }
   }
 }

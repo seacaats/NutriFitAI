@@ -3,8 +3,8 @@
     "baseUrl": ".",
     "ignoreDeprecations": "6.0",
     "paths": {
-      "@*": ["./src/*"],
       "@/assets/*": ["./assets/*"],
+      "@/*": ["./src/*"]
     }
   },
   "include": ["**/*.js", "**/*.jsx"]

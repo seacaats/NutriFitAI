@@ -1,0 +1,11 @@
+.env
+node_modules/
+
+# User-uploaded/derived files (avatars, food-scan images). Keep the folder
+# structure tracked via .gitkeep, not the files inside it.
+uploads/**/*
+!uploads/**/
+!uploads/**/.gitkeep
+
+scripts/
+migrations/
