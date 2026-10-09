@@ -1,5 +1,5 @@
 import Skeleton from "@/shared/components/Skeleton";
-import AvatarImage from "@/shared/components/ui/AvatarImage";
+import ServerImage from "@/shared/components/ui/ServerImage";
 import ConfirmModal from "@/shared/components/ui/ConfirmModal";
 import PlanButton from "@/shared/components/ui/PlanButton";
 import { resolveMediaUrl } from "@/shared/services/mediaUrl";
@@ -20,12 +20,12 @@ export const RESULT_CARD_MIN_HEIGHT = 470;
 
 /**
  * Saved scan photos come from our own API host, so they load through
- * AvatarImage for the same ngrok header reason avatars do (see that file).
+ * ServerImage for the same ngrok header reason avatars do (see that file).
  * The server sends a root-relative "/uploads/..." path. Only that prefix
  * counts as ours: a bare local Android path also starts with "/"
  *
  * Local previews (file:, content:, ph:, blob:, data:) go straight to
- * expo-image instead: AvatarImage always attaches a request header, and on
+ * expo-image instead: ServerImage always attaches a request header, and on
  * Android a header on a local file uri makes the load fail, which is why the
  * just-taken photo showed blank on mobile
  */
@@ -34,7 +34,7 @@ export function ScanImage({ uri, style, contentFit = "cover", onError }) {
   const ours = uri.startsWith("/uploads/");
   if (ours || /^https?:\/\//i.test(uri)) {
     const src = ours ? resolveMediaUrl(uri) : uri;
-    return <AvatarImage uri={src} style={style} contentFit={contentFit} onError={onError} />;
+    return <ServerImage uri={src} style={style} contentFit={contentFit} onError={onError} />;
   }
   return <Image source={{ uri }} style={style} contentFit={contentFit} onError={onError} />;
 }

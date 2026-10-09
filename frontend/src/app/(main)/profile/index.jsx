@@ -4,7 +4,7 @@ import { useProfileForm } from "@/features/user/hooks/useProfileForm";
 import { useWorkoutOptions } from "@/features/workouts/components/WorkoutPrefsPicker";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
 import Skeleton from "@/shared/components/Skeleton";
-import AvatarImage from "@/shared/components/ui/AvatarImage";
+import ServerImage from "@/shared/components/ui/ServerImage";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import {
   ACTIVITY_OPTIONS,
@@ -128,7 +128,7 @@ export default function ProfileScreen() {
           <View style={styles.avatarCol}>
             <View style={[styles.avatarCircle, { backgroundColor: c.avatarBg }]}>
               {loading ? null : avatarUrl ? (
-                <AvatarImage
+                <ServerImage
                   uri={avatarUrl}
                   style={styles.avatarImg}
                   contentFit="cover"

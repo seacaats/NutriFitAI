@@ -2,7 +2,7 @@ import { useLogout } from "@/features/auth/hooks/useLogout";
 import NotificationList from "@/features/notifications/components/NotificationList";
 import { useNotifications } from "@/features/notifications/hooks/useNotifications";
 import { UntrackedSkeletons, useSkeletonsShowing } from "@/shared/state/skeletonTracker";
-import AvatarImage from "@/shared/components/ui/AvatarImage";
+import ServerImage from "@/shared/components/ui/ServerImage";
 import { useReloadOnReconnect, useScrollToErrors, withScreenAlert } from "@/shared/components/ui/ScreenAlert";
 import { canAccess, useAuth } from "@/shared/context/AuthContext";
 import { usePullRefreshState } from "@/shared/context/PullRefreshContext";
@@ -381,7 +381,7 @@ export default function DashboardLayout({
                   >
                     <View style={[styles.avatar, { backgroundColor: c.avatarBg }]}>
                       {avatarUrl ? (
-                        <AvatarImage
+                        <ServerImage
                           uri={avatarUrl}
                           style={styles.avatarImg}
                           contentFit="cover"

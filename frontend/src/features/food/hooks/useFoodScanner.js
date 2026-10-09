@@ -75,14 +75,34 @@ function messageOf(err, fallback) {
   return err instanceof ApiClientError ? err.message : fallback;
 }
 
-// Every detected food starts selected at one serving. Foods without
-// nutrition data get empty fields the user fills in (per serving)
+// The same food detected more than once (two fish in one photo) becomes one
+// row: the most confident detection, starting at that many servings.
+// Identical means same name, serving and nutrition, so different foods never
+// merge. Logging sends that one item with its servings, which the server
+// multiplies the same way, so totals and the logged meal don't change
+function mergeDuplicates(scan) {
+  if (!scan?.items?.length) return scan;
+  const groups = new Map();
+  for (const item of scan.items) {
+    const key = [item.foodName, item.serving, item.caloriesKcal, item.proteinG, item.carbsG, item.fatG].join("|");
+    const group = groups.get(key);
+    if (!group) groups.set(key, { ...item, count: 1 });
+    else {
+      group.count += 1;
+      if ((item.confidence ?? 0) > (group.confidence ?? 0)) Object.assign(group, item, { count: group.count });
+    }
+  }
+  return { ...scan, items: [...groups.values()] };
+}
+
+// Every detected food starts selected, at one serving per time it was seen.
+// Foods without nutrition data get empty fields the user fills in (per serving)
 function initialSelection(scan) {
   const next = {};
   for (const item of scan?.items || []) {
     next[item.itemId] = {
       selected: true,
-      servings: 1,
+      servings: item.count || 1,
       manual: item.hasNutrition ? null : { caloriesKcal: "", proteinG: "", carbsG: "", fatG: "" },
     };
   }
@@ -129,7 +149,8 @@ function useScanner({ onMealLogged } = {}) {
     refreshRecent();
   }, [refreshRecent]);
 
-  const showScan = useCallback((next) => {
+  const showScan = useCallback((raw) => {
+    const next = mergeDuplicates(raw);
     setScan(next);
     setSelection(initialSelection(next));
     setMealType(mealTypeForNow());
