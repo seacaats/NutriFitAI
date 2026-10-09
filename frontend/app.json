@@ -4,22 +4,24 @@
     "slug": "nutrifit-ai-web",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/nutrifit-logo.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "nutrifitai",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/images/nutrifit-logo.png",
+      "bundleIdentifier": "com.nutrifitai.app",
+      "icon": "./assets/images/icon.png",
       "infoPlist": {
         "NSMotionUsageDescription": "NutriFitAI reads your step count so it can track your daily activity against your goals."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/nutrifit-logo.png",
-        "backgroundColor": "#208AEF"
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png",
+        "backgroundColor": "#FFFFFF"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.nutrifitaiweb",
+      "package": "com.nutrifitai.app",
       "permissions": [
         "android.permission.ACTIVITY_RECOGNITION",
         "android.permission.health.READ_STEPS"
@@ -46,6 +48,14 @@
         {
           "cameraPermission": "NutriFitAI uses your camera to scan food and estimate its nutrition.",
           "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "NutriFitAI uses your photos so you can scan food and set a profile picture.",
+          "cameraPermission": "NutriFitAI uses your camera to scan food and estimate its nutrition.",
+          "microphonePermission": false
         }
       ],
       "expo-status-bar",

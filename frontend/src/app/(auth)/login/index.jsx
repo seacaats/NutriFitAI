@@ -1,9 +1,7 @@
 import GoogleIcon from "@/features/auth/components/GoogleIcon";
 import { useLoginForm } from "@/features/auth/hooks/useLoginForm";
-import { useSessionRedirect } from "@/features/auth/hooks/useSessionRedirect";
 import { AuthBackLink } from "@/shared/components/layout/PublicHeader";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
-import LoadingScreen, { useLoadingGate } from "@/shared/components/ui/LoadingScreen";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
 import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { loginStyles } from "@/shared/theme/screenStyles";
@@ -22,10 +20,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 export default function LoginScreen() {
   const form = useLoginForm();
   const insets = useSafeAreaInsets();
-  const checkingSession = useSessionRedirect();
-  const gate = useLoadingGate(checkingSession);
-
-  if (gate.pending) return <LoadingScreen visible={gate.visible} />;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>

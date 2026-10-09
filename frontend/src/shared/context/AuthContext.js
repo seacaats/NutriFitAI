@@ -12,9 +12,9 @@ import { colors } from "@/shared/theme/nutrifitai";
 import { resetGoogleAuthChannel } from "@/shared/utils/authChannel";
 import { clearAccessToken, getAccessToken } from "@/shared/utils/authStorage";
 import { clearRemembered } from "@/shared/utils/rememberedState";
-import { Redirect, usePathname } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 /**
  * Single source of truth for "is there a valid session, and what may it do".
@@ -376,6 +376,7 @@ export function safeReturnTo(next, role) {
 export function RoleGuard({ children }) {
   const { status, isAuthenticated, emailVerified, role, refresh, loggedOut } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
   // The pathname is the app's, not this group's. With a public screen
   // (/terms, the landing page) pushed on top, this guard stays mounted
   // underneath and would judge /terms. Once it has guarded a listed screen,
@@ -384,55 +385,83 @@ export function RoleGuard({ children }) {
   const gate = useLoadingGate(status === AUTH_STATUS.LOADING);
   const listed = Boolean(rolesFor(pathname));
   if (listed) guardedOnce.current = true;
-  if (!listed && guardedOnce.current) return children;
+  const standingDown = !listed && guardedOnce.current;
 
-  if (gate.pending) return <LoadingScreen visible={gate.visible} />;
+  // Where this visitor should go instead, or null to show the screen
+  const target = standingDown || gate.pending || status === AUTH_STATUS.UNREACHABLE
+    ? null
+    : redirectFor({ isAuthenticated, emailVerified, role, loggedOut, pathname });
 
+  // Navigates once per destination. <Redirect> re-ran router.replace on every
+  // render, and in the production web build the guard re-renders while that
+  // navigation is still settling: an endless loop (React error #185) and a
+  // blank page instead of the login screen
+  const sentTo = useRef(null);
+  useEffect(() => {
+    if (!target) {
+      sentTo.current = null;
+      return;
+    }
+    if (sentTo.current === target) return;
+    sentTo.current = target;
+    router.replace(target);
+  }, [target, router]);
+
+  if (standingDown) return children;
+
+  // The navigator below always stays mounted: expo-router needs the layout's
+  // navigator to resolve the URL, and swapping it for a loading screen made
+  // the production web build re-resolve the route endlessly (React #185,
+  // blank page). Loading, the offline notice and an outgoing redirect cover
+  // it instead
+  let cover = null;
+  if (gate.pending) cover = <LoadingScreen visible={gate.visible} />;
   // Token held but the server can't be reached to confirm it
-  if (status === AUTH_STATUS.UNREACHABLE) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 12, backgroundColor: colors.bgMint }}>
-        <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>
-          Can&apos;t reach the server
-        </Text>
-        <Text style={{ fontSize: 13, color: colors.textSecondary, textAlign: "center", maxWidth: 320, lineHeight: 19 }}>
-          You&apos;re still signed in. Check your connection and try again.
-        </Text>
-        <Pressable
-          onPress={refresh}
-          style={{ backgroundColor: colors.green600, borderRadius: 8, paddingHorizontal: 20, paddingVertical: 11 }}
-        >
-          <Text style={{ color: colors.white, fontWeight: "700", fontSize: 14 }}>Retry</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  else if (status === AUTH_STATUS.UNREACHABLE) cover = (
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 12, backgroundColor: colors.bgMint }}>
+      <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>
+        Can&apos;t reach the server
+      </Text>
+      <Text style={{ fontSize: 13, color: colors.textSecondary, textAlign: "center", maxWidth: 320, lineHeight: 19 }}>
+        You&apos;re still signed in. Check your connection and try again.
+      </Text>
+      <Pressable
+        onPress={refresh}
+        style={{ backgroundColor: colors.green600, borderRadius: 8, paddingHorizontal: 20, paddingVertical: 11 }}
+      >
+        <Text style={{ color: colors.white, fontWeight: "700", fontSize: 14 }}>Retry</Text>
+      </Pressable>
+    </View>
+  );
+  // On the way somewhere else: a plain cover rather than a flash of the screen
+  else if (target) cover = <View style={{ flex: 1, backgroundColor: colors.bgMint }} />;
 
+  return (
+    <View style={{ flex: 1 }}>
+      {children}
+      {cover && <View style={StyleSheet.absoluteFill}>{cover}</View>}
+    </View>
+  );
+}
+
+// The guard's checks, in order. A plain string, so the same destination is
+// recognised as the same and only navigated to once
+function redirectFor({ isAuthenticated, emailVerified, role, loggedOut, pathname }) {
+  const from = encodeURIComponent(pathname);
   if (!isAuthenticated) {
     // Logged out on purpose: the landing page. Otherwise login, then back here
-    if (loggedOut) return <Redirect href="/" />;
-    return <Redirect href={{ pathname: "/login", params: { next: pathname } }} />;
+    return loggedOut ? "/" : `/login?next=${from}`;
   }
-
-  if (!emailVerified) {
-    return <Redirect href={{ pathname: "/access-denied", params: { reason: "unverified", from: pathname } }} />;
-  }
+  if (!emailVerified) return `/access-denied?reason=unverified&from=${from}`;
 
   const privileged = ADMIN_ROLES.includes(role);
-
-  if (Platform.OS !== "web" && privileged) {
-    return <Redirect href={{ pathname: "/access-denied", params: { reason: "admin-web-only", from: pathname } }} />;
-  }
+  if (Platform.OS !== "web" && privileged) return `/access-denied?reason=admin-web-only&from=${from}`;
 
   if (!canAccess(role, pathname)) {
     const allowed = rolesFor(pathname);
     const userOnlyScreen = Boolean(allowed) && allowed.every((r) => r === "user");
-
-    if (privileged && userOnlyScreen) {
-      return <Redirect href={homeFor(role)} />;
-    }
-    return <Redirect href={{ pathname: "/access-denied", params: { reason: "forbidden", from: pathname } }} />;
+    if (privileged && userOnlyScreen) return homeFor(role);
+    return `/access-denied?reason=forbidden&from=${from}`;
   }
-
-  return children;
+  return null;
 }

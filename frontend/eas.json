@@ -12,11 +12,14 @@
       "distribution": "internal",
       "android": { "buildType": "apk" },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://ointment-drop-down-heaviness.ngrok-free.dev/api"
+        "EXPO_PUBLIC_API_URL": "https://nutrifitaibackend.onrender.com/api"
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://nutrifitaibackend.onrender.com/api"
+      }
     }
   },
   "submit": {

@@ -43,7 +43,13 @@ def display_name(name, n):
 
 # ---- Model -----------------------------------------------------------------
 
-session = ort.InferenceSession(MODEL_PATH, providers=["CPUExecutionProvider"])
+# Sized for a 512 MB instance: one thread, and no memory arena (the arena
+# keeps its peak allocation reserved for good, which pushed scans over 512 MB)
+_options = ort.SessionOptions()
+_options.intra_op_num_threads = 1
+_options.inter_op_num_threads = 1
+_options.enable_cpu_mem_arena = False
+session = ort.InferenceSession(MODEL_PATH, sess_options=_options, providers=["CPUExecutionProvider"])
 INPUT = session.get_inputs()[0]
 SIZE = INPUT.shape[2] if isinstance(INPUT.shape[2], int) else 640
 # The export stores the class names in the file: "{0: 'apple', 1: 'banana'}"
@@ -142,7 +148,13 @@ def detect(image: UploadFile = File(...), x_api_key: str | None = Header(None)):
     try:
         # Phone and webcam photos carry their rotation in EXIF. Without this
         # the model sees a portrait photo sideways
-        img = ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
+        img = Image.open(io.BytesIO(data))
+        # Decoded at most ~1280 px across: the model only sees 640 px anyway,
+        # and a full-size phone photo decodes to ~50 MB. draft() lets JPEGs
+        # decode straight at a smaller scale
+        img.draft("RGB", (1280, 1280))
+        img = ImageOps.exif_transpose(img).convert("RGB")
+        img.thumbnail((1280, 1280))
     except Exception:
         raise HTTPException(400, "invalid image")
 
