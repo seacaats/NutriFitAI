@@ -1,0 +1,1662 @@
+[
+  {
+    "id": 1,
+    "name": "yellow curry",
+    "display_name": "Yellow Curry",
+    "serving": "1 cup",
+    "calories_kcal": 240,
+    "protein_g": 12.0,
+    "carbs_g": 15.0,
+    "fats_g": 15.0
+  },
+  {
+    "id": 2,
+    "name": "pancake",
+    "display_name": "Pancake",
+    "serving": "1 piece (medium)",
+    "calories_kcal": 150,
+    "protein_g": 4.0,
+    "carbs_g": 22.0,
+    "fats_g": 5.0
+  },
+  {
+    "id": 3,
+    "name": "tiramisu",
+    "display_name": "Tiramisu",
+    "serving": "1 slice (100g)",
+    "calories_kcal": 300,
+    "protein_g": 5.0,
+    "carbs_g": 32.0,
+    "fats_g": 17.0
+  },
+  {
+    "id": 4,
+    "name": "waffle",
+    "display_name": "Waffle",
+    "serving": "1 piece",
+    "calories_kcal": 220,
+    "protein_g": 6.0,
+    "carbs_g": 25.0,
+    "fats_g": 10.0
+  },
+  {
+    "id": 5,
+    "name": "rare cheese cake",
+    "display_name": "Rare Cheesecake",
+    "serving": "1 slice (100g)",
+    "calories_kcal": 320,
+    "protein_g": 5.5,
+    "carbs_g": 26.0,
+    "fats_g": 22.0
+  },
+  {
+    "id": 6,
+    "name": "shortcake",
+    "display_name": "Shortcake",
+    "serving": "1 slice",
+    "calories_kcal": 290,
+    "protein_g": 4.0,
+    "carbs_g": 38.0,
+    "fats_g": 14.0
+  },
+  {
+    "id": 7,
+    "name": "chop suey",
+    "display_name": "Chop Suey",
+    "serving": "1 cup",
+    "calories_kcal": 120,
+    "protein_g": 6.0,
+    "carbs_g": 10.0,
+    "fats_g": 7.0
+  },
+  {
+    "id": 8,
+    "name": "croissant",
+    "display_name": "Croissant",
+    "serving": "1 piece (large)",
+    "calories_kcal": 270,
+    "protein_g": 5.0,
+    "carbs_g": 31.0,
+    "fats_g": 14.0
+  },
+  {
+    "id": 9,
+    "name": "chicken nugget",
+    "display_name": "Chicken Nuggets",
+    "serving": "4 pieces",
+    "calories_kcal": 190,
+    "protein_g": 10.0,
+    "carbs_g": 12.0,
+    "fats_g": 12.0
+  },
+  {
+    "id": 10,
+    "name": "french bread",
+    "display_name": "French Bread",
+    "serving": "1 slice (medium)",
+    "calories_kcal": 160,
+    "protein_g": 6.0,
+    "carbs_g": 31.0,
+    "fats_g": 1.0
+  },
+  {
+    "id": 11,
+    "name": "roll bread",
+    "display_name": "Bread Roll",
+    "serving": "1 piece",
+    "calories_kcal": 120,
+    "protein_g": 4.0,
+    "carbs_g": 20.0,
+    "fats_g": 2.5
+  },
+  {
+    "id": 12,
+    "name": "tortilla",
+    "display_name": "Tortilla",
+    "serving": "1 piece (medium)",
+    "calories_kcal": 140,
+    "protein_g": 4.0,
+    "carbs_g": 24.0,
+    "fats_g": 3.5
+  },
+  {
+    "id": 13,
+    "name": "tacos",
+    "display_name": "Taco",
+    "serving": "1 taco",
+    "calories_kcal": 210,
+    "protein_g": 10.0,
+    "carbs_g": 20.0,
+    "fats_g": 10.0
+  },
+  {
+    "id": 14,
+    "name": "nachos",
+    "display_name": "Nachos",
+    "serving": "1 serving (100g)",
+    "calories_kcal": 300,
+    "protein_g": 6.0,
+    "carbs_g": 35.0,
+    "fats_g": 16.0
+  },
+  {
+    "id": 15,
+    "name": "raisin bread",
+    "display_name": "Raisin Bread",
+    "serving": "1 slice",
+    "calories_kcal": 100,
+    "protein_g": 3.0,
+    "carbs_g": 20.0,
+    "fats_g": 1.5
+  },
+  {
+    "id": 16,
+    "name": "meat loaf",
+    "display_name": "Meatloaf",
+    "serving": "1 slice (100g)",
+    "calories_kcal": 240,
+    "protein_g": 14.0,
+    "carbs_g": 10.0,
+    "fats_g": 16.0
+  },
+  {
+    "id": 17,
+    "name": "scrambled egg",
+    "display_name": "Scrambled Eggs",
+    "serving": "2 large eggs",
+    "calories_kcal": 180,
+    "protein_g": 12.0,
+    "carbs_g": 2.0,
+    "fats_g": 14.0
+  },
+  {
+    "id": 18,
+    "name": "lasagna",
+    "display_name": "Lasagna",
+    "serving": "1 slice (200g)",
+    "calories_kcal": 340,
+    "protein_g": 20.0,
+    "carbs_g": 32.0,
+    "fats_g": 14.0
+  },
+  {
+    "id": 19,
+    "name": "Caesar salad",
+    "display_name": "Caesar Salad",
+    "serving": "1 bowl",
+    "calories_kcal": 190,
+    "protein_g": 5.0,
+    "carbs_g": 8.0,
+    "fats_g": 16.0
+  },
+  {
+    "id": 20,
+    "name": "oatmeal",
+    "display_name": "Oatmeal",
+    "serving": "1 cup",
+    "calories_kcal": 160,
+    "protein_g": 6.0,
+    "carbs_g": 28.0,
+    "fats_g": 3.0
+  },
+  {
+    "id": 21,
+    "name": "muffin",
+    "display_name": "Muffin",
+    "serving": "1 medium",
+    "calories_kcal": 340,
+    "protein_g": 5.0,
+    "carbs_g": 50.0,
+    "fats_g": 14.0
+  },
+  {
+    "id": 22,
+    "name": "popcorn",
+    "display_name": "Popcorn",
+    "serving": "1 small bag",
+    "calories_kcal": 200,
+    "protein_g": 3.0,
+    "carbs_g": 22.0,
+    "fats_g": 12.0
+  },
+  {
+    "id": 23,
+    "name": "cream puff",
+    "display_name": "Cream Puff",
+    "serving": "1 piece",
+    "calories_kcal": 230,
+    "protein_g": 4.0,
+    "carbs_g": 20.0,
+    "fats_g": 15.0
+  },
+  {
+    "id": 24,
+    "name": "doughnut",
+    "display_name": "Doughnut",
+    "serving": "1 glazed",
+    "calories_kcal": 260,
+    "protein_g": 3.0,
+    "carbs_g": 31.0,
+    "fats_g": 14.0
+  },
+  {
+    "id": 25,
+    "name": "apple pie",
+    "display_name": "Apple Pie",
+    "serving": "1 slice",
+    "calories_kcal": 300,
+    "protein_g": 3.0,
+    "carbs_g": 42.0,
+    "fats_g": 14.0
+  },
+  {
+    "id": 26,
+    "name": "pork belly",
+    "display_name": "Pork Belly",
+    "serving": "100g",
+    "calories_kcal": 510,
+    "protein_g": 9.0,
+    "carbs_g": 0.0,
+    "fats_g": 53.0
+  },
+  {
+    "id": 27,
+    "name": "hamburger",
+    "display_name": "Hamburger",
+    "serving": "1 burger",
+    "calories_kcal": 290,
+    "protein_g": 16.0,
+    "carbs_g": 31.0,
+    "fats_g": 12.0
+  },
+  {
+    "id": 28,
+    "name": "pizza",
+    "display_name": "Pizza",
+    "serving": "1 slice (cheese)",
+    "calories_kcal": 280,
+    "protein_g": 12.0,
+    "carbs_g": 32.0,
+    "fats_g": 12.0
+  },
+  {
+    "id": 29,
+    "name": "sandwiches",
+    "display_name": "Sandwich",
+    "serving": "1 sandwich",
+    "calories_kcal": 300,
+    "protein_g": 15.0,
+    "carbs_g": 30.0,
+    "fats_g": 13.0
+  },
+  {
+    "id": 30,
+    "name": "Deep Fried Chicken Wing",
+    "display_name": "Deep Fried Chicken Wings",
+    "serving": "2 wings",
+    "calories_kcal": 220,
+    "protein_g": 18.0,
+    "carbs_g": 8.0,
+    "fats_g": 13.0
+  },
+  {
+    "id": 31,
+    "name": "takoyaki",
+    "display_name": "Takoyaki",
+    "serving": "4 pieces",
+    "calories_kcal": 200,
+    "protein_g": 6.0,
+    "carbs_g": 26.0,
+    "fats_g": 8.0
+  },
+  {
+    "id": 32,
+    "name": "tempura",
+    "display_name": "Tempura",
+    "serving": "3 pieces",
+    "calories_kcal": 220,
+    "protein_g": 12.0,
+    "carbs_g": 18.0,
+    "fats_g": 12.0
+  },
+  {
+    "id": 33,
+    "name": "fried chicken",
+    "display_name": "Fried Chicken",
+    "serving": "1 piece (thigh)",
+    "calories_kcal": 280,
+    "protein_g": 22.0,
+    "carbs_g": 10.0,
+    "fats_g": 17.0
+  },
+  {
+    "id": 34,
+    "name": "omelet",
+    "display_name": "Omelet",
+    "serving": "2 eggs + veg",
+    "calories_kcal": 210,
+    "protein_g": 13.0,
+    "carbs_g": 3.0,
+    "fats_g": 16.0
+  },
+  {
+    "id": 35,
+    "name": "egg sunny-side up",
+    "display_name": "Sunny-Side Up Egg",
+    "serving": "1 egg",
+    "calories_kcal": 90,
+    "protein_g": 6.0,
+    "carbs_g": 0.4,
+    "fats_g": 7.0
+  },
+  {
+    "id": 37,
+    "name": "hot dog",
+    "display_name": "Hot Dog",
+    "serving": "1 hotdog w/ bun",
+    "calories_kcal": 270,
+    "protein_g": 10.0,
+    "carbs_g": 24.0,
+    "fats_g": 15.0
+  },
+  {
+    "id": 38,
+    "name": "french fries",
+    "display_name": "French Fries",
+    "serving": "1 medium",
+    "calories_kcal": 340,
+    "protein_g": 4.0,
+    "carbs_g": 44.0,
+    "fats_g": 16.0
+  },
+  {
+    "id": 39,
+    "name": "adobong_baboy",
+    "display_name": "Adobong Baboy (Pork Adobo)",
+    "serving": "1 cup",
+    "calories_kcal": 350,
+    "protein_g": 22.0,
+    "carbs_g": 5.0,
+    "fats_g": 27.0
+  },
+  {
+    "id": 40,
+    "name": "adobong_kangkong",
+    "display_name": "Adobong Kangkong",
+    "serving": "1 cup",
+    "calories_kcal": 90,
+    "protein_g": 3.0,
+    "carbs_g": 6.0,
+    "fats_g": 6.0
+  },
+  {
+    "id": 41,
+    "name": "adobong_manok",
+    "display_name": "Adobong Manok (Chicken Adobo)",
+    "serving": "1 cup",
+    "calories_kcal": 280,
+    "protein_g": 28.0,
+    "carbs_g": 4.0,
+    "fats_g": 16.0
+  },
+  {
+    "id": 42,
+    "name": "adobong_pusit",
+    "display_name": "Adobong Pusit (Squid Adobo)",
+    "serving": "1 cup",
+    "calories_kcal": 180,
+    "protein_g": 22.0,
+    "carbs_g": 6.0,
+    "fats_g": 7.0
+  },
+  {
+    "id": 43,
+    "name": "adobong_sitaw",
+    "display_name": "Adobong Sitaw",
+    "serving": "1 cup",
+    "calories_kcal": 120,
+    "protein_g": 4.0,
+    "carbs_g": 9.0,
+    "fats_g": 8.0
+  },
+  {
+    "id": 44,
+    "name": "afritada",
+    "display_name": "Afritada",
+    "serving": "1 cup",
+    "calories_kcal": 260,
+    "protein_g": 20.0,
+    "carbs_g": 14.0,
+    "fats_g": 14.0
+  },
+  {
+    "id": 45,
+    "name": "apple",
+    "display_name": "Apple",
+    "serving": "1 medium",
+    "calories_kcal": 95,
+    "protein_g": 0.5,
+    "carbs_g": 25.0,
+    "fats_g": 0.3
+  },
+  {
+    "id": 46,
+    "name": "arozcaldo",
+    "display_name": "Arroz Caldo",
+    "serving": "1 bowl",
+    "calories_kcal": 220,
+    "protein_g": 12.0,
+    "carbs_g": 30.0,
+    "fats_g": 6.0
+  },
+  {
+    "id": 47,
+    "name": "bacon",
+    "display_name": "Bacon",
+    "serving": "3 strips",
+    "calories_kcal": 130,
+    "protein_g": 9.0,
+    "carbs_g": 0.4,
+    "fats_g": 10.0
+  },
+  {
+    "id": 48,
+    "name": "banana",
+    "display_name": "Banana",
+    "serving": "1 medium",
+    "calories_kcal": 105,
+    "protein_g": 1.3,
+    "carbs_g": 27.0,
+    "fats_g": 0.3
+  },
+  {
+    "id": 49,
+    "name": "banana_cue",
+    "display_name": "Banana Cue",
+    "serving": "1 stick (2 pcs)",
+    "calories_kcal": 250,
+    "protein_g": 2.0,
+    "carbs_g": 45.0,
+    "fats_g": 8.0
+  },
+  {
+    "id": 50,
+    "name": "beef_broccoli",
+    "display_name": "Beef with Broccoli",
+    "serving": "1 cup",
+    "calories_kcal": 220,
+    "protein_g": 20.0,
+    "carbs_g": 10.0,
+    "fats_g": 11.0
+  },
+  {
+    "id": 51,
+    "name": "beef_bulalo",
+    "display_name": "Beef Bulalo",
+    "serving": "1 bowl",
+    "calories_kcal": 380,
+    "protein_g": 28.0,
+    "carbs_g": 6.0,
+    "fats_g": 27.0
+  },
+  {
+    "id": 52,
+    "name": "beef_nilaga",
+    "display_name": "Beef Nilaga",
+    "serving": "1 bowl",
+    "calories_kcal": 260,
+    "protein_g": 24.0,
+    "carbs_g": 10.0,
+    "fats_g": 14.0
+  },
+  {
+    "id": 53,
+    "name": "beef_pares",
+    "display_name": "Beef Pares",
+    "serving": "1 serving",
+    "calories_kcal": 320,
+    "protein_g": 22.0,
+    "carbs_g": 18.0,
+    "fats_g": 18.0
+  },
+  {
+    "id": 54,
+    "name": "beetroot",
+    "display_name": "Beetroot",
+    "serving": "100g",
+    "calories_kcal": 43,
+    "protein_g": 1.6,
+    "carbs_g": 10.0,
+    "fats_g": 0.2
+  },
+  {
+    "id": 55,
+    "name": "bell_pepper",
+    "display_name": "Bell Pepper",
+    "serving": "1 medium",
+    "calories_kcal": 24,
+    "protein_g": 1.0,
+    "carbs_g": 6.0,
+    "fats_g": 0.2
+  },
+  {
+    "id": 56,
+    "name": "bicol_express",
+    "display_name": "Bicol Express",
+    "serving": "1 cup",
+    "calories_kcal": 380,
+    "protein_g": 18.0,
+    "carbs_g": 6.0,
+    "fats_g": 32.0
+  },
+  {
+    "id": 57,
+    "name": "bistek_tagalog",
+    "display_name": "Bistek Tagalog",
+    "serving": "1 serving",
+    "calories_kcal": 290,
+    "protein_g": 26.0,
+    "carbs_g": 8.0,
+    "fats_g": 17.0
+  },
+  {
+    "id": 58,
+    "name": "black_coffee",
+    "display_name": "Black Coffee",
+    "serving": "1 cup",
+    "calories_kcal": 2,
+    "protein_g": 0.3,
+    "carbs_g": 0.0,
+    "fats_g": 0.0
+  },
+  {
+    "id": 59,
+    "name": "boiled_egg",
+    "display_name": "Boiled Egg",
+    "serving": "1 large",
+    "calories_kcal": 78,
+    "protein_g": 6.3,
+    "carbs_g": 0.6,
+    "fats_g": 5.3
+  },
+  {
+    "id": 60,
+    "name": "buko_pandan_salad",
+    "display_name": "Buko Pandan Salad",
+    "serving": "1 cup",
+    "calories_kcal": 280,
+    "protein_g": 3.0,
+    "carbs_g": 38.0,
+    "fats_g": 13.0
+  },
+  {
+    "id": 61,
+    "name": "buttered_shripm",
+    "display_name": "Buttered Shrimp",
+    "serving": "100g",
+    "calories_kcal": 210,
+    "protein_g": 20.0,
+    "carbs_g": 2.0,
+    "fats_g": 13.0
+  },
+  {
+    "id": 62,
+    "name": "cabbage",
+    "display_name": "Cabbage",
+    "serving": "100g",
+    "calories_kcal": 25,
+    "protein_g": 1.3,
+    "carbs_g": 6.0,
+    "fats_g": 0.1
+  },
+  {
+    "id": 63,
+    "name": "caldereta",
+    "display_name": "Caldereta",
+    "serving": "1 cup",
+    "calories_kcal": 360,
+    "protein_g": 24.0,
+    "carbs_g": 16.0,
+    "fats_g": 22.0
+  },
+  {
+    "id": 64,
+    "name": "camote_cue",
+    "display_name": "Camote Cue",
+    "serving": "1 stick",
+    "calories_kcal": 220,
+    "protein_g": 2.0,
+    "carbs_g": 40.0,
+    "fats_g": 6.0
+  },
+  {
+    "id": 65,
+    "name": "capsicum",
+    "display_name": "Capsicum",
+    "serving": "100g",
+    "calories_kcal": 20,
+    "protein_g": 0.9,
+    "carbs_g": 4.6,
+    "fats_g": 0.2
+  },
+  {
+    "id": 66,
+    "name": "carbonara",
+    "display_name": "Carbonara",
+    "serving": "1 cup",
+    "calories_kcal": 380,
+    "protein_g": 14.0,
+    "carbs_g": 38.0,
+    "fats_g": 20.0
+  },
+  {
+    "id": 67,
+    "name": "carrot",
+    "display_name": "Carrot",
+    "serving": "1 medium",
+    "calories_kcal": 25,
+    "protein_g": 0.6,
+    "carbs_g": 6.0,
+    "fats_g": 0.1
+  },
+  {
+    "id": 68,
+    "name": "cauliflower",
+    "display_name": "Cauliflower",
+    "serving": "100g",
+    "calories_kcal": 25,
+    "protein_g": 2.0,
+    "carbs_g": 5.0,
+    "fats_g": 0.3
+  },
+  {
+    "id": 69,
+    "name": "champorado",
+    "display_name": "Champorado",
+    "serving": "1 bowl",
+    "calories_kcal": 240,
+    "protein_g": 5.0,
+    "carbs_g": 48.0,
+    "fats_g": 3.5
+  },
+  {
+    "id": 70,
+    "name": "chicken_fillet",
+    "display_name": "Chicken Fillet",
+    "serving": "1 piece (100g)",
+    "calories_kcal": 220,
+    "protein_g": 22.0,
+    "carbs_g": 10.0,
+    "fats_g": 10.0
+  },
+  {
+    "id": 71,
+    "name": "chicken_inasal",
+    "display_name": "Chicken Inasal",
+    "serving": "1 quarter",
+    "calories_kcal": 320,
+    "protein_g": 32.0,
+    "carbs_g": 2.0,
+    "fats_g": 20.0
+  },
+  {
+    "id": 72,
+    "name": "chilli_pepper",
+    "display_name": "Chili Pepper",
+    "serving": "1 piece",
+    "calories_kcal": 18,
+    "protein_g": 0.9,
+    "carbs_g": 4.0,
+    "fats_g": 0.2
+  },
+  {
+    "id": 73,
+    "name": "cordon_bleu",
+    "display_name": "Chicken Cordon Bleu",
+    "serving": "1 serving",
+    "calories_kcal": 360,
+    "protein_g": 28.0,
+    "carbs_g": 14.0,
+    "fats_g": 22.0
+  },
+  {
+    "id": 74,
+    "name": "corn",
+    "display_name": "Corn on the Cob",
+    "serving": "1 cob",
+    "calories_kcal": 90,
+    "protein_g": 3.0,
+    "carbs_g": 19.0,
+    "fats_g": 1.5
+  },
+  {
+    "id": 75,
+    "name": "corn_beef",
+    "display_name": "Corned Beef",
+    "serving": "1 cup",
+    "calories_kcal": 310,
+    "protein_g": 18.0,
+    "carbs_g": 6.0,
+    "fats_g": 24.0
+  },
+  {
+    "id": 76,
+    "name": "crispy_pata",
+    "display_name": "Crispy Pata",
+    "serving": "100g",
+    "calories_kcal": 420,
+    "protein_g": 22.0,
+    "carbs_g": 0.0,
+    "fats_g": 36.0
+  },
+  {
+    "id": 77,
+    "name": "cucumber",
+    "display_name": "Cucumber",
+    "serving": "100g",
+    "calories_kcal": 15,
+    "protein_g": 0.7,
+    "carbs_g": 3.6,
+    "fats_g": 0.1
+  },
+  {
+    "id": 78,
+    "name": "dinakdakan",
+    "display_name": "Dinakdakan",
+    "serving": "1 serving",
+    "calories_kcal": 340,
+    "protein_g": 18.0,
+    "carbs_g": 2.0,
+    "fats_g": 29.0
+  },
+  {
+    "id": 79,
+    "name": "dinuguan",
+    "display_name": "Dinuguan",
+    "serving": "1 cup",
+    "calories_kcal": 260,
+    "protein_g": 20.0,
+    "carbs_g": 6.0,
+    "fats_g": 17.0
+  },
+  {
+    "id": 80,
+    "name": "eggplant",
+    "display_name": "Eggplant",
+    "serving": "100g",
+    "calories_kcal": 35,
+    "protein_g": 0.8,
+    "carbs_g": 8.0,
+    "fats_g": 0.2
+  },
+  {
+    "id": 81,
+    "name": "embutido",
+    "display_name": "Embutido",
+    "serving": "2 slices",
+    "calories_kcal": 210,
+    "protein_g": 12.0,
+    "carbs_g": 10.0,
+    "fats_g": 13.0
+  },
+  {
+    "id": 82,
+    "name": "fish_ball_and_kikiam",
+    "display_name": "Fish Ball and Kikiam",
+    "serving": "5 pcs mix",
+    "calories_kcal": 180,
+    "protein_g": 6.0,
+    "carbs_g": 22.0,
+    "fats_g": 8.0
+  },
+  {
+    "id": 83,
+    "name": "fried_boneless_bangus",
+    "display_name": "Fried Boneless Bangus",
+    "serving": "100g",
+    "calories_kcal": 240,
+    "protein_g": 20.0,
+    "carbs_g": 0.0,
+    "fats_g": 17.0
+  },
+  {
+    "id": 84,
+    "name": "fried_hotdog",
+    "display_name": "Fried Hotdog",
+    "serving": "1 piece",
+    "calories_kcal": 180,
+    "protein_g": 7.0,
+    "carbs_g": 2.0,
+    "fats_g": 16.0
+  },
+  {
+    "id": 85,
+    "name": "fried_siomai",
+    "display_name": "Fried Siomai",
+    "serving": "4 pieces",
+    "calories_kcal": 220,
+    "protein_g": 8.0,
+    "carbs_g": 18.0,
+    "fats_g": 13.0
+  },
+  {
+    "id": 86,
+    "name": "fried_tilapia",
+    "display_name": "Fried Tilapia",
+    "serving": "1 whole (medium)",
+    "calories_kcal": 220,
+    "protein_g": 26.0,
+    "carbs_g": 0.0,
+    "fats_g": 12.0
+  },
+  {
+    "id": 87,
+    "name": "garlic",
+    "display_name": "Garlic",
+    "serving": "1 clove",
+    "calories_kcal": 4,
+    "protein_g": 0.2,
+    "carbs_g": 1.0,
+    "fats_g": 0.0
+  },
+  {
+    "id": 88,
+    "name": "ginataang_kalabasa",
+    "display_name": "Ginataang Kalabasa",
+    "serving": "1 cup",
+    "calories_kcal": 180,
+    "protein_g": 4.0,
+    "carbs_g": 16.0,
+    "fats_g": 12.0
+  },
+  {
+    "id": 89,
+    "name": "ginger",
+    "display_name": "Ginger",
+    "serving": "100g",
+    "calories_kcal": 80,
+    "protein_g": 1.8,
+    "carbs_g": 18.0,
+    "fats_g": 0.8
+  },
+  {
+    "id": 90,
+    "name": "ginisang_monggo",
+    "display_name": "Ginisang Monggo",
+    "serving": "1 cup",
+    "calories_kcal": 160,
+    "protein_g": 10.0,
+    "carbs_g": 22.0,
+    "fats_g": 4.0
+  },
+  {
+    "id": 91,
+    "name": "ginisang_sayote",
+    "display_name": "Ginisang Sayote",
+    "serving": "1 cup",
+    "calories_kcal": 90,
+    "protein_g": 3.0,
+    "carbs_g": 8.0,
+    "fats_g": 5.0
+  },
+  {
+    "id": 92,
+    "name": "graham",
+    "display_name": "Graham Crackers",
+    "serving": "2 sheets",
+    "calories_kcal": 130,
+    "protein_g": 2.0,
+    "carbs_g": 24.0,
+    "fats_g": 3.0
+  },
+  {
+    "id": 93,
+    "name": "grapes",
+    "display_name": "Grapes",
+    "serving": "1 cup",
+    "calories_kcal": 104,
+    "protein_g": 1.1,
+    "carbs_g": 27.0,
+    "fats_g": 0.2
+  },
+  {
+    "id": 94,
+    "name": "halo_halo",
+    "display_name": "Halo-Halo",
+    "serving": "1 glass",
+    "calories_kcal": 350,
+    "protein_g": 6.0,
+    "carbs_g": 65.0,
+    "fats_g": 8.0
+  },
+  {
+    "id": 95,
+    "name": "ham",
+    "display_name": "Ham",
+    "serving": "2 slices",
+    "calories_kcal": 120,
+    "protein_g": 12.0,
+    "carbs_g": 2.0,
+    "fats_g": 7.0
+  },
+  {
+    "id": 96,
+    "name": "hungarian_sausage",
+    "display_name": "Hungarian Sausage",
+    "serving": "1 piece",
+    "calories_kcal": 310,
+    "protein_g": 14.0,
+    "carbs_g": 4.0,
+    "fats_g": 26.0
+  },
+  {
+    "id": 97,
+    "name": "iced_coffee",
+    "display_name": "Iced Coffee",
+    "serving": "1 glass",
+    "calories_kcal": 160,
+    "protein_g": 3.0,
+    "carbs_g": 28.0,
+    "fats_g": 4.0
+  },
+  {
+    "id": 98,
+    "name": "igado",
+    "display_name": "Igado",
+    "serving": "1 cup",
+    "calories_kcal": 280,
+    "protein_g": 24.0,
+    "carbs_g": 6.0,
+    "fats_g": 18.0
+  },
+  {
+    "id": 99,
+    "name": "ilocos_empanada",
+    "display_name": "Ilocos Empanada",
+    "serving": "1 piece",
+    "calories_kcal": 320,
+    "protein_g": 10.0,
+    "carbs_g": 32.0,
+    "fats_g": 17.0
+  },
+  {
+    "id": 100,
+    "name": "jalepeno",
+    "display_name": "Jalapeno",
+    "serving": "1 piece",
+    "calories_kcal": 4,
+    "protein_g": 0.1,
+    "carbs_g": 0.9,
+    "fats_g": 0.1
+  },
+  {
+    "id": 101,
+    "name": "kare_kare",
+    "display_name": "Kare-Kare",
+    "serving": "1 cup",
+    "calories_kcal": 380,
+    "protein_g": 22.0,
+    "carbs_g": 12.0,
+    "fats_g": 28.0
+  },
+  {
+    "id": 102,
+    "name": "kiwi",
+    "display_name": "Kiwi",
+    "serving": "1 fruit",
+    "calories_kcal": 42,
+    "protein_g": 0.8,
+    "carbs_g": 10.0,
+    "fats_g": 0.4
+  },
+  {
+    "id": 103,
+    "name": "kwek_kwek",
+    "display_name": "Kwek-Kwek",
+    "serving": "4 pieces",
+    "calories_kcal": 240,
+    "protein_g": 12.0,
+    "carbs_g": 20.0,
+    "fats_g": 12.0
+  },
+  {
+    "id": 104,
+    "name": "laing",
+    "display_name": "Laing",
+    "serving": "1 cup",
+    "calories_kcal": 220,
+    "protein_g": 5.0,
+    "carbs_g": 10.0,
+    "fats_g": 18.0
+  },
+  {
+    "id": 105,
+    "name": "leche_flan",
+    "display_name": "Leche Flan",
+    "serving": "1 slice (100g)",
+    "calories_kcal": 280,
+    "protein_g": 7.0,
+    "carbs_g": 38.0,
+    "fats_g": 11.0
+  },
+  {
+    "id": 106,
+    "name": "lechon_baboy",
+    "display_name": "Lechon Baboy (Roast Pork)",
+    "serving": "100g",
+    "calories_kcal": 360,
+    "protein_g": 20.0,
+    "carbs_g": 0.0,
+    "fats_g": 30.0
+  },
+  {
+    "id": 107,
+    "name": "lechon_kawali",
+    "display_name": "Lechon Kawali",
+    "serving": "100g",
+    "calories_kcal": 410,
+    "protein_g": 18.0,
+    "carbs_g": 0.0,
+    "fats_g": 37.0
+  },
+  {
+    "id": 108,
+    "name": "lechon_manok",
+    "display_name": "Lechon Manok (Roast Chicken)",
+    "serving": "100g",
+    "calories_kcal": 220,
+    "protein_g": 25.0,
+    "carbs_g": 0.0,
+    "fats_g": 13.0
+  },
+  {
+    "id": 109,
+    "name": "lechon_paksiw",
+    "display_name": "Lechon Paksiw",
+    "serving": "1 cup",
+    "calories_kcal": 320,
+    "protein_g": 18.0,
+    "carbs_g": 16.0,
+    "fats_g": 21.0
+  },
+  {
+    "id": 110,
+    "name": "lemon",
+    "display_name": "Lemon",
+    "serving": "1 fruit",
+    "calories_kcal": 17,
+    "protein_g": 0.6,
+    "carbs_g": 5.4,
+    "fats_g": 0.2
+  },
+  {
+    "id": 111,
+    "name": "lettuce",
+    "display_name": "Lettuce",
+    "serving": "100g",
+    "calories_kcal": 15,
+    "protein_g": 1.4,
+    "carbs_g": 2.9,
+    "fats_g": 0.2
+  },
+  {
+    "id": 112,
+    "name": "longganisa",
+    "display_name": "Longganisa",
+    "serving": "2 pieces",
+    "calories_kcal": 260,
+    "protein_g": 12.0,
+    "carbs_g": 8.0,
+    "fats_g": 20.0
+  },
+  {
+    "id": 113,
+    "name": "lumpiang_gulay",
+    "display_name": "Lumpiang Gulay",
+    "serving": "1 piece",
+    "calories_kcal": 140,
+    "protein_g": 3.0,
+    "carbs_g": 16.0,
+    "fats_g": 7.0
+  },
+  {
+    "id": 114,
+    "name": "lumpiang_shanghai",
+    "display_name": "Lumpiang Shanghai",
+    "serving": "4 pieces",
+    "calories_kcal": 210,
+    "protein_g": 10.0,
+    "carbs_g": 12.0,
+    "fats_g": 14.0
+  },
+  {
+    "id": 115,
+    "name": "mac_spaghetti",
+    "display_name": "Macaroni Spaghetti",
+    "serving": "1 cup",
+    "calories_kcal": 260,
+    "protein_g": 10.0,
+    "carbs_g": 36.0,
+    "fats_g": 9.0
+  },
+  {
+    "id": 116,
+    "name": "malungay_pandesal",
+    "display_name": "Malunggay Pandesal",
+    "serving": "2 pieces",
+    "calories_kcal": 150,
+    "protein_g": 5.0,
+    "carbs_g": 28.0,
+    "fats_g": 2.0
+  },
+  {
+    "id": 117,
+    "name": "mango",
+    "display_name": "Mango",
+    "serving": "1 medium",
+    "calories_kcal": 130,
+    "protein_g": 1.0,
+    "carbs_g": 35.0,
+    "fats_g": 0.6
+  },
+  {
+    "id": 118,
+    "name": "mango_graham",
+    "display_name": "Mango Graham",
+    "serving": "1 slice",
+    "calories_kcal": 310,
+    "protein_g": 4.0,
+    "carbs_g": 45.0,
+    "fats_g": 13.0
+  },
+  {
+    "id": 119,
+    "name": "menudo",
+    "display_name": "Menudo",
+    "serving": "1 cup",
+    "calories_kcal": 290,
+    "protein_g": 20.0,
+    "carbs_g": 12.0,
+    "fats_g": 18.0
+  },
+  {
+    "id": 120,
+    "name": "onion",
+    "display_name": "Onion",
+    "serving": "1 medium",
+    "calories_kcal": 44,
+    "protein_g": 1.2,
+    "carbs_g": 10.0,
+    "fats_g": 0.1
+  },
+  {
+    "id": 121,
+    "name": "orange",
+    "display_name": "Orange",
+    "serving": "1 medium",
+    "calories_kcal": 62,
+    "protein_g": 1.2,
+    "carbs_g": 15.0,
+    "fats_g": 0.2
+  },
+  {
+    "id": 122,
+    "name": "palabok",
+    "display_name": "Palabok",
+    "serving": "1 plate",
+    "calories_kcal": 340,
+    "protein_g": 12.0,
+    "carbs_g": 48.0,
+    "fats_g": 11.0
+  },
+  {
+    "id": 123,
+    "name": "pancit_bihon",
+    "display_name": "Pancit Bihon",
+    "serving": "1 plate",
+    "calories_kcal": 280,
+    "protein_g": 10.0,
+    "carbs_g": 42.0,
+    "fats_g": 8.0
+  },
+  {
+    "id": 124,
+    "name": "pancit_canton",
+    "display_name": "Pancit Canton",
+    "serving": "1 plate",
+    "calories_kcal": 320,
+    "protein_g": 11.0,
+    "carbs_g": 45.0,
+    "fats_g": 11.0
+  },
+  {
+    "id": 125,
+    "name": "pancit_cantoon_lucky_me",
+    "display_name": "Pancit Canton (Lucky Me)",
+    "serving": "1 pack (80g)",
+    "calories_kcal": 380,
+    "protein_g": 8.0,
+    "carbs_g": 50.0,
+    "fats_g": 17.0
+  },
+  {
+    "id": 126,
+    "name": "paprika",
+    "display_name": "Paprika",
+    "serving": "1 tbsp",
+    "calories_kcal": 20,
+    "protein_g": 1.0,
+    "carbs_g": 3.8,
+    "fats_g": 0.9
+  },
+  {
+    "id": 127,
+    "name": "pastil",
+    "display_name": "Pastil",
+    "serving": "1 serving",
+    "calories_kcal": 280,
+    "protein_g": 12.0,
+    "carbs_g": 40.0,
+    "fats_g": 8.0
+  },
+  {
+    "id": 128,
+    "name": "pear",
+    "display_name": "Pear",
+    "serving": "1 medium",
+    "calories_kcal": 100,
+    "protein_g": 0.6,
+    "carbs_g": 27.0,
+    "fats_g": 0.2
+  },
+  {
+    "id": 129,
+    "name": "peas",
+    "display_name": "Peas",
+    "serving": "1 cup",
+    "calories_kcal": 115,
+    "protein_g": 8.0,
+    "carbs_g": 21.0,
+    "fats_g": 0.6
+  },
+  {
+    "id": 130,
+    "name": "pigar_pigar",
+    "display_name": "Pigar-Pigar",
+    "serving": "1 serving",
+    "calories_kcal": 360,
+    "protein_g": 24.0,
+    "carbs_g": 6.0,
+    "fats_g": 27.0
+  },
+  {
+    "id": 131,
+    "name": "pinakbet",
+    "display_name": "Pinakbet",
+    "serving": "1 cup",
+    "calories_kcal": 130,
+    "protein_g": 4.0,
+    "carbs_g": 14.0,
+    "fats_g": 7.0
+  },
+  {
+    "id": 132,
+    "name": "pineapple",
+    "display_name": "Pineapple",
+    "serving": "1 cup (chunks)",
+    "calories_kcal": 82,
+    "protein_g": 0.9,
+    "carbs_g": 22.0,
+    "fats_g": 0.2
+  },
+  {
+    "id": 133,
+    "name": "pinoy_spaghetti",
+    "display_name": "Filipino Spaghetti",
+    "serving": "1 plate",
+    "calories_kcal": 360,
+    "protein_g": 14.0,
+    "carbs_g": 52.0,
+    "fats_g": 11.0
+  },
+  {
+    "id": 134,
+    "name": "pomegranate",
+    "display_name": "Pomegranate",
+    "serving": "1 fruit",
+    "calories_kcal": 230,
+    "protein_g": 4.7,
+    "carbs_g": 52.0,
+    "fats_g": 3.3
+  },
+  {
+    "id": 135,
+    "name": "pork_bbq",
+    "display_name": "Pork BBQ",
+    "serving": "2 skewers",
+    "calories_kcal": 240,
+    "protein_g": 20.0,
+    "carbs_g": 10.0,
+    "fats_g": 13.0
+  },
+  {
+    "id": 136,
+    "name": "pork_binagooangan",
+    "display_name": "Pork Binagoongan",
+    "serving": "1 cup",
+    "calories_kcal": 390,
+    "protein_g": 22.0,
+    "carbs_g": 6.0,
+    "fats_g": 31.0
+  },
+  {
+    "id": 137,
+    "name": "pork_sisig",
+    "display_name": "Pork Sisig",
+    "serving": "1 serving (100g)",
+    "calories_kcal": 320,
+    "protein_g": 16.0,
+    "carbs_g": 4.0,
+    "fats_g": 26.0
+  },
+  {
+    "id": 138,
+    "name": "potato",
+    "display_name": "Potato",
+    "serving": "1 medium",
+    "calories_kcal": 130,
+    "protein_g": 3.0,
+    "carbs_g": 30.0,
+    "fats_g": 0.2
+  },
+  {
+    "id": 139,
+    "name": "puto",
+    "display_name": "Puto",
+    "serving": "2 pieces",
+    "calories_kcal": 120,
+    "protein_g": 2.5,
+    "carbs_g": 25.0,
+    "fats_g": 1.0
+  },
+  {
+    "id": 140,
+    "name": "raddish",
+    "display_name": "Radish",
+    "serving": "100g",
+    "calories_kcal": 16,
+    "protein_g": 0.7,
+    "carbs_g": 3.4,
+    "fats_g": 0.1
+  },
+  {
+    "id": 141,
+    "name": "seafoods",
+    "display_name": "Seafood",
+    "serving": "100g",
+    "calories_kcal": 110,
+    "protein_g": 20.0,
+    "carbs_g": 1.0,
+    "fats_g": 2.5
+  },
+  {
+    "id": 142,
+    "name": "sinigang_na_baboy",
+    "display_name": "Sinigang na Baboy",
+    "serving": "1 cup",
+    "calories_kcal": 280,
+    "protein_g": 18.0,
+    "carbs_g": 8.0,
+    "fats_g": 20.0
+  },
+  {
+    "id": 143,
+    "name": "sinigang_na_bangus",
+    "display_name": "Sinigang na Bangus",
+    "serving": "1 cup",
+    "calories_kcal": 190,
+    "protein_g": 20.0,
+    "carbs_g": 6.0,
+    "fats_g": 9.0
+  },
+  {
+    "id": 144,
+    "name": "soy_beans",
+    "display_name": "Soybeans",
+    "serving": "1 cup",
+    "calories_kcal": 290,
+    "protein_g": 31.0,
+    "carbs_g": 14.0,
+    "fats_g": 15.0
+  },
+  {
+    "id": 145,
+    "name": "spam",
+    "display_name": "Spam",
+    "serving": "1 slice (56g)",
+    "calories_kcal": 180,
+    "protein_g": 7.0,
+    "carbs_g": 2.0,
+    "fats_g": 16.0
+  },
+  {
+    "id": 146,
+    "name": "spinach",
+    "display_name": "Spinach",
+    "serving": "100g",
+    "calories_kcal": 23,
+    "protein_g": 2.9,
+    "carbs_g": 3.6,
+    "fats_g": 0.4
+  },
+  {
+    "id": 147,
+    "name": "steak",
+    "display_name": "Steak",
+    "serving": "100g",
+    "calories_kcal": 250,
+    "protein_g": 26.0,
+    "carbs_g": 0.0,
+    "fats_g": 15.0
+  },
+  {
+    "id": 148,
+    "name": "steam_siomai",
+    "display_name": "Steamed Siomai",
+    "serving": "4 pieces",
+    "calories_kcal": 160,
+    "protein_g": 9.0,
+    "carbs_g": 14.0,
+    "fats_g": 7.0
+  },
+  {
+    "id": 149,
+    "name": "sweetcorn",
+    "display_name": "Sweet Corn",
+    "serving": "1 cup",
+    "calories_kcal": 130,
+    "protein_g": 5.0,
+    "carbs_g": 29.0,
+    "fats_g": 1.5
+  },
+  {
+    "id": 150,
+    "name": "sweetpotato",
+    "display_name": "Sweet Potato",
+    "serving": "1 medium",
+    "calories_kcal": 110,
+    "protein_g": 2.0,
+    "carbs_g": 26.0,
+    "fats_g": 0.2
+  },
+  {
+    "id": 151,
+    "name": "taho",
+    "display_name": "Taho",
+    "serving": "1 cup",
+    "calories_kcal": 180,
+    "protein_g": 8.0,
+    "carbs_g": 28.0,
+    "fats_g": 4.0
+  },
+  {
+    "id": 152,
+    "name": "tapa",
+    "display_name": "Tapa",
+    "serving": "100g",
+    "calories_kcal": 240,
+    "protein_g": 26.0,
+    "carbs_g": 6.0,
+    "fats_g": 12.0
+  },
+  {
+    "id": 153,
+    "name": "tinola",
+    "display_name": "Tinola",
+    "serving": "1 cup",
+    "calories_kcal": 180,
+    "protein_g": 20.0,
+    "carbs_g": 6.0,
+    "fats_g": 8.0
+  },
+  {
+    "id": 154,
+    "name": "tocino",
+    "display_name": "Tocino",
+    "serving": "100g",
+    "calories_kcal": 290,
+    "protein_g": 16.0,
+    "carbs_g": 18.0,
+    "fats_g": 17.0
+  },
+  {
+    "id": 155,
+    "name": "tofu_sisig",
+    "display_name": "Tofu Sisig",
+    "serving": "1 serving",
+    "calories_kcal": 210,
+    "protein_g": 12.0,
+    "carbs_g": 12.0,
+    "fats_g": 13.0
+  },
+  {
+    "id": 156,
+    "name": "tomato",
+    "display_name": "Tomato",
+    "serving": "1 medium",
+    "calories_kcal": 22,
+    "protein_g": 1.1,
+    "carbs_g": 4.8,
+    "fats_g": 0.2
+  },
+  {
+    "id": 157,
+    "name": "tortang_talong",
+    "display_name": "Tortang Talong",
+    "serving": "1 serving",
+    "calories_kcal": 230,
+    "protein_g": 10.0,
+    "carbs_g": 12.0,
+    "fats_g": 16.0
+  },
+  {
+    "id": 158,
+    "name": "turnip",
+    "display_name": "Turnip",
+    "serving": "100g",
+    "calories_kcal": 38,
+    "protein_g": 0.7,
+    "carbs_g": 8.8,
+    "fats_g": 0.1
+  },
+  {
+    "id": 159,
+    "name": "turon",
+    "display_name": "Turon",
+    "serving": "1 piece",
+    "calories_kcal": 190,
+    "protein_g": 2.0,
+    "carbs_g": 34.0,
+    "fats_g": 6.0
+  },
+  {
+    "id": 160,
+    "name": "watermelon",
+    "display_name": "Watermelon",
+    "serving": "1 cup (cubes)",
+    "calories_kcal": 46,
+    "protein_g": 0.9,
+    "carbs_g": 11.5,
+    "fats_g": 0.2
+  },
+  {
+    "id": 900,
+    "name": "white_rice",
+    "display_name": "White Rice",
+    "serving": "1 cup (158g)",
+    "calories_kcal": 205,
+    "protein_g": 4.2,
+    "carbs_g": 45.0,
+    "fats_g": 0.4
+  },
+  {
+    "id": 901,
+    "name": "brown_rice",
+    "display_name": "Brown Rice",
+    "serving": "1 cup (195g)",
+    "calories_kcal": 218,
+    "protein_g": 4.5,
+    "carbs_g": 46.0,
+    "fats_g": 1.6
+  },
+  {
+    "id": 902,
+    "name": "java_rice",
+    "display_name": "Java Rice",
+    "serving": "1 cup",
+    "calories_kcal": 260,
+    "protein_g": 4.5,
+    "carbs_g": 47.0,
+    "fats_g": 6.0
+  },
+  {
+    "id": 903,
+    "name": "fried_rice",
+    "display_name": "Fried Rice",
+    "serving": "1 cup",
+    "calories_kcal": 230,
+    "protein_g": 5.0,
+    "carbs_g": 35.0,
+    "fats_g": 8.0
+  },
+  {
+    "id": 904,
+    "name": "fried_chicken",
+    "display_name": "Fried Chicken",
+    "serving": "1 piece (thigh)",
+    "calories_kcal": 280,
+    "protein_g": 22.0,
+    "carbs_g": 10.0,
+    "fats_g": 17.0
+  },
+  {
+    "id": 905,
+    "name": "ice_cream",
+    "display_name": "Ice Cream",
+    "serving": "1 scoop (66g)",
+    "calories_kcal": 137,
+    "protein_g": 2.3,
+    "carbs_g": 16.0,
+    "fats_g": 7.3
+  },
+  {
+    "id": 906,
+    "name": "shawarma",
+    "display_name": "Shawarma",
+    "serving": "1 wrap",
+    "calories_kcal": 350,
+    "protein_g": 20.0,
+    "carbs_g": 35.0,
+    "fats_g": 15.0
+  }
+]
