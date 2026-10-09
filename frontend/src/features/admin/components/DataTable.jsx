@@ -1,5 +1,7 @@
+import Skeleton from "@/shared/components/Skeleton";
+import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifit";
+import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
@@ -37,8 +39,12 @@ import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } fr
 
 const BREAKPOINT_PRIORITY_2 = 1100;
 const BREAKPOINT_PRIORITY_3 = 820;
+// Below this a row of fixed-width columns leaves the flexible one a sliver
+// (the message column was ~50px at phone width), so rows stack instead:
+// one line per column, its title on the left
+const BREAKPOINT_STACK = 640;
 
-export function useVisibleColumns(columns) {
+function useVisibleColumns(columns) {
   const { width } = useWindowDimensions();
   return columns.filter((column) => {
     const priority = column.priority || 1;
@@ -49,8 +55,8 @@ export function useVisibleColumns(columns) {
 }
 
 /**
- * Empty, loading and error are ONE component with three modes rather than
- * three call sites' worth of conditional JSX, because a table in any of those
+ * Empty and error are ONE component with two modes rather than
+ * two call sites' worth of conditional JSX, because a table in any of those
  * states must keep its header row and its outer card -- otherwise the layout
  * jumps every time a filter changes, which reads as a broken page
  */
@@ -66,6 +72,13 @@ function TableState({ tone, icon, title, body, action }) {
     </View>
   );
 }
+
+// Placeholder rows shown while a page loads
+// Placeholder rows: enough to fill the window, from about how tall a row
+// is (a stacked row holds several lines)
+const ROW_HEIGHT = 46;
+const STACK_ROW_HEIGHT = 110;
+const skeletonRows = (height, stacked) => Math.max(6, Math.ceil(height / (stacked ? STACK_ROW_HEIGHT : ROW_HEIGHT)));
 
 export default function DataTable({
   columns,
@@ -84,6 +97,8 @@ export default function DataTable({
   const tone = getScreenTones(darkMode);
   const visible = useVisibleColumns(columns);
   const expandable = typeof renderExpanded === "function";
+  const { width, height } = useWindowDimensions();
+  const stacked = width < BREAKPOINT_STACK;
 
   const cellStyle = (column) =>
     column.width
@@ -92,28 +107,56 @@ export default function DataTable({
 
   return (
     <View style={[styles.card, { backgroundColor: tone.card, borderColor: tone.border }]}>
-      {/* The header stays mounted in every state */}
-      <View style={[styles.headerRow, { borderBottomColor: tone.border, backgroundColor: tone.soft }]}>
-        {visible.map((column) => (
-          <Text
-            key={column.key}
-            numberOfLines={1}
-            style={[styles.headerCell, cellStyle(column), column.align === "right" && styles.alignRight, { color: tone.muted }]}
-          >
-            {column.title}
-          </Text>
-        ))}
-        {expandable && <View style={styles.chevronCell} />}
-      </View>
+      {/* The reason goes in the screen alert, under the page title */}
+      <ScreenError message={error} />
+      {/* The header stays mounted in every state. Stacked rows carry their
+          own titles, so it goes there */}
+      {!stacked && (
+        <View style={[styles.headerRow, { borderBottomColor: tone.border, backgroundColor: tone.soft }]}>
+          {visible.map((column) => (
+            <Text
+              key={column.key}
+              numberOfLines={1}
+              style={[styles.headerCell, cellStyle(column), column.align === "right" && styles.alignRight, { color: tone.muted }]}
+            >
+              {column.title}
+            </Text>
+          ))}
+          {expandable && <View style={styles.chevronCell} />}
+        </View>
+      )}
 
       {loading ? (
-        <TableState tone={tone} icon="hourglass-outline" title="Loading…" />
+        // Placeholder rows in the table's own shape, so nothing jumps when it fills in
+        Array.from({ length: skeletonRows(height, stacked) }, (_, index) => (
+          <View
+            key={index}
+            style={[stacked ? styles.stackRow : styles.bodyRow, index > 0 && { borderTopWidth: 1, borderTopColor: tone.border }]}
+          >
+            {stacked ? (
+              <View style={styles.stackCells}>
+                {visible.map((column) => (
+                  <View key={column.key} style={styles.stackLine}>
+                    <Text numberOfLines={1} style={[styles.stackTitle, { color: tone.muted }]}>{column.title}</Text>
+                    <View style={styles.stackValue}><Skeleton width="60%" height={12} /></View>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              visible.map((column) => (
+                <View key={column.key} style={[cellStyle(column), column.align === "right" && styles.alignRight]}>
+                  <Skeleton width="70%" height={12} />
+                </View>
+              ))
+            )}
+            {expandable && <View style={styles.chevronCell} />}
+          </View>
+        ))
       ) : error ? (
         <TableState
           tone={tone}
           icon="alert-circle-outline"
           title="Couldn't load this"
-          body={error}
           action={
             onRetry ? (
               <Pressable onPress={onRetry} style={styles.retryBtn}>
@@ -130,17 +173,36 @@ export default function DataTable({
           const id = keyExtractor(row, index);
           const expanded = expandable && expandedRowId === id;
 
-          const body = (
+          const renderCell = (column) =>
+            column.render ? (
+              column.render(row)
+            ) : (
+              <Text numberOfLines={1} style={[styles.bodyCell, { color: tone.text }]}>
+                {row[column.key] ?? "—"}
+              </Text>
+            );
+
+          const body = stacked ? (
+            <View style={[styles.stackRow, index > 0 && { borderTopWidth: 1, borderTopColor: tone.border }]}>
+              <View style={styles.stackCells}>
+                {visible.map((column) => (
+                  <View key={column.key} style={styles.stackLine}>
+                    <Text numberOfLines={1} style={[styles.stackTitle, { color: tone.muted }]}>{column.title}</Text>
+                    <View style={styles.stackValue}>{renderCell(column)}</View>
+                  </View>
+                ))}
+              </View>
+              {expandable && (
+                <View style={styles.chevronCell}>
+                  <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={tone.muted} />
+                </View>
+              )}
+            </View>
+          ) : (
             <View style={[styles.bodyRow, index > 0 && { borderTopWidth: 1, borderTopColor: tone.border }]}>
               {visible.map((column) => (
                 <View key={column.key} style={[cellStyle(column), column.align === "right" && styles.alignRight]}>
-                  {column.render ? (
-                    column.render(row)
-                  ) : (
-                    <Text numberOfLines={1} style={[styles.bodyCell, { color: tone.text }]}>
-                      {row[column.key] ?? "—"}
-                    </Text>
-                  )}
+                  {renderCell(column)}
                 </View>
               ))}
               {expandable && (
@@ -279,9 +341,18 @@ const styles = StyleSheet.create({
   alignRight: { alignItems: "flex-end", textAlign: "right" },
   chevronCell: { width: 20, alignItems: "flex-end" },
 
+  stackRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
+  stackCells: { flex: 1, minWidth: 0, gap: 6 },
+  stackLine: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  stackTitle: { width: 84, fontSize: 10, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase", paddingTop: 2 },
+  stackValue: { flex: 1, minWidth: 0 },
+
   expanded: { paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1 },
+  // Items wrap two-up on a phone and grow on wider screens. flexShrink and
+  // maxWidth let a long value (a user agent, an ID) wrap inside its item
+  // instead of pushing the drawer wider than the screen
   detailGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
-  detailItem: { minWidth: 160, gap: 2 },
+  detailItem: { flexGrow: 1, flexShrink: 1, flexBasis: 140, minWidth: 0, maxWidth: "100%", gap: 2 },
   detailLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase" },
   detailValue: { fontSize: 13 },
 

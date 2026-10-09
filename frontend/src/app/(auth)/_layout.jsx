@@ -1,39 +1,36 @@
-import { AUTH_STATUS, useAuth } from "@/shared/context/AuthContext";
-import { colors } from "@/shared/theme/nutrifit";
-import { Redirect, Stack, usePathname } from "expo-router";
-import { ActivityIndicator, View } from "react-native";
+import LoadingScreen, { useLoadingGate } from "@/shared/components/ui/LoadingScreen";
+import { AUTH_STATUS, safeReturnTo, useAuth } from "@/shared/context/AuthContext";
+import { Redirect, Stack, useGlobalSearchParams, usePathname } from "expo-router";
 
 /**
  * Routes here that must stay reachable regardless of session state.
  *
  * /google-auth is the OAuth popup's landing page. It runs *after* a token may
- * already be stored, so bouncing it to /dashboard would kill the popup before
+ * already be stored, so bouncing it to the home screen would kill the popup before
  * it reports its result back to the opener
- * 
  */
-const ALWAYS_ALLOWED = ["/google-auth", "/access-denied", "/verified", "/unverified"];
+const ALWAYS_ALLOWED = ["/google-auth", "/access-denied"];
 
 export default function AuthLayout() {
-  const { status, isAuthenticated, emailVerified } = useAuth();
+  const { status, isAuthenticated, emailVerified, role } = useAuth();
   const pathname = usePathname();
+  // `next`: the page they were heading to before login, checked against the role
+  const { next } = useGlobalSearchParams();
+  const gate = useLoadingGate(status === AUTH_STATUS.LOADING);
 
   if (ALWAYS_ALLOWED.includes(pathname)) {
-    return <Stack screenOptions={{ headerShown: false }} />;
+    return <Stack screenOptions={{ headerShown: false, animation: "ios_from_right" }} />;
   }
 
-  if (status === AUTH_STATUS.LOADING) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bgMint }}>
-        <ActivityIndicator size="large" color={colors.green600} />
-      </View>
-    );
-  }
+  if (gate.pending) return <LoadingScreen visible={gate.visible} />;
 
-  // Only a fully usable session displaces the auth screens. Someone signed in
-  // but unverified still needs to reach verify-registration
+  // Only a fully usable session displaces the auth screens. The server no
+  // longer issues sessions to unverified accounts; the emailVerified check
+  // stays as a guard in case one ever exists. This is the one place a
+  // sign-in navigates in: the login screen only refreshes the session
   if (isAuthenticated && emailVerified) {
-    return <Redirect href="/dashboard" />;
+    return <Redirect href={safeReturnTo(next, role)} />;
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <Stack screenOptions={{ headerShown: false, animation: "ios_from_right" }} />;
 }

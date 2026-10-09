@@ -19,9 +19,12 @@ function secret(name) {
 
 const STORAGE_DRIVER = (process.env.STORAGE_DRIVER || 'local').trim().toLowerCase();
 
-if (!['local'].includes(STORAGE_DRIVER)) {
-  throw new Error(`Unknown STORAGE_DRIVER "${STORAGE_DRIVER}" (expected "local")`);
+if (!['local', 'r2'].includes(STORAGE_DRIVER)) {
+  throw new Error(`Unknown STORAGE_DRIVER "${STORAGE_DRIVER}" (expected "local" or "r2")`);
 }
+
+// R2 settings are required only when R2 is the driver
+const r2Value = (name) => (STORAGE_DRIVER === 'r2' ? required(name) : process.env[name] || null);
 
 module.exports = {
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -37,19 +40,40 @@ module.exports = {
     // Reasonable pool size for a single Express process
     maxPoolSize: parseInt(process.env.MONGODB_MAX_POOL_SIZE || '10', 10),
 
-    // Index creation is always a deploy-time action (.js scripts)
+    // Indexes are created by migrations/ only, never on boot
     autoIndex: false,
 
-    // Chat message retention: 180 days (subject to change)
-    chatMessageTtlSeconds: parseInt(
-      process.env.CHAT_MESSAGE_TTL_SECONDS || String(180 * 24 * 60 * 60),
-      10,
-    ),
+    // Optional. A database user that can only insert into and read audit_logs.
+    // When set, audit writes go through it instead of the main connection
+    auditUri: process.env.MONGODB_AUDIT_URI || null,
+  },
+
+  push: {
+    // Optional. Only needed when "enhanced push security" is on in the Expo project
+    expoAccessToken: process.env.EXPO_ACCESS_TOKEN || null,
+  },
+
+  audit: {
+    // HMAC key for details.emailHash / details.tokenHash. Changing it breaks
+    // matching against older rows, not the rows themselves
+    hashSecret: secret('AUDIT_HASH_SECRET'),
   },
 
   storage: {
-    // Only local, but configurable if ever
+    // "local" (uploads/ folder) or "r2" (Cloudflare R2, utils/storage/r2Store.js)
     driver: STORAGE_DRIVER,
+
+    // From the R2 dashboard: the account id, a bucket, and an API token's
+    // S3 access key pair (Object Read & Write on that bucket only)
+    r2: {
+      accountId: r2Value('R2_ACCOUNT_ID'),
+      bucket: r2Value('R2_BUCKET'),
+      accessKeyId: r2Value('R2_ACCESS_KEY_ID'),
+      secretAccessKey: r2Value('R2_SECRET_ACCESS_KEY'),
+      // How long a signed photo link works. The app refetches profiles and
+      // scans well within this
+      urlTtlSeconds: parseInt(process.env.R2_URL_TTL_SECONDS || '3600', 10),
+    },
 
 
     // Food scan image retention: 90 days (subject to change) since
@@ -86,6 +110,9 @@ module.exports = {
     resendCooldownSeconds: parseInt(process.env.OTP_RESEND_COOLDOWN_SECONDS || '60', 10),
   },
 
+  // Unverified accounts are deleted this long after sign-up (users TTL index)
+  unverifiedTtlHours: parseInt(process.env.UNVERIFIED_TTL_HOURS || '48', 10),
+
   resetToken: {
     secret: secret('RESET_TOKEN_SECRET'),
     expiresIn: process.env.RESET_TOKEN_EXPIRES_IN || '15m',
@@ -97,7 +124,7 @@ module.exports = {
     secure: process.env.SMTP_SECURE === 'true',
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
-    from: process.env.MAIL_FROM || 'NutriFit AI <no-reply@nutrifit.app>',
+    from: process.env.MAIL_FROM || 'NutriFitAI <no-reply@nutrifit.app>',
   },
 
   cookie: {
@@ -105,6 +132,14 @@ module.exports = {
   },
 
   corsOrigin: process.env.CORS_ORIGIN || '*',
+
+  // Frontend address used for links in emails (login, reset password).
+  // Falls back to the first CORS origin, then the Expo web dev server
+  appUrl: (
+    process.env.APP_PUBLIC_URL
+    || (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).find((s) => s && s !== '*')
+    || 'http://localhost:8081'
+  ).replace(/\/+$/, ''),
 
   ai: {
 
@@ -124,10 +159,46 @@ module.exports = {
     requestTimeoutMs: parseInt(process.env.AI_REQUEST_TIMEOUT_MS || '30000', 10),
 
     ollama: {
-      // Ollama is always reached from this server
+      // Local (http://127.0.0.1:11434/v1), or your own PC through an ngrok
+      // tunnel (https://<domain>/v1), see scripts/ollama-tunnel.example.yml
       baseUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1',
       model: process.env.OLLAMA_MODEL || 'llama3.2:3b',
       timeoutMs: parseInt(process.env.OLLAMA_TIMEOUT_MS || '120000', 10),
+      // "user:password" from the tunnel's basic-auth policy. Ollama itself
+      // has no login, so a tunnel without this is open to anyone
+      basicAuth: process.env.OLLAMA_BASIC_AUTH || null,
+    },
+
+    // Groq's free tier, the fallback while the PC is off
+    // (AI_CHAIN=ollama,groq). Key and model id from console.groq.com.
+    // Free tiers rate-limit; a 429 cools it down (router.js)
+    groq: {
+      baseUrl: process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1',
+      apiKey: process.env.GROQ_API_KEY || null,
+      model: process.env.GROQ_MODEL || null,
+      timeoutMs: parseInt(process.env.GROQ_TIMEOUT_MS || '30000', 10),
+      // A ceiling under AI_MAX_OUTPUT_TOKENS: the length rule in
+      // contextBuilder keeps replies short, this stops a runaway one
+      maxOutputTokens: parseInt(process.env.GROQ_MAX_OUTPUT_TOKENS || '450', 10),
+    },
+
+    // Cerebras' free tier, the next fallback after Groq
+    // (AI_CHAIN=ollama,groq,cerebras). Key and model id from cloud.cerebras.ai
+    cerebras: {
+      baseUrl: process.env.CEREBRAS_BASE_URL || 'https://api.cerebras.ai/v1',
+      apiKey: process.env.CEREBRAS_API_KEY || null,
+      model: process.env.CEREBRAS_MODEL || null,
+      timeoutMs: parseInt(process.env.CEREBRAS_TIMEOUT_MS || '30000', 10),
+      maxOutputTokens: parseInt(process.env.CEREBRAS_MAX_OUTPUT_TOKENS || '450', 10),
+    },
+
+    // Food detection server (FastAPI + YOLO). Only this server calls it,
+    // the app never does, so the key never leaves the backend
+    detect: {
+      url: (process.env.AI_DETECT_URL || 'http://127.0.0.1:8000').replace(/\/+$/, ''),
+      apiKey: process.env.AI_DETECT_API_KEY || '',
+      // First request after the model server boots can be slow
+      timeoutMs: parseInt(process.env.AI_DETECT_TIMEOUT_MS || '30000', 10),
     },
   },
 

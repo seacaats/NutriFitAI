@@ -1,115 +1,118 @@
-const db = require('../../../config/mongo');
-const { ChatConversationDoc } = require('../schemas');
+const { mongoose, opts } = require('../../../config/mongo');
+const { USER_REF, withId } = require('../shared');
 
-const { opts } = db;
+const { Schema } = mongoose;
 
-// Lean document for callers. Models speak "id", the database, "_id",
-// ObjetedId are stringified a more streamlined process
+const chatConversationSchema = new Schema(
+  {
+    userId: USER_REF,
+    title: { type: String, maxlength: 150, default: null },
 
-function shape(doc) {
-  if (!doc) return null;
-  const { _id, ...rest } = doc;
-  return { id: String(_id), ...rest };
-}
+    // Says which UI opened the conversation. "Ask AI Coach" on the food
+    // scanner opens the coach, so those threads are 'coach' too
+    surface: { type: String, enum: ['coach', 'food_scan'], default: 'coach', required: true },
 
-const ChatConversation = {
-  /**
-   * @param {{ userId: string, surface?: string, title?: string|null }} input
-   */
-  async create(input, client = db) {
-    const now = new Date();
-    const [doc] = await ChatConversationDoc.create(
-      [
-        {
-          userId: input.userId,
-          surface: input.surface || 'coach',
-          title: input.title ?? null,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ],
-      opts(client),
-    );
-    return shape(doc.toObject());
+    // What the thread is about, at most one of the two. The coach reads the
+    // scan or meal itself on every turn (contextBuilder), never a client copy
+    scanRef: {
+      type: new Schema({ scanId: { type: Schema.Types.ObjectId, required: true } }, { _id: false }),
+      default: null,
+    },
+    mealRef: {
+      type: new Schema({ mealId: { type: Schema.Types.ObjectId, required: true } }, { _id: false }),
+      default: null,
+    },
+
+    createdAt: { type: Date, default: () => new Date() },
+    updatedAt: { type: Date, default: () => new Date() },
   },
+  { versionKey: false, collection: 'chat_conversations' },
+);
 
-  /**
-   * Scoped by userId and converstionId, where ownership 
-   * is checked as part of the database query itself
-   *
-   * @param {{ id: string, userId: string }} input
-   */
-  async findOwned(input, client = db) {
-    // Check for malformed ids and treat "not found" and "not yours" identically
-    // Since any detections here may return a "500" when it shouldn't
-    // return anything like that back to the client
-    if (!ChatConversationDoc.base.isValidObjectId(input.id)) return null;
+// Indexes are created by migrations 001, 003, not declared here
 
-    return shape(
-      await ChatConversationDoc.findOne(
-        { _id: input.id, userId: input.userId },
-        null,
-        opts(client),
-      ).lean(),
-    );
-  },
-
-  // Served by { userId: 1, surface: 1, updatedAt: -1 }.
-  async listByUser(input, client = db) {
-    const rows = await ChatConversationDoc.find(
-      { userId: input.userId, surface: input.surface || 'coach' },
-      'title surface createdAt updatedAt',
-      opts(client),
-    )
-      .sort({ updatedAt: -1 })
-      .limit(input.limit || 30)
-      .lean();
-
-    return rows.map(shape);
-  },
-
-  // Update a conversation's timestamp
-  async touch(id, client = db) {
-    await ChatConversationDoc.updateOne(
-      { _id: id },
-      { $set: { updatedAt: new Date() } },
-      opts(client),
-    );
-  },
-
-  // Auto-generate titles from a user's first message, scanning
-  // only conversations with empty titles
-  async setTitleIfEmpty(id, title, client = db) {
-    return shape(
-      await ChatConversationDoc.findOneAndUpdate(
-        { _id: id, title: null },
-        { $set: { title: title.slice(0, 150) } },
-        { new: true, runValidators: true, ...opts(client) },
-      ).lean(),
-    );
-  },
-
-  /**
-   * Delete the conversation and its messages, the latter first 
-   * 
-   * @param {{ id: string, userId: string }} input
-   */
-  async remove(input, client = db) {
-    if (!ChatConversationDoc.base.isValidObjectId(input.id)) return false;
-
-    // Ownership is re-checked rather than trusted from the caller
-    const owned = await ChatConversation.findOwned(input, client);
-    if (!owned) return false;
-
-    const { ChatMessageDoc } = require('../schemas');
-    await ChatMessageDoc.deleteMany({ conversationId: input.id }, opts(client));
-
-    const { deletedCount } = await ChatConversationDoc.deleteOne(
-      { _id: input.id, userId: input.userId },
-      opts(client),
-    );
-    return deletedCount > 0;
-  },
+chatConversationSchema.statics.start = async function start(input, client) {
+  const now = new Date();
+  const [doc] = await this.create(
+    [
+      {
+        userId: input.userId,
+        surface: input.surface || 'coach',
+        title: input.title ?? null,
+        scanRef: input.scanId ? { scanId: input.scanId } : null,
+        mealRef: input.mealId ? { mealId: input.mealId } : null,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+    opts(client),
+  );
+  return withId(doc.toObject());
 };
 
-module.exports = ChatConversation;
+// Ownership is part of the query itself. Malformed ids, "not found" and
+// "not yours" all come back null, so none of them can surface as a 500
+chatConversationSchema.statics.findOwned = async function findOwned(input, client) {
+  if (!mongoose.isValidObjectId(input.id)) return null;
+  return withId(
+    await this.findOne({ _id: input.id, userId: input.userId }, null, opts(client)).lean(),
+  );
+};
+
+// Served by { userId: 1, surface: 1, updatedAt: -1 }
+chatConversationSchema.statics.listByUser = async function listByUser(input, client) {
+  const rows = await this.find(
+    { userId: input.userId, surface: input.surface || 'coach' },
+    'title surface createdAt updatedAt',
+    opts(client),
+  )
+    .sort({ updatedAt: -1 })
+    .limit(input.limit || 30)
+    .lean();
+  return rows.map(withId);
+};
+
+chatConversationSchema.statics.countByUser = async function countByUser(input, client) {
+  return this.countDocuments({ userId: input.userId, surface: input.surface || 'coach' }, opts(client));
+};
+
+// Every conversation (and its messages) for one user on one surface
+chatConversationSchema.statics.removeAllOwned = async function removeAllOwned(input, client) {
+  const filter = { userId: input.userId, surface: input.surface || 'coach' };
+  const ids = (await this.find(filter, '_id', opts(client)).lean()).map((c) => c._id);
+  if (!ids.length) return 0;
+  await mongoose.model('ChatMessage').deleteMany({ conversationId: { $in: ids } }, opts(client));
+  const { deletedCount } = await this.deleteMany({ _id: { $in: ids } }, opts(client));
+  return deletedCount;
+};
+
+// Update a conversation's timestamp
+chatConversationSchema.statics.touch = async function touch(id, client) {
+  await this.updateOne({ _id: id }, { $set: { updatedAt: new Date() } }, opts(client));
+};
+
+// Auto-generate titles from a user's first message, scanning
+// only conversations with empty titles
+chatConversationSchema.statics.setTitleIfEmpty = async function setTitleIfEmpty(id, title, client) {
+  return withId(
+    await this.findOneAndUpdate(
+      { _id: id, title: null },
+      { $set: { title: title.slice(0, 150) } },
+      { new: true, runValidators: true, ...opts(client) },
+    ).lean(),
+  );
+};
+
+// Deletes the conversation and its messages, the latter first.
+// Ownership is re-checked rather than trusted from the caller
+chatConversationSchema.statics.removeOwned = async function removeOwned(input, client) {
+  const owned = await this.findOwned(input, client);
+  if (!owned) return false;
+
+  await mongoose.model('ChatMessage').deleteMany({ conversationId: input.id }, opts(client));
+
+  const { deletedCount } = await this.deleteOne({ _id: input.id, userId: input.userId }, opts(client));
+  return deletedCount > 0;
+};
+
+module.exports = mongoose.model('ChatConversation', chatConversationSchema);

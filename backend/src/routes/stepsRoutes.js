@@ -5,7 +5,7 @@ const { validateBody, validateQuery } = require('../middleware/validateMiddlewar
 const { requireAuth } = require('../middleware/authMiddleware');
 const { stepSyncLimiter } = require('../middleware/rateLimitMiddleware');
 const { todayQuerySchema, syncStepsSchema, stepRangeSchema, manualStepsSchema,
-        stepSourceSchema } = require('../validators/stepsValidators');
+        stepSourceSchema, stepGoalSchema } = require('../validators/stepsValidators');
 
 const router = Router();
 
@@ -38,6 +38,13 @@ router.post(
   requireAuth, 
   validateBody(manualStepsSchema), 
   controller.setManualSteps
+);
+
+router.put(
+  '/goal',
+  requireAuth,
+  validateBody(stepGoalSchema),
+  controller.setStepGoal
 );
 
 router.patch(

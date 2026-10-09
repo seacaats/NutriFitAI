@@ -1,5 +1,5 @@
 import { useTheme } from "@/shared/context/ThemeContext";
-import { screenTones, shellColors } from "@/shared/theme/nutrifit";
+import { screenTones, shellColors } from "@/shared/theme/nutrifitai";
 import { useState } from "react";
 import { View } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
@@ -81,7 +81,16 @@ export default function AreaChartMini({
           {/* X labels */}
           {showXLabels &&
             data.map((d, i) => (
-              <SvgText key={`xlabel-${i}`} x={xFor(i)} y={height - 4} fontSize={9} fill={colors.textMuted} textAnchor="middle">
+              // First and last labels anchored inward, so "Sun"/"Thu" don't
+              // hang past the chart's edges
+              <SvgText
+                key={`xlabel-${i}`}
+                x={xFor(i)}
+                y={height - 4}
+                fontSize={9}
+                fill={colors.textMuted}
+                textAnchor={data.length > 1 && i === 0 ? "start" : data.length > 1 && i === data.length - 1 ? "end" : "middle"}
+              >
                 {d.label}
               </SvgText>
             ))}

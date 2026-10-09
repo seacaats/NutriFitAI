@@ -1,54 +1,52 @@
-import ConversationHistoryDrawer from "@/features/coach/components/conversationHistoryDrawer";
-import { useCoachChat } from "@/features/coach/hooks/useCoachChat";
+import ChatMessages from "@/features/coach/components/ChatMessages";
+import { CoachToneButton } from "@/features/coach/components/CoachToneOptions";
+import CoachWelcome, { SubjectChip } from "@/features/coach/components/CoachWelcome";
+import ConversationHistoryDrawer from "@/features/coach/components/ConversationHistoryDrawer";
+import { COUNTER_FROM, MAX_MESSAGE_LENGTH, useCoach } from "@/features/coach/hooks/useCoachChat";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
+import { useFocusRing } from "@/shared/components/ui/FormInput";
+import { ScreenAlert } from "@/shared/components/ui/ScreenAlert";
+import { usePullRefreshState } from "@/shared/context/PullRefreshContext";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { colors, screenTones, shellColors } from "@/shared/theme/nutrifit";
+import { colors, screenTones, shellColors } from "@/shared/theme/nutrifitai";
 import { aiCoachStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useRef, useState } from "react";
 import {
-  ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView,
-  StyleSheet, Text, TextInput, View
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const HEADER_HEIGHT = 56;
 
-/** "3:42 PM" for a message's createdAt, in the viewer's own local time. */
-function formatMessageTime(createdAt) {
-  if (!createdAt) return "";
-  const date = new Date(createdAt);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
-
 export default function AICoachScreen() {
-  const { shell: c } = useTheme();
-  const scrollRef = useRef(null);
+  const ring = useFocusRing();
+  const { shell: c, darkMode } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [message, setMessage] = useState("");
   const {
-    messages, sending, error, send, retry, reset,
+    messages, sending, error, retry, reset,
     conversations, historyLoading, conversationId, loadConversation,
-  } = useCoachChat();
+    deleteConversation, deleteAllConversations, atLimit, subject,
+    scrollRef, message, setMessage, loadingThread, empty, sendMessage,
+  } = useCoach();
+  // The chat has its own scroller, so it carries the pull-to-refresh
+  const pull = usePullRefreshState();
 
   const card = { backgroundColor: c.cardBg, borderColor: c.dropdownBorder };
   const textColor = { color: c.sidebarText };
-  const aiBubble = { backgroundColor: c.inactiveNavHoverBg };
-
-  const sendMessage = () => {
-    const text = message.trim();
-    if (!text || sending) return;
-    send(text);
-    setMessage("");
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-  };
 
   return (
-    <DashboardLayout scrollable={false} hideTabBar>
+    <DashboardLayout scrollable={false} hideTabBar screenAlert={false}>
       <KeyboardAvoidingView
         style={styles.flex1}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -64,8 +62,14 @@ export default function AICoachScreen() {
             <View style={[styles.botIcon, { backgroundColor: c.activeNavBg }]}>
               <Ionicons name="hardware-chip" size={16} color={shellColors.primary} />
             </View>
-            <Text style={[styles.topBarText, textColor]}>Nori AI</Text>
+            <View>
+              <Text style={[styles.topBarText, textColor]}>Nori</Text>
+              <Text style={styles.topBarSub}>Your NutriFitAI coach</Text>
+            </View>
           </View>
+
+          {/* Coach tone, also in Settings */}
+          <CoachToneButton color={c.sidebarText} darkMode={darkMode} />
 
           <ConversationHistoryDrawer
             conversations={conversations}
@@ -73,6 +77,8 @@ export default function AICoachScreen() {
             loading={historyLoading}
             onSelect={loadConversation}
             onNewChat={reset}
+            onDelete={deleteConversation}
+            onDeleteAll={deleteAllConversations}
             theme={{
               text: c.sidebarText,
               subtext: colors.textMuted,
@@ -83,76 +89,57 @@ export default function AICoachScreen() {
           />
         </View>
 
+        {/* Under the header, like every screen */}
+        <ScreenAlert style={{ marginHorizontal: 12, marginTop: 8 }} />
+
+        {/* What this thread is about, when opened from a scan or meal */}
+        {!!subject && (
+          <View style={styles.subjectWrap}>
+            <SubjectChip subject={subject} darkMode={darkMode} />
+          </View>
+        )}
+
         {/* Messages */}
         <ScrollView
           ref={scrollRef}
           style={styles.flex1}
-          contentContainerStyle={styles.messagesContent}
+          contentContainerStyle={[styles.messagesContent, empty && styles.grow]}
+          refreshControl={pull ? <RefreshControl refreshing={pull.refreshing} onRefresh={pull.refresh} tintColor={c.primary} colors={[c.primary]} /> : undefined}
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
         >
-          {messages.map((msg) => {
-            const isUser = msg.role === "user";
-
-            // A pending assistant turn renders as a spinner in the bubble
-            // rather than an empty box, so a slow local model reads as
-            // "thinking" instead of "broken".
-            if (msg.pending) {
-              return (
-                <View key={msg.id} style={styles.messageRowLeft}>
-                  <View style={[styles.bubble, aiBubble, styles.bubblePending]}>
-                    <ActivityIndicator size="small" color={shellColors.primary} />
-                    <Text style={[styles.bubbleTextAi, textColor]}>Thinking...</Text>
-                  </View>
-                </View>
-              );
-            }
-
-            const timeLabel = formatMessageTime(msg.createdAt);
-
-            return (
-              <View key={msg.id} style={isUser ? styles.messageRowRight : styles.messageRowLeft}>
-                <View style={[styles.bubble, isUser ? styles.bubbleUser : aiBubble]}>
-                  <Text style={isUser ? styles.bubbleTextUser : [styles.bubbleTextAi, textColor]}>
-                    {msg.content}
-                  </Text>
-                </View>
-                {Boolean(timeLabel) && (
-                  <View style={isUser ? styles.timeRowRight : styles.timeRowLeft}>
-                    <Text style={styles.timeText}>{timeLabel}</Text>
-                  </View>
-                )}
-              </View>
-            );
-          })}
-
-          {Boolean(error) && (
-            <View style={styles.messageRowLeft}>
-              <Pressable onPress={retry} style={styles.errorBubble}>
-                <Ionicons name="refresh" size={14} color={colors.dangerStrong} />
-                <Text style={styles.errorText}>{error} Tap to retry.</Text>
-              </Pressable>
-            </View>
-          )}
+          {empty && <CoachWelcome darkMode={darkMode} atLimit={atLimit} onPick={sendMessage} subject={subject} />}
+          <ChatMessages messages={messages} loadingThread={loadingThread} error={error} onRetry={retry} darkMode={darkMode} />
         </ScrollView>
 
         {/* Message Input */}
-        <View style={[styles.inputBar, { borderTopColor: card.borderColor, paddingBottom: 12 + insets.bottom }]}>
-          <View style={[styles.inputPill, { borderColor: c.dropdownBorder }]}>
+        <View style={[styles.inputBar, { paddingBottom: 12 + insets.bottom }]}>
+          <View style={[styles.inputPill, styles.inputBox, { borderColor: c.dropdownBorder }, ring.style]}>
             <TextInput
+              {...ring.handlers}
               value={message}
               onChangeText={setMessage}
-              onSubmitEditing={sendMessage}
-              placeholder="Type a message..."
+              placeholder={atLimit ? "Delete a conversation to start a new one" : "Type a message..."}
               placeholderTextColor={screenTones.dark.muted}
-              style={[styles.textInput, textColor]}
-              returnKeyType="send"
-              editable={!sending}
+              style={[ring.input, styles.textInput, textColor]}
+              // Grows with the message; Return adds a line, the arrow sends
+              multiline
+              textAlignVertical="top"
+              maxLength={MAX_MESSAGE_LENGTH}
+              editable={!sending && !atLimit}
             />
 
-            <Pressable onPress={sendMessage} hitSlop={8} disabled={sending || !message.trim()}>
+            <Pressable onPress={sendMessage} hitSlop={8} disabled={sending || atLimit || !message.trim()}>
               <Ionicons name="send" size={18} color={sending || !message.trim() ? screenTones.dark.muted : shellColors.primary} />
             </Pressable>
           </View>
+          {/* Only near the limit, so it doesn't clutter normal typing */}
+          {message.length >= COUNTER_FROM && (
+            <Text style={[styles.counter, message.length >= MAX_MESSAGE_LENGTH && styles.counterFull]}>
+              {message.length.toLocaleString()}/{MAX_MESSAGE_LENGTH.toLocaleString()}
+            </Text>
+          )}
+          {/* Always under the input, whatever's in the chat */}
+          <Text style={styles.disclaimer}>Not medical advice. For symptoms or injuries, see a professional.</Text>
         </View>
       </KeyboardAvoidingView>
     </DashboardLayout>
@@ -167,31 +154,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 16,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
     marginBottom: 8,
   },
-  topBarTitle: { flexDirection: "row", alignItems: "center", gap: 8 },
+  topBarTitle: {flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
   botIcon: { width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  topBarText: { fontSize: 16, fontWeight: "700" },
+  topBarText: { fontSize: 16, fontWeight: "700"},
+  topBarSub: { fontSize: 11, color: colors.textMuted },
+  grow: { flexGrow: 1 },
+  subjectWrap: { paddingHorizontal: 16, paddingBottom: 4 },
+  counter: { fontSize: 11, color: colors.textMuted, textAlign: "right", marginTop: 4 },
+  counterFull: { color: colors.danger, fontWeight: "700" },
+  disclaimer: { fontSize: 10, color: colors.textMuted, textAlign: "center", marginTop: 6 },
 
-  // Messages
+  // Messages, the bubbles themselves are in ChatMessages
   messagesContent: { paddingHorizontal: 16, paddingVertical: 12, gap: 16 },
-  messageRowLeft: { alignItems: "flex-start" },
-  messageRowRight: { alignItems: "flex-end" },
-
-  bubble: { maxWidth: "80%", borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10 },
-
-  timeText: { fontSize: 10, color: screenTones.dark.muted },
-  timeLeft: { fontSize: 10, color: screenTones.dark.muted, marginTop: 4 },
-  timeRowLeft: { flexDirection: "row", alignItems: "center", marginTop: 4 },
-  timeRowRight: { flexDirection: "row", alignItems: "center", marginTop: 4 },
-
-  checklistRow: { flexDirection: "row", alignItems: "center", gap: 8, marginVertical: 3 },
-  checklistText: { fontSize: 13, fontWeight: "500" },
 
   // Input
-  inputBar: { borderTopWidth: 1, paddingTop: 12, paddingHorizontal: 16 },
-  textInput: { flex: 1, fontSize: 14, paddingVertical: 6 },
+  inputBar: { paddingTop: 8, paddingHorizontal: 16 },
+  // A rounded box rather than a pill, since it grows over several lines
+  inputBox: { alignItems: "flex-end", borderRadius: 16, paddingVertical: 10 },
+  textInput: { flex: 1, fontSize: 14, paddingVertical: 6, minHeight: 56, maxHeight: 140 },
 });

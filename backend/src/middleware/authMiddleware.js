@@ -1,12 +1,14 @@
 const { ApiError } = require('../utils/httpResponse');
 const { verifyAccessToken } = require('../utils/auth/token');
 const User = require('../models/user/User');
+const DailyVisit = require('../models/user/DailyVisit');
+const { today } = require('../utils/calendarDay');
 
 
-// Synced with the "role" enum in userSchema.js
+// Synced with the "role" enum in models/user/User.js
 /**
  * Every role the system knows about, weakest first. Must stay in sync with the
- * `role` enum in src/models/schemas/userSchema.js -- a value accepted here but
+ * `role` enum in src/models/user/User.js -- a value accepted here but
  * rejected there (or vice versa) fails open.
  *
  * Order is load-bearing: requireMinimumRole compares indexes, so appending a
@@ -16,8 +18,62 @@ const User = require('../models/user/User');
 const ROLES = ['user', 'admin', 'superadmin'];
 const DEFAULT_ROLE = 'user';
 
-/** Roles that may reach the admin surface at all. */
-const PRIVILEGED_ROLES = ['admin', 'superadmin'];
+// ---- Timezone (X-Timezone header) -------------------------------------------
+
+// The client sends its IANA zone ("Asia/Manila") as X-Timezone on every
+// request, so a user who travels gets correct "today"/"this week" right away
+
+// Returns the zone if Intl recognises it, otherwise null
+function parseTimeZone(value) {
+  const zone = typeof value === 'string' ? value.trim() : '';
+  if (!zone || zone.length > 64) return null;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return zone;
+  } catch {
+    return null;
+  }
+}
+
+// Sets req.timeZone for every request, signed in or not
+function readTimeZone(req, res, next) {
+  req.timeZone = parseTimeZone(req.headers['x-timezone']);
+  next();
+}
+
+// Last zone written per user, so the profile is only updated when it changes
+// rather than on every request. Capped so it can't grow without limit
+const lastSaved = new Map();
+const LAST_SAVED_MAX = 10000;
+
+// Keeps profile.timezone current for code that runs outside a request.
+// Fire-and-forget: a failed write is retried on the user's next request
+function rememberTimeZone(userId, zone) {
+  if (!userId || !zone || lastSaved.get(userId) === zone) return;
+  if (lastSaved.size >= LAST_SAVED_MAX) lastSaved.clear();
+  lastSaved.set(userId, zone);
+
+  User.updateOne(
+    { _id: userId, 'profile.timezone': { $ne: zone } },
+    { $set: { 'profile.timezone': zone } },
+  ).catch(() => lastSaved.delete(userId));
+}
+
+// Day last recorded per user, so the visit is written once a day rather than
+// on every request. Capped the same way as lastSaved
+const lastVisit = new Map();
+
+// Marks today (the user's own day) as one they used the app, for admin
+// Analytics' active users. Regular users only: admins aren't app users here.
+// Fire-and-forget like rememberTimeZone
+function rememberVisit(userId, role, zone) {
+  if (!userId || role !== 'user') return;
+  const day = today(zone || 'UTC');
+  if (lastVisit.get(userId) === day) return;
+  if (lastVisit.size >= LAST_SAVED_MAX) lastVisit.clear();
+  lastVisit.set(userId, day);
+  DailyVisit.record(userId, day).catch(() => lastVisit.delete(userId));
+}
 
 /**
  * Populates req.userId / req.userEmail / req.userRole from a valid
@@ -31,7 +87,7 @@ function requireAuth(req, res, next) {
   const [scheme, token] = header.split(' ');
 
   if (scheme !== 'Bearer' || !token) {
-    return next(ApiError.unauthorized('Missing or malformed Authorization header'));
+    return next(ApiError.unauthorized('Please sign in to continue.'));
   }
 
   try {
@@ -42,33 +98,12 @@ function requireAuth(req, res, next) {
     req.userId = payload.sub;
     req.userEmail = payload.email;
     req.userRole = ROLES.includes(payload.role) ? payload.role : DEFAULT_ROLE;
+    rememberTimeZone(req.userId, req.timeZone);
+    rememberVisit(req.userId, req.userRole, req.timeZone);
     return next();
   } catch (err) {
-    return next(ApiError.unauthorized('Invalid or expired access token'));
+    return next(ApiError.unauthorized('Your session has expired. Please log in again.'));
   }
-}
-
-/**
- * Like requireAuth, but does not fail the request if no/invalid token is
- * present — useful for endpoints that behave differently for guests vs.
- * authenticated users. Populates req.userId only when a token verifies.
- */
-function attachUserIfPresent(req, res, next) {
-  const header = req.headers.authorization || '';
-  const [scheme, token] = header.split(' ');
-  if (scheme === 'Bearer' && token) {
-    try {
-      const payload = verifyAccessToken(token);
-      if (payload.type === 'access') {
-        req.userId = payload.sub;
-        req.userEmail = payload.email;
-        req.userRole = ROLES.includes(payload.role) ? payload.role : DEFAULT_ROLE;
-      }
-    } catch (err) {
-      // ignore invalid token in optional mode
-    }
-  }
-  return next();
 }
 
 /**
@@ -86,11 +121,11 @@ function requireRole(...allowed) {
 
   return function checkRole(req, res, next) {
     if (!req.userId) {
-      return next(ApiError.unauthorized('Authentication required'));
+      return next(ApiError.unauthorized('Please sign in to continue.'));
     }
     if (!allowedRoles.includes(req.userRole)) {
       return next(
-        ApiError.forbidden('You do not have permission to access this resource', {
+        ApiError.forbidden("You don't have permission to do that.", {
           code: 'INSUFFICIENT_ROLE',
         }),
       );
@@ -112,12 +147,12 @@ function requireMinimumRole(minimum) {
 
   return function checkMinimumRole(req, res, next) {
     if (!req.userId) {
-      return next(ApiError.unauthorized('Authentication required'));
+      return next(ApiError.unauthorized('Please sign in to continue.'));
     }
     const held = ROLES.indexOf(req.userRole);
     if (needed < 0 || held < needed) {
       return next(
-        ApiError.forbidden('You do not have permission to access this resource', {
+        ApiError.forbidden("You don't have permission to do that.", {
           code: 'INSUFFICIENT_ROLE',
         }),
       );
@@ -142,22 +177,20 @@ function requireMinimumRole(minimum) {
  * Everywhere else in the app that window is harmless -- the worst case is a
  * user reading their own data slightly longer than intended. On the admin
  * surface it is the entire threat model, so these routes pay one indexed
- * primary-key lookup to close it. Exactly the same reasoning, and the same
- * shape, as requireVerifiedEmail reading emailVerifiedAt rather than trusting
- * a claim.
+ * primary-key lookup to close it.
  *
  * Mount order matters: requireAuth -> requireFreshRole -> requireMinimumRole,
  * so the role check reads the refreshed value rather than the token's.
  */
 async function requireFreshRole(req, res, next) {
   if (!req.userId) {
-    return next(ApiError.unauthorized('Authentication required'));
+    return next(ApiError.unauthorized('Please sign in to continue.'));
   }
 
   try {
-    const user = await User.findById(req.userId);
+    const user = await User.getById(req.userId);
     if (!user) {
-      return next(ApiError.unauthorized('Account no longer exists'));
+      return next(ApiError.unauthorized('This account no longer exists.'));
     }
 
     const stored = ROLES.includes(user.role) ? user.role : DEFAULT_ROLE;
@@ -174,39 +207,13 @@ async function requireFreshRole(req, res, next) {
       );
     }
 
+    // A suspended admin loses the admin surface at once, not when their
+    // access token expires
+    if (user.suspendedAt) {
+      return next(ApiError.forbidden('This account has been suspended. Contact support.', { code: 'ACCOUNT_SUSPENDED' }));
+    }
+
     req.userRole = stored;
-    req.user = user;
-    return next();
-  } catch (err) {
-    return next(err);
-  }
-}
-
-/**
- * Blocks users who haven't confirmed their email.
- *
- * Login already refuses unverified accounts, but a session can outlive that
- * check, so feature routes should state the requirement explicitly. Reads
- * users.email_verified_at directly rather than trusting a claim in the token:
- * verification can happen (or be revoked) after the token was signed.
- */
-async function requireVerifiedEmail(req, res, next) {
-  if (!req.userId) {
-    return next(ApiError.unauthorized('Authentication required'));
-  }
-
-  try {
-    const user = await User.findById(req.userId);
-    if (!user) {
-      return next(ApiError.unauthorized('Account no longer exists'));
-    }
-    if (!user.emailVerifiedAt) {
-      return next(
-        ApiError.forbidden('Please verify your email address to continue', {
-          code: 'EMAIL_NOT_VERIFIED',
-        }),
-      );
-    }
     req.user = user;
     return next();
   } catch (err) {
@@ -217,11 +224,9 @@ async function requireVerifiedEmail(req, res, next) {
 module.exports = {
   ROLES,
   DEFAULT_ROLE,
-  PRIVILEGED_ROLES,
   requireAuth,
-  attachUserIfPresent,
   requireRole,
   requireMinimumRole,
   requireFreshRole,
-  requireVerifiedEmail,
+  readTimeZone,
 };

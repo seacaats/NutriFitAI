@@ -1,10 +1,12 @@
 import { RoleBadge } from "@/features/admin/components/Badges";
 import DataTable, { DetailGrid, Pager } from "@/features/admin/components/DataTable";
 import { useAdminUsers } from "@/features/admin/hooks/useAdminUsers";
+import Skeleton from "@/shared/components/Skeleton";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
+import { RingInput, useFocusRing } from "@/shared/components/ui/FormInput";
 import { useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifit";
+import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { adminStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -26,6 +28,7 @@ function formatWhen(value) {
 }
 
 export default function SuperadminAdminsScreen() {
+  const ring = useFocusRing();
   const { darkMode } = useTheme();
   const tone = getScreenTones(darkMode);
   const { width } = useWindowDimensions();
@@ -149,43 +152,47 @@ export default function SuperadminAdminsScreen() {
                 promoted can actually be found and read */}
             <Text style={[styles.secondaryBtnText, { color: tone.text }]}>Grant access</Text>
           </Pressable>
-          <Pressable onPress={admins.refresh} style={styles.refreshBtn}>
+          <Pressable onPress={admins.refresh} disabled={admins.loading} style={[styles.refreshBtn, admins.loading && { opacity: 0.6 }]}>
             <Ionicons name="refresh" size={16} color={colors.white} />
-            <Text style={styles.refreshText}>Refresh</Text>
+            <Text style={styles.refreshText}>{admins.loading ? "Loading" : "Refresh"}</Text>
           </Pressable>
         </View>
       </View>
 
-      {admins.counts && (
-        <View style={styles.statRow}>
-          <View style={[styles.statCard, { backgroundColor: tone.card, borderColor: tone.border }]}>
-            <Text style={[styles.statLabel, { color: tone.muted }]}>SUPERADMINS</Text>
-            <Text style={[styles.statValue, { color: tone.text }]}>{admins.counts.superadmin}</Text>
-            <Text style={[styles.statHint, { color: tone.muted }]}>
-              {admins.counts.superadmin <= 1
-                ? "The last one can't be demoted — promote another first."
-                : "Full access, including role changes."}
-            </Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: tone.card, borderColor: tone.border }]}>
-            <Text style={[styles.statLabel, { color: tone.muted }]}>ADMINS</Text>
-            <Text style={[styles.statValue, { color: tone.text }]}>{admins.counts.admin}</Text>
-            <Text style={[styles.statHint, { color: tone.muted }]}>
-              Can read users and the audit log; cannot change roles.
-            </Text>
-          </View>
+      {/* Rendered before the counts arrive, with placeholders for the numbers */}
+      <View style={styles.statRow}>
+        <View style={[styles.statCard, { backgroundColor: tone.card, borderColor: tone.border }]}>
+          <Text style={[styles.statLabel, { color: tone.muted }]}>SUPERADMINS</Text>
+          {admins.counts
+            ? <Text style={[styles.statValue, { color: tone.text }]}>{admins.counts.superadmin}</Text>
+            : <Skeleton width={56} height={26} />}
+          <Text style={[styles.statHint, { color: tone.muted }]}>
+            {admins.counts?.superadmin <= 1
+              ? "The last one can't be demoted — promote another first."
+              : "Full access, including role changes."}
+          </Text>
         </View>
-      )}
+        <View style={[styles.statCard, { backgroundColor: tone.card, borderColor: tone.border }]}>
+          <Text style={[styles.statLabel, { color: tone.muted }]}>ADMINS</Text>
+          {admins.counts
+            ? <Text style={[styles.statValue, { color: tone.text }]}>{admins.counts.admin}</Text>
+            : <Skeleton width={56} height={26} />}
+          <Text style={[styles.statHint, { color: tone.muted }]}>
+            Can read users and the audit log; cannot change roles.
+          </Text>
+        </View>
+      </View>
 
       <View style={[styles.controls, narrow && styles.controlsNarrow]}>
-        <View style={[styles.searchBox, { backgroundColor: tone.card, borderColor: tone.border }]}>
+        <View style={[styles.searchBox, { backgroundColor: tone.card, borderColor: tone.border }, ring.style]}>
           <Ionicons name="search" size={16} color={tone.muted} />
           <TextInput
+            {...ring.handlers}
             value={admins.search}
             onChangeText={admins.setSearch}
             placeholder="Search admins by name or email"
             placeholderTextColor={tone.muted}
-            style={[styles.searchInput, { color: tone.text }]}
+            style={[ring.input, styles.searchInput, { color: tone.text }]}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -225,7 +232,7 @@ export default function SuperadminAdminsScreen() {
             They keep their account and their own data, and lose every admin page immediately.
             This is recorded in the audit log with your name and the reason below.
           </Text>
-          <TextInput
+          <RingInput
             value={reason}
             onChangeText={setReason}
             placeholder="Reason (required)"

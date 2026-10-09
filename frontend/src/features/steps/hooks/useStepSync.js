@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 
 import healthSync, { MAX_BACKFILL_DAYS } from "@/shared/services/steps/healthSync";
-import { addDays, todayISO } from "@/shared/services/steps/stepDates";
+import { addDays, todayISO } from "@/shared/utils/dates";
 
 /**
  * Owns the permission handshake and the three sync triggers
@@ -119,11 +119,19 @@ export function useStepSync({ onSynced } = {}) {
    */
   const connect = useCallback(async () => {
     setError("");
+    const asked = Date.now();
     const granted = await healthSync.requestPermission();
 
     if (!granted) {
+      // After two denials Android stops showing the dialog and refuses at once;
+      // an instant "no" means nobody was asked, so open the settings to grant it there
+      // (the foreground re-check picks the grant up on return)
+      const notShown = Date.now() - asked < 800;
+      if (notShown) await healthSync.openSettings?.();
       if (mountedRef.current) {
-        setError("Permission denied. You can grant access later in your device settings.");
+        setError(notShown
+          ? `Allow step access in ${healthSync.label}, then come back.`
+          : "Permission denied. You can grant access later in your device settings.");
       }
       return false;
     }

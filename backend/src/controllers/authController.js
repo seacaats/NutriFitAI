@@ -1,7 +1,5 @@
 const { withTransaction } = require('../../config/mongo');
 const User = require('../models/user/User');
-const UserProfile = require('../models/user/UserProfile');
-const UserGoal = require('../models/user/UserGoal');
 const WeightLog = require('../models/user/WeightLog');
 const AuthChallenge = require('../models/auth/AuthChallenge');
 const AuthIdentity = require('../models/auth/AuthIdentity');
@@ -9,28 +7,81 @@ const AuthIdentity = require('../models/auth/AuthIdentity');
 const { hashPassword, verifyPassword } = require('../utils/auth/password');
 const { generateOtp, hashOtp, verifyOtp, otpExpiryDate } = require('../utils/auth/otp');
 const { signAccessToken, signRefreshToken, refreshSessionRemainingMs, refreshCookieMaxAgeMs,
-        refreshTokenMaxAgeMs, verifyRefreshToken, signResetToken, verifyResetToken,
+        verifyRefreshToken, signResetToken, verifyResetToken,
         signOauthExchangeToken, verifyOauthExchangeToken } = require('../utils/auth/token');
+const { REFRESH_COOKIE_NAME, refreshCookieOptions, clearRefreshCookie, setRefreshCookie } = require('../utils/auth/refreshCookie');
 const crypto = require('crypto');
 const { normalizeGoal } = require('../utils/goalNormalizer');
 const { isAllowedRedirectUri } = require('../utils/auth/redirectUri');
-const { saveRemoteAvatar, isUserUploaded, toPublicAvatarUrl } = require('../utils/avatarStore');
+const { saveRemoteAvatar, isUserUploaded, toPublicAvatarUrl } = require('../utils/storage/avatarStore');
 const { sendSuccess, ApiError, asyncHandler } = require('../utils/httpResponse');
-const { logAction } = require('../utils/auditLogger');
+const { logAction } = require('../utils/audit-logs/auditLogger');
+const { notify } = require('../services/notifications/notify');
 const { buildAuthUrl, exchangeCodeForProfile } = require('../services/googleOAuth');
-const { sendOtpEmail } = require('../services/mailer');
+const { sendOtpEmail, sendRegistrationNoticeEmail } = require('../services/mailer');
 const env = require('../../config/env');
 
-const REFRESH_COOKIE_NAME = 'nf_refresh';
+// Admin holds on an account, checked only after the credentials are proven,
+// so neither one reveals that an email exists. null when sign-in may proceed
+function accountHold(user) {
+  if (user.suspendedAt) {
+    return { reason: 'suspended', error: ApiError.forbidden('This account has been suspended. Contact support.', { code: 'ACCOUNT_SUSPENDED' }) };
+  }
+  if (user.passwordResetRequiredAt) {
+    return {
+      reason: 'reset_required',
+      error: ApiError.forbidden('A password reset is required. Use "Forgot password" to set a new one.', {
+        code: 'PASSWORD_RESET_REQUIRED',
+      }),
+    };
+  }
+  return null;
+}
 
-function toAuthUserPayload(user) {
-  return {
-    id: user.id,
-    email: user.email,
-    fullName: user.fullName,
-    emailVerified: Boolean(user.emailVerifiedAt),
-    role: user.role || 'user',
-  };
+// One message for every OTP failure (no active code, expired, wrong, too many
+// attempts, unknown or already-verified email). Distinct messages would tell a
+// caller which emails have pending challenges, i.e. which accounts exist
+const INVALID_CODE_MESSAGE = 'Invalid or expired code. Check your latest email or request a new code.';
+
+// Same reasoning for sign-in: unknown email, unverified account and wrong
+// password are indistinguishable from outside
+const INVALID_LOGIN_MESSAGE = 'Invalid email or password';
+
+// Identical body for every /register outcome (new, pending, already verified)
+const REGISTER_ACCEPTED_MESSAGE = 'Registration received. Check your email for a verification code.';
+
+// Register, resend and forgot-password all answer after at least this long,
+// so a fast path (unknown or verified email) can't be told apart by timing
+const MIN_RESPONSE_MS = 600;
+
+// Waits out whatever is left of MIN_RESPONSE_MS since `startedAt`
+function padResponse(startedAt) {
+  const remaining = MIN_RESPONSE_MS - (Date.now() - startedAt);
+  return remaining > 0 ? new Promise((resolve) => setTimeout(resolve, remaining)) : null;
+}
+
+// One "someone tried to register" email per address per hour, so the form
+// can't be used to flood a stranger's inbox. In memory: resets on restart
+const NOTICE_COOLDOWN_MS = 60 * 60 * 1000;
+const lastNoticeAt = new Map();
+
+function sendRegistrationNotice(email) {
+  const last = lastNoticeAt.get(email);
+  if (last && Date.now() - last < NOTICE_COOLDOWN_MS) return;
+  if (lastNoticeAt.size > 10000) lastNoticeAt.clear();
+  lastNoticeAt.set(email, Date.now());
+
+  sendRegistrationNoticeEmail(email).catch((err) => {
+    console.error(`[auth] registration notice failed for ${email}:`, err.message);
+  });
+}
+
+// bcrypt hash of a throwaway value, compared against when the email is unknown
+// so a miss costs the same ~bcrypt time as a hit. Computed once, lazily
+let dummyHashPromise = null;
+function dummyHash() {
+  if (!dummyHashPromise) dummyHashPromise = hashPassword(crypto.randomUUID());
+  return dummyHashPromise;
 }
 
 // Invalidate/Overwrite active challenge for this purpose, issuing a new one
@@ -38,89 +89,108 @@ async function issueOtpChallenge(userId, purpose, client) {
   await AuthChallenge.invalidateActive(userId, purpose, client);
   const code = generateOtp();
   const codeHash = await hashOtp(code);
-  await AuthChallenge.create({ userId, purpose, codeHash, expiresAt: otpExpiryDate() }, client);
+  await AuthChallenge.issue({ userId, purpose, codeHash, expiresAt: otpExpiryDate() }, client);
   return code;
 }
 
-// Check per request if it came in secure or not, and returns
-// the proper cookie that's correct. No secure cookies on http,
-// only returning to users that access ON https
-function isRequestSecure(req) {
-  if (env.nodeEnv === 'production') return true;
-  const forwarded = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
-  return forwarded === 'https' || req.secure === true || req.protocol === 'https';
-}
-
-// Centralized cookie settings for login, OAuth, and token-refresh
-function refreshCookieOptions(req, maxAge) {
-  const https = isRequestSecure(req);
+// Writes the submitted profile fields. Used for new accounts and to overwrite
+// a still-unverified one, so unset optionals become null rather than lingering
+function registrationProfile({ age, sex, heightCm, activityLevel, dietPreference, healthConditions }) {
   return {
-    httpOnly: true,
-    // SameSite=None can only work with Secure, so both toggled together
-    secure: https,
-    sameSite: https ? 'none' : 'lax',
-    // Omit Domain, letting the browser handle it automatically,
-    // across local/network/tunnel access
-    ...(env.cookie.domain ? { domain: env.cookie.domain } : {}),
-    maxAge,
-    path: '/api/auth',
+    age: age ?? null,
+    sex: sex ?? null,
+    heightCm,
+    activityLevel: activityLevel ?? null,
+    dietPreference: dietPreference ?? null,
+    healthConditions: healthConditions ?? null,
   };
 }
 
-// Cookie deletion must match cookie's original settings/configuration,
-// else the browser keeps the supposedly dead cookie indefinitely
-function clearRefreshCookie(res, req) {
-  const { maxAge, ...options } = refreshCookieOptions(req, 0);
-  res.clearCookie(REFRESH_COOKIE_NAME, options);
+function registerAcceptedResponse(res, email) {
+  return sendSuccess(res, {
+    statusCode: 201,
+    message: REGISTER_ACCEPTED_MESSAGE,
+    data: { email, emailVerified: false },
+  });
 }
 
-function setRefreshCookie(res, token, rememberMe, req) {
-  res.cookie(REFRESH_COOKIE_NAME, token, refreshCookieOptions(req, refreshTokenMaxAgeMs(rememberMe)));
-}
-
-// register new users
+/**
+ * POST /api/auth/register
+ *
+ * Responds identically in all three cases, so the endpoint can't be used to
+ * probe which emails are registered:
+ *  - new email: account created, code sent
+ *  - existing but unverified: the pending account is overwritten with this
+ *    submission and a fresh code is sent. Issuing it invalidates every earlier
+ *    code, so only the latest email's code works
+ *  - existing and verified: nothing is written; the owner gets a "someone
+ *    tried to register" email instead of a code
+ *
+ * Unverified accounts hold their sign-up weight in pendingWeightKg and are
+ * deleted by the users TTL index after env.unverifiedTtlHours
+ */
 const register = asyncHandler(async (req, res) => {
   const {
-    firstName: firstNameInput, lastName: lastNameInput, fullName: fullNameInput,
-    email, password, age, heightCm, weightKg, gender, goal,
-    activityLevel, dietPreference, healthConditions,
+    firstName, lastName, email, password, weightKg, goal,
+    dietPreference, healthConditions,
   } = req.body;
 
-  const alreadyExists = await User.existsByEmail(email);
-  if (alreadyExists) {
-    throw ApiError.conflict('An account with this email already exists');
-  }
+  const startedAt = Date.now();
+  const normalizedEmail = email.toLowerCase();
 
+  // Hashed up front on every path, so the verified-account branch (which
+  // otherwise does almost nothing) takes as long as the others
   const passwordHash = await hashPassword(password);
 
-  const firstName = firstNameInput;
-  const lastName = lastNameInput || null;
-  const fullName = fullNameInput || null;
+  const existing = await User.findByEmail(normalizedEmail);
+  if (existing && existing.emailVerifiedAt) {
+    sendRegistrationNotice(normalizedEmail);
+    await padResponse(startedAt);
+    return registerAcceptedResponse(res, normalizedEmail);
+  }
 
+  const pending = {
+    unverifiedExpiresAt: new Date(Date.now() + env.unverifiedTtlHours * 60 * 60 * 1000),
+    pendingWeightKg: weightKg,
+  };
+
+  const names = {
+    firstName,
+    lastName: lastName || null,
+    fullName: [firstName, lastName].filter(Boolean).join(' ') || null,
+  };
+  // Timezone from the X-Timezone header, so the first goal's date is the user's day
+  const profile = { ...registrationProfile(req.body), timezone: req.timeZone ?? null };
   const normalizedGoal = normalizeGoal(goal);
 
-  const { user, otpCode } = await withTransaction(async (client) => {
-    const createdUser = await User.create(
-      { email, passwordHash, fullName, firstName, lastName, termsAcceptedAt: new Date() },
-      client,
-    );
-
-    await UserProfile.create(
-      { userId: createdUser.id, age, gender, heightCm, activityLevel, dietPreference, healthConditions },
-      client,
-    );
-    await UserGoal.createInitial({ userId: createdUser.id, fitnessGoal: normalizedGoal }, client);
-
-    if (weightKg) {
-      await WeightLog.create({ userId: createdUser.id, weightKg }, client);
+  const { userId, otpCode } = await withTransaction(async (client) => {
+    let id;
+    if (existing) {
+      // Unverified, so nothing here was ever proven to belong to the email's
+      // owner -- the latest submission replaces it
+      id = existing.id;
+      await User.updateNames(id, names, client);
+      await User.updatePasswordHash(id, passwordHash, client);
+      await User.updateProfile(id, profile, client);
+      await User.setActiveGoal({ userId: id, fitnessGoal: normalizedGoal }, client);
+      await User.updatePendingRegistration(id, pending, client);
+    } else {
+      const created = await User.createAccount(
+        { email: normalizedEmail, passwordHash, ...names, termsAcceptedAt: new Date(), ...pending },
+        client,
+      );
+      id = created.id;
+      await User.updateProfile(id, profile, client);
+      await User.addInitialGoal({ userId: id, fitnessGoal: normalizedGoal }, client);
     }
 
-    const code = await issueOtpChallenge(createdUser.id, 'email_verification', client);
-
-    return { user: createdUser, otpCode: code };
+    // No weight log yet: it's written from pendingWeightKg on verification,
+    // so re-registering never piles up weights for an unproven account
+    const code = await issueOtpChallenge(id, 'email_verification', client);
+    return { userId: id, otpCode: code };
   });
 
-  // Record user accepting consent at registration, 
+  // Record user accepting consent at registration,
   // alongside other associated details
   await logAction(
     req,
@@ -129,30 +199,26 @@ const register = asyncHandler(async (req, res) => {
       targetType: 'user',
       details: {
         termsAccepted: true,
+        reRegistration: Boolean(existing),
         providedDietPreference: Boolean(dietPreference),
         providedHealthConditions: Boolean(healthConditions),
       },
     },
-    { userId: user.id, role: 'user' },
+    { userId, role: 'user' },
   );
 
-  // Outside the transaction, and non-fatal
-  const delivered = await deliverOtpEmail(user.email, otpCode, 'email_verification');
+  // A re-registration replaces an unverified account, it doesn't create one
+  if (!existing) {
+    await logAction(req, { action: 'auth.register.completed', targetType: 'user' }, { userId, role: 'user' });
+  }
 
-  return sendSuccess(res, {
-    statusCode: 201,
-    message: delivered 
-      ? 'Registration successful. Check your email for a verification code.'
-      : 'Account created, but the verification email could not be sent. Use "Resend code" to try again.',
-    data: {
-      userId: user.id,
-      email: user.email,
-      emailVerified: false,
-      // Lets the client surface the resend button immediately rather than
-      // leaving the user waiting for a code that was never sent
-      codeSent: delivered,
-    },
-  });
+  // Outside the transaction, non-fatal, and not awaited: the response must not
+  // differ from the verified-account branch in content OR timing (SMTP can
+  // take seconds). A failed send is logged; "Resend it" covers a lost email
+  deliverOtpEmail(normalizedEmail, otpCode, 'email_verification');
+
+  await padResponse(startedAt);
+  return registerAcceptedResponse(res, normalizedEmail);
 });
 
 /**
@@ -160,8 +226,9 @@ const register = asyncHandler(async (req, res) => {
  * succeeded and can't easily be undone
  * 
  * Called outside the transaction to avoid resending the email
- * again and again which simply leads to spam and duplicate OTPsh
- * 
+ * again and again which simply leads to spam and duplicate OTPs.
+ * Safe to call without awaiting, since it never rejects
+ *
  * @returns {Promise<boolean>} whether the mail was accepted
  */
 async function deliverOtpEmail(email, code, purpose) {
@@ -175,28 +242,26 @@ async function deliverOtpEmail(email, code, purpose) {
   }
 }
 
-// otp for email verification and password reset 
+// otp for email verification and password reset. Every failure throws the
+// same INVALID_CODE_MESSAGE -- see its comment
 async function consumeOtpChallenge({ userId, purpose, code }) {
   const challenge = await AuthChallenge.findLatestActive(userId, purpose);
-  if (!challenge) {
-    throw ApiError.badRequest('No active verification code found. Please request a new one.');
-  }
-
-  if (new Date(challenge.expiresAt).getTime() < Date.now()) {
-    throw ApiError.badRequest('This code has expired. Please request a new one.');
-  }
-
-  if (challenge.failedAttempts >= env.otp.maxFailedAttempts) {
-    throw ApiError.tooManyRequests('Too many incorrect attempts. Please request a new code.');
+  if (!AuthChallenge.isUsable(challenge)) {
+    throw ApiError.badRequest(INVALID_CODE_MESSAGE, { code: 'INVALID_CODE' });
   }
 
   const isValid = await verifyOtp(code, challenge.codeHash);
   if (!isValid) {
     await AuthChallenge.incrementFailedAttempts(challenge.id);
-    throw ApiError.badRequest('Incorrect verification code');
+    throw ApiError.badRequest(INVALID_CODE_MESSAGE, { code: 'INVALID_CODE' });
   }
 
-  await AuthChallenge.markConsumed(challenge.id);
+  // Conditional on still being unconsumed, so of two concurrent correct
+  // submissions only one gets through
+  const consumed = await AuthChallenge.markConsumed(challenge.id);
+  if (!consumed) {
+    throw ApiError.badRequest(INVALID_CODE_MESSAGE, { code: 'INVALID_CODE' });
+  }
   return challenge;
 }
 
@@ -205,30 +270,41 @@ const verifyRegistration = asyncHandler(async (req, res) => {
   const { email, code } = req.body;
 
   const user = await User.findByEmail(email);
-  if (!user) {
-    throw ApiError.badRequest('Invalid email or code');
-  }
-  if (user.emailVerifiedAt) {
-    return sendSuccess(res, { message: 'Email already verified', data: { emailVerified: true } });
+  // Unknown and already-verified emails fail exactly like a wrong code
+  if (!user || user.emailVerifiedAt) {
+    throw ApiError.badRequest(INVALID_CODE_MESSAGE, { code: 'INVALID_CODE' });
   }
 
   await consumeOtpChallenge({ userId: user.id, purpose: 'email_verification', code });
-  const updated = await User.markEmailVerified(user.id);
+
+  // Verify and write the held sign-up weight together, so a verified account
+  // always has its first weight log
+  await withTransaction(async (client) => {
+    const before = await User.markEmailVerified(user.id, client);
+    if (before?.pendingWeightKg) {
+      await WeightLog.record({ userId: user.id, weightKg: before.pendingWeightKg }, client);
+    }
+  });
+
+  await logAction(req, { action: 'auth.email.verified', targetType: 'user' }, { userId: user.id, role: user.role });
 
   return sendSuccess(res, {
     message: 'Email verified successfully',
-    data: { userId: updated.id, email: updated.email, emailVerified: true },
+    data: { userId: user.id, email: user.email, emailVerified: true },
   });
 });
 
 // resend registration otp
 const resendRegistrationOtp = asyncHandler(async (req, res) => {
+  const startedAt = Date.now();
   const { email } = req.body;
 
   const user = await User.findByEmail(email);
-  // Always respond generically to avoid account enumeration
-  const genericResponse = () =>
-    sendSuccess(res, { message: 'If an account exists for this email, a new code has been sent.' });
+  // Always respond generically (and after the same minimum time) to avoid account enumeration
+  const genericResponse = async () => {
+    await padResponse(startedAt);
+    return sendSuccess(res, { message: 'If an account exists for this email, a new code has been sent.' });
+  };
 
   if (!user || user.emailVerifiedAt) {
     return genericResponse();
@@ -240,9 +316,12 @@ const resendRegistrationOtp = asyncHandler(async (req, res) => {
     issueOtpChallenge(user.id, 'email_verification', client),
   );
 
-  await deliverOtpEmail(user.email, code, 'email_verification');
+  // Not awaited, so SMTP latency can't distinguish this path from the others
+  deliverOtpEmail(user.email, code, 'email_verification');
 
-  // The response is identical whether or not the mail 
+  await logAction(req, { action: 'auth.otp.resent', targetType: 'user' }, { userId: user.id, role: user.role });
+
+  // The response is identical whether or not the mail
   // succeeded, and whether or not the account exists.
   return genericResponse();
 });
@@ -253,41 +332,58 @@ const login = asyncHandler(async (req, res) => {
 
   const user = await User.findByEmail(email);
 
-  // Confirms that accounts aren't recorded, should change
-  if (!user) {
-    throw ApiError.unauthorized(
-      "Your account isn't recorded in our database. Please register first.",
-      { code: 'ACCOUNT_NOT_FOUND' },
+  // Always runs bcrypt (against a dummy hash for unknown emails) so response
+  // time doesn't reveal whether the account exists
+  const passwordOk = await verifyPassword(password, user?.passwordHash || (await dummyHash()));
+
+  // Unknown email, unverified account and wrong password all look the same.
+  // An unverified user recovers by registering again, which resends a code
+  if (!user || !passwordOk || !user.emailVerifiedAt) {
+    // No actor: the request isn't authenticated. The account, when there is
+    // one, is the target. The email itself is only ever stored hashed
+    let reason = 'unverified';
+    if (!user) reason = 'unknown_email';
+    else if (!passwordOk) reason = 'wrong_password';
+    await logAction(
+      req,
+      {
+        action: 'auth.login.failed',
+        targetType: 'user',
+        targetId: user?.id ?? null,
+        targetRole: user?.role ?? null,
+        details: { reason },
+        hash: { emailHash: String(email).toLowerCase() },
+      },
+      { userId: null, role: null },
     );
+    throw ApiError.unauthorized(INVALID_LOGIN_MESSAGE, { code: 'INVALID_CREDENTIALS' });
   }
 
-  // Supposedly checks accounts made with only Google OAuth, ignore it
-  // if (!user.passwordHash) {
-  //   throw ApiError.unauthorized(
-  //     'This account signs in with Google. Use "Continue with Google", or set a password '
-  //       + 'with "Forgot password".',
-  //     { code: 'NO_PASSWORD_SET' },
-  //   );
-  // }
-
-  const passwordOk = await verifyPassword(password, user.passwordHash);
-  if (!passwordOk) {
-    throw ApiError.unauthorized('Invalid email or password');
-  }
-
-  if (!user.emailVerifiedAt) {
-    throw ApiError.forbidden('Please verify your email before logging in', { code: 'EMAIL_NOT_VERIFIED' });
+  const hold = accountHold(user);
+  if (hold) {
+    await logAction(
+      req,
+      { action: 'auth.login.failed', targetType: 'user', targetId: user.id, targetRole: user.role, details: { reason: hold.reason } },
+      { userId: null, role: null },
+    );
+    throw hold.error;
   }
 
   const accessToken = signAccessToken(user);
   const refreshToken = signRefreshToken(user, rememberMe);
   setRefreshCookie(res, refreshToken, rememberMe, req);
 
+  await logAction(
+    req,
+    { action: 'auth.login.succeeded', targetType: 'user', details: { method: 'password', rememberMe: Boolean(rememberMe) } },
+    { userId: user.id, role: user.role },
+  );
+
   return sendSuccess(res, {
     message: 'Login successful',
     data: {
       accessToken,
-      user: toAuthUserPayload(user),
+      user: User.toAuthPayload(user),
     },
   });
 });
@@ -338,64 +434,61 @@ const googleAuthCallback = asyncHandler(async (req, res) => {
     return res.redirect(`${redirectUri}?error=google_email_unverified&popup=${popupParam}`);
   }
 
+  // Google sign-in only authenticates verified, registered accounts. Anything
+  // else -- no account, or one that never finished email verification -- is
+  // sent to registration with ONE error code, so the redirect can't be used to
+  // tell those two apart. Registering again with an unverified email just
+  // re-sends its code (see register)
+  const registrationRequired = () => res.redirect(
+    `${redirectUri}?error=registration_required`
+      + `&email=${encodeURIComponent(profile.email)}&popup=${popupParam}`,
+  );
+
   let user = await User.findByProviderIdentity('google', profile.googleId);
 
-
-  // Recheck email verification even for linked Google accounts
   if (user && !user.emailVerifiedAt) {
-    return res.redirect(
-      `${redirectUri}?error=email_not_verified`
-        + `&email=${encodeURIComponent(user.email)}&popup=${popupParam}`,
-    );
+    return registrationRequired();
   }
 
   if (user) {
-    // Already linked. Refresh the avatar so a changed Google photo is picked up 
+    // Already linked. Refresh the avatar so a changed Google photo is picked up
     if (profile.avatarUrl) {
       // Never overwrite a photo the user uploaded themselves
-      const current = await UserProfile.findByUserId(user.id);
+      const current = await User.getProfile(user.id);
       if (!isUserUploaded(current?.avatarStorageKey)) {
         const stored = await saveRemoteAvatar(user.id, profile.avatarUrl);
         if (stored) {
-          await UserProfile.updateAvatar(user.id, stored);
+          await User.updateAvatar(user.id, stored);
         }
       }
     }
-  }
-
-  if (!user) {
+  } else {
     const existing = await User.findByEmail(profile.email);
+    if (!existing || !existing.emailVerifiedAt) {
+      return registrationRequired();
+    }
 
-    // Block Google sign-in for existing but unverified accounts
-    if (existing && !existing.emailVerifiedAt) {
-      return res.redirect(
-        `${redirectUri}?error=email_not_verified`
-          + `&email=${encodeURIComponent(existing.email)}&popup=${popupParam}`,
+    // Verified account, first Google sign-in: link it.
+    // Avatar downloaded before the transaction
+    const storedAvatar = profile.avatarUrl ? await saveRemoteAvatar(existing.id, profile.avatarUrl) : null;
+
+    user = await withTransaction(async (client) => {
+      await AuthIdentity.link(
+        { userId: existing.id, provider: 'google', providerSubject: profile.googleId },
+        client,
       );
-    }
+      if (storedAvatar) {
+        await User.updateAvatar(existing.id, storedAvatar, client);
+      }
+      return User.getById(existing.id, client);
+    });
 
-    if (existing) {
-      // Downloaded before transaction
-      const storedAvatar = profile.avatarUrl ? await saveRemoteAvatar(existing.id, profile.avatarUrl) : null;
-
-      user = await withTransaction(async (client) => {
-        await AuthIdentity.link(
-          { userId: existing.id, provider: 'google', providerSubject: profile.googleId },
-          client,
-        );
-        if (storedAvatar) {
-          await UserProfile.updateAvatar(existing.id, storedAvatar, client);
-        }
-        // Additional defensive check, if it ever does triggere
-        if (!existing.emailVerifiedAt) {
-          throw new Error('unverified account reached the OAuth link branch');
-        }
-        return User.findById(existing.id, client);
-      });
-    } else {
-      // Google OAuth only authenticates recorded users
-      return res.redirect(`${redirectUri}?error=account_not_found&popup=${popupParam}`);
-    }
+    await logAction(
+      req,
+      { action: 'auth.oauth.linked', targetType: 'user', details: { provider: 'google' } },
+      { userId: user.id, role: user.role },
+    );
+    notify(user.id, 'google_linked');
   }
 
   const exchangeToken = signOauthExchangeToken({ userId: user.id });
@@ -414,52 +507,65 @@ const googleExchange = asyncHandler(async (req, res) => {
     throw ApiError.unauthorized('Invalid or expired sign-in session. Please try again.');
   }
 
-  const user = await User.findById(payload.sub);
+  const user = await User.getById(payload.sub);
   if (!user) {
     throw ApiError.unauthorized('Invalid or expired sign-in session. Please try again.');
+  }
+
+  const hold = accountHold(user);
+  if (hold) {
+    await logAction(
+      req,
+      { action: 'auth.login.failed', targetType: 'user', targetId: user.id, targetRole: user.role, details: { reason: hold.reason } },
+      { userId: null, role: null },
+    );
+    throw hold.error;
   }
 
   const accessToken = signAccessToken(user);
   const refreshToken = signRefreshToken(user, true);
   setRefreshCookie(res, refreshToken, true, req);
 
+  await logAction(
+    req,
+    { action: 'auth.login.succeeded', targetType: 'user', details: { method: 'google', rememberMe: true } },
+    { userId: user.id, role: user.role },
+  );
+
   return sendSuccess(res, {
     message: 'Login successful',
     data: {
       accessToken,
-      user: toAuthUserPayload(user),
+      user: User.toAuthPayload(user),
     },
   });
 });
 
 // api/auth/forgot-password
 const forgotPassword = asyncHandler(async (req, res) => {
+  const startedAt = Date.now();
   const { email } = req.body;
   const user = await User.findByEmail(email);
 
-  // Replace with sending an email anyway
-  if (!user) {
-    throw ApiError.notFound('No account is registered with this email address.', {
-      code: 'ACCOUNT_NOT_FOUND',
-    });
+  // Identical response whether or not the account exists. Nothing is sent for
+  // an unknown email; the code screen then fails with the generic OTP message
+  if (user) {
+    const code = await withTransaction((client) =>
+      issueOtpChallenge(user.id, 'password_reset', client),
+    );
+    // Not awaited, so a known email doesn't answer measurably slower (SMTP)
+    deliverOtpEmail(user.email, code, 'password_reset');
+    await logAction(
+      req,
+      { action: 'auth.password.reset_requested', targetType: 'user' },
+      { userId: user.id, role: user.role },
+    );
   }
 
-  // // A Google-only account has no password to reset, ignore it
-  // if (!user.passwordHash) {
-  //   throw ApiError.badRequest(
-  //     'This account signs in with Google. Use the "Continue with Google" button instead.',
-  //     { code: 'OAUTH_ACCOUNT_NO_PASSWORD' },
-  //   );
-  // }
-
-  const code = await withTransaction((client) =>
-    issueOtpChallenge(user.id, 'password_reset', client),
-  );
-
-  await deliverOtpEmail(user.email, code, 'password_reset');
-
-  // Same message regardless of outcome to avoid information leak
-  return sendSuccess(res, { message: 'A reset code has been sent to your email.' });
+  await padResponse(startedAt);
+  return sendSuccess(res, {
+    message: 'If an account exists for this email, a reset code has been sent.',
+  });
 });
 
 // api/auth/verify-password-reset
@@ -468,11 +574,16 @@ const verifyPasswordReset = asyncHandler(async (req, res) => {
 
   const user = await User.findByEmail(email);
   if (!user) {
-    throw ApiError.badRequest('Invalid email or code');
+    throw ApiError.badRequest(INVALID_CODE_MESSAGE, { code: 'INVALID_CODE' });
   }
 
   const challenge = await consumeOtpChallenge({ userId: user.id, purpose: 'password_reset', code });
   const resetToken = signResetToken({ userId: user.id, challengeId: challenge.id });
+  await logAction(
+    req,
+    { action: 'auth.password.reset_otp_verified', targetType: 'user' },
+    { userId: user.id, role: user.role },
+  );
 
   return sendSuccess(res, {
     message: 'Code verified',
@@ -488,17 +599,35 @@ const resetPassword = asyncHandler(async (req, res) => {
   try {
     payload = verifyResetToken(resetToken);
     if (payload.type !== 'password_reset') throw new Error('wrong token type');
-  } catch (err) {
+  } catch {
     throw ApiError.unauthorized('Invalid or expired reset authorization. Please restart password reset.');
   }
 
-  const challenge = await AuthChallenge.findById(payload.cid);
+  const challenge = await AuthChallenge.getById(payload.cid);
   if (!challenge || !challenge.consumedAt || challenge.userId !== payload.sub) {
     throw ApiError.unauthorized('Invalid or expired reset authorization. Please restart password reset.');
   }
 
+  const user = await User.getById(payload.sub);
+  if (!user) {
+    throw ApiError.unauthorized('Invalid or expired reset authorization. Please restart password reset.');
+  }
+
+  // The token stays valid, so the user can simply pick another password
+  if (await verifyPassword(password, user.passwordHash)) {
+    throw ApiError.badRequest('Your new password must be different from your current password.', {
+      code: 'SAME_PASSWORD',
+    });
+  }
+
   const passwordHash = await hashPassword(password);
-  await User.updatePasswordHash(payload.sub, passwordHash);
+  await User.updatePasswordHash(user.id, passwordHash);
+  await logAction(
+    req,
+    { action: 'auth.password.reset_completed', targetType: 'user' },
+    { userId: user.id, role: user.role },
+  );
+  notify(user.id, 'password_reset');
 
   return sendSuccess(res, { message: 'Password has been reset. Please log in with your new password.' });
 });
@@ -511,6 +640,14 @@ const resetPassword = asyncHandler(async (req, res) => {
 // No revocation as these are stateless JWTs, meaning stolen cookies
 // can still remain valid until sxp
 // Implement JWT ID eventually
+function rejectRefresh(req, targetId, reason) {
+  return logAction(
+    req,
+    { action: 'auth.token.refresh_rejected', targetType: 'user', targetId, details: { reason } },
+    { userId: null, role: null },
+  );
+}
+
 const refresh = asyncHandler(async (req, res) => {
   const token = req.cookies[REFRESH_COOKIE_NAME];
   if (!token) {
@@ -521,16 +658,27 @@ const refresh = asyncHandler(async (req, res) => {
   try {
     payload = verifyRefreshToken(token);
     if (payload.type !== 'refresh') throw new Error('wrong token type');
-  } catch {
+  } catch (err) {
     // Clears refresh cookies on any validation failure
     clearRefreshCookie(res, req);
+    // Unverified token, so its subject can't be trusted -- recorded without one
+    await rejectRefresh(req, null, err.name === 'TokenExpiredError' ? 'expired' : 'invalid');
     throw ApiError.unauthorized('Your session has expired. Please log in again.');
   }
 
-  const user = await User.findById(payload.sub);
+  const user = await User.getById(payload.sub);
   if (!user) {
     clearRefreshCookie(res, req);
-    throw ApiError.unauthorized('Account no longer exists.');
+    await rejectRefresh(req, payload.sub, 'account_missing');
+    throw ApiError.unauthorized('This account no longer exists.');
+  }
+
+  // Ends existing sessions within one access-token lifetime of the hold
+  const hold = accountHold(user);
+  if (hold) {
+    clearRefreshCookie(res, req);
+    await rejectRefresh(req, user.id, hold.reason);
+    throw hold.error;
   }
 
   const accessToken = signAccessToken(user);
@@ -540,6 +688,7 @@ const refresh = asyncHandler(async (req, res) => {
   const remainingMs = refreshSessionRemainingMs(payload);
   if (remainingMs <= 0) {
     clearRefreshCookie(res, req);
+    await rejectRefresh(req, user.id, 'session_ceiling');
     throw ApiError.unauthorized('Your session has expired. Please log in again.');
   }
 
@@ -552,26 +701,39 @@ const refresh = asyncHandler(async (req, res) => {
     message: 'Session refreshed',
     data: {
       accessToken,
-      user: toAuthUserPayload(user),
+      user: User.toAuthPayload(user),
     },
   });
 });
 
 // api/auth/logout
 const logout = asyncHandler(async (req, res) => {
+  // Unauthenticated route, so the actor comes from the refresh cookie. No
+  // valid cookie means there was no session to end, and nothing is recorded
+  let sub = null;
+  try {
+    const payload = verifyRefreshToken(req.cookies[REFRESH_COOKIE_NAME]);
+    if (payload.type === 'refresh') sub = payload.sub;
+  } catch {
+    sub = null;
+  }
+  if (sub) {
+    await logAction(req, { action: 'auth.logout', targetType: 'user' }, { userId: sub });
+  }
+
   clearRefreshCookie(res, req);
   return sendSuccess(res, { message: 'Logged out' });
 });
 
 // api/auth/me
 const me = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.userId);
+  const user = await User.getById(req.userId);
   if (!user) {
     throw ApiError.notFound('User not found');
   }
 
-  const profile = await UserProfile.findByUserId(req.userId);
-  const goal = await UserGoal.findActiveByUserId(req.userId);
+  const profile = await User.getProfile(req.userId);
+  const goal = await User.getActiveGoal(req.userId);
   const latestWeight = await WeightLog.findLatestByUserId(req.userId);
 
   return sendSuccess(res, {
@@ -586,14 +748,17 @@ const me = asyncHandler(async (req, res) => {
       createdAt: user.createdAt,
       age: profile?.age ?? null,
       heightCm: profile?.heightCm ?? null,
-      gender: profile?.gender ?? null,
+      sex: profile?.sex ?? null,
       activityLevel: profile?.activityLevel ?? null,
       dietPreference: profile?.dietPreference ?? null,
       healthConditions: profile?.healthConditions ?? null,
       notificationsEnabled: profile?.notificationsEnabled ?? true,
-      avatarUrl: toPublicAvatarUrl(profile?.avatarStorageKey),
+      avatarUrl: await toPublicAvatarUrl(profile?.avatarStorageKey),
       weightKg: latestWeight?.weightKg ?? null,
       fitnessGoal: goal?.fitnessGoal ?? null,
+      // Setup wizard: shown until onboarded, then a banner while it's all empty
+      onboarded: Boolean(profile?.onboardedAt),
+      setupPending: User.isSetupPending(profile, goal),
     },
   });
 });

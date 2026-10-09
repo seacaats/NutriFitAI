@@ -1,18 +1,30 @@
 import { SeverityBadge } from "@/features/admin/components/Badges";
 import DataTable, { DetailGrid, FilterRow, Pager } from "@/features/admin/components/DataTable";
-import { useAuditLogs } from "@/features/admin/hooks/useAuditLogs";
+import { BY_USER, HELD, useAuditLogs, useUserSearch } from "@/features/admin/hooks/useAuditLogs";
+import Skeleton from "@/shared/components/Skeleton";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
+import { RingInput, useFocusRing } from "@/shared/components/ui/FormInput";
+import { useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifit";
+import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { adminStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
-import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
-// Server decides which each row and fields different roles see.
-// This implementation only tracks (auth.register.consent_accepted, and admin.*) 
-// now. audit_logs.createdAt is an instant, a separate concern from the CALENDAR
-// DAYS rule established and followed
+// Server decides which rows and fields each role sees, and words them
+// (message + fields). audit_logs.createdAt is an instant, a separate concern
+// from the CALENDAR DAYS rule established and followed
 
 function formatTimestamp(value) {
   if (!value) return "—";
@@ -41,6 +53,126 @@ function formatTimeOnly(value) {
   return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
+// Rows this close to their TTL get a badge, so a superadmin can hold them in time
+const EXPIRY_WARNING_DAYS = 30;
+
+// Skeleton gray for blocks on the page background in light mode (the default
+// one is meant for cards and barely shows against the page)
+const LIGHT_SKELETON_ON_PAGE = "#dfe3e8";
+
+function daysLeft(expiresAt) {
+  if (!expiresAt) return null;
+  return Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86400000);
+}
+
+/**
+ * The drawer's notes thread and hold control for one row. Its own component
+ * so each open drawer keeps its own draft and status.
+ *
+ * Notes: admins and superadmins, append-only (a correction is a new note).
+ * Hold: superadmin only, needs a reason, and is itself audited
+ */
+function RowNotesAndHold({ row, log, isSuper, tone }) {
+  const [notes, setNotes] = useState(null);
+  const [draft, setDraft] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState(null);
+
+  // listNotes is stable (useCallback), so this refetches only when the row
+  // or its note count changes, not on every parent render
+  const { listNotes } = log;
+  useEffect(() => {
+    let cancelled = false;
+    listNotes(row.id)
+      .then((data) => { if (!cancelled) setNotes(data); })
+      .catch(() => { if (!cancelled) setNotes([]); });
+    return () => { cancelled = true; };
+  }, [row.id, row.noteCount, listNotes]);
+
+  const submit = async (action) => {
+    setBusy(true);
+    const result = await action();
+    setBusy(false);
+    setNotice(result);
+    if (result.ok) { setDraft(""); setReason(""); }
+  };
+
+  return (
+    <View style={[styles.notesBox, { borderColor: tone.border }]}>
+      <Text style={[styles.changesTitle, { color: tone.muted }]}>NOTES</Text>
+      {notes === null ? (
+        <View style={styles.noteSkeleton}>
+          <Skeleton width="40%" height={11} />
+          <Skeleton width="85%" height={12} />
+        </View>
+      ) : notes.length === 0 ? (
+        <Text style={[styles.noteMeta, { color: tone.muted }]}>No notes yet.</Text>
+      ) : (
+        notes.map((note) => (
+          <View key={note.id} style={styles.note}>
+            <Text style={[styles.noteMeta, { color: tone.muted }]}>
+              {note.author || "Unknown"} · {formatTimestamp(note.createdAt)}
+            </Text>
+            <Text selectable style={[styles.noteBody, { color: tone.text }]}>{note.body}</Text>
+          </View>
+        ))
+      )}
+      <View style={styles.noteForm}>
+        <RingInput
+          value={draft}
+          onChangeText={setDraft}
+          placeholder="Add a note for other admins"
+          placeholderTextColor={tone.muted}
+          multiline
+          maxLength={1000}
+          style={[styles.noteInput, { backgroundColor: tone.card, borderColor: tone.border, color: tone.text }]}
+        />
+        <Pressable
+          onPress={() => submit(() => log.addNote(row.id, draft.trim()))}
+          disabled={busy || !draft.trim()}
+          style={[styles.smallBtn, { borderColor: tone.border }, (busy || !draft.trim()) && styles.btnDisabled]}
+        >
+          <Text style={[styles.smallBtnText, { color: tone.text }]}>Add note</Text>
+        </Pressable>
+      </View>
+
+      {isSuper && (
+        <View style={[styles.holdRow, { borderTopColor: tone.border }]}>
+          <Text style={[styles.noteMeta, { color: tone.muted }]}>
+            {row.held
+              ? "Held: this entry is kept after it expires."
+              : "Hold this entry to keep it after it expires."}
+          </Text>
+          <View style={styles.noteForm}>
+            <RingInput
+              value={reason}
+              onChangeText={setReason}
+              placeholder={row.held ? "Reason for releasing (required)" : "Reason for holding (required)"}
+              placeholderTextColor={tone.muted}
+              // Same box as the note above: wraps, then scrolls
+              multiline
+              maxLength={300}
+              style={[styles.noteInput, { backgroundColor: tone.card, borderColor: tone.border, color: tone.text }]}
+            />
+            <Pressable
+              onPress={() => submit(() => (row.held ? log.release(row.id, reason.trim()) : log.hold(row.id, reason.trim())))}
+              disabled={busy || reason.trim().length < 3}
+              style={[styles.smallBtn, { borderColor: tone.border }, (busy || reason.trim().length < 3) && styles.btnDisabled]}
+            >
+              <Text style={[styles.smallBtnText, { color: tone.text }]}>{row.held ? "Release hold" : "Hold"}</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {notice && (
+        <Text style={[styles.noteMeta, { color: notice.ok ? tone.muted : colors.danger }]}>{notice.message}</Text>
+      )}
+    </View>
+  );
+}
+
 const CATEGORY_LABELS = {
   auth: "Auth",
   account: "Account",
@@ -48,11 +180,33 @@ const CATEGORY_LABELS = {
   nutrition: "Nutrition",
   workout: "Workouts",
   coach: "AI Coach",
+  notification: "Notifications",
   administration: "Administration",
   system: "System",
 };
 
+// "By User" side filter. "Self" = the user acted on their own account
+const SUBJECT_MODES = [
+  { value: "all", label: "All" },
+  { value: "actor", label: "As Actor" },
+  { value: "target", label: "As Target" },
+  { value: "self", label: "Self" },
+];
+
+const ROLE_LABELS = { user: "User", admin: "Admin", superadmin: "Superadmin" };
+
+// A full user id (UUID), searchable only when no name or email matches
+const USER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// "User (Unverified)" when the actor hadn't verified their email at the time
+function actorRoleLabel(row) {
+  if (!row.actorRole) return null;
+  const base = ROLE_LABELS[row.actorRole] || row.actorRole;
+  return row.actorVerified === false ? `${base} (Unverified)` : base;
+}
+
 export default function AuditLogsScreen() {
+  const ring = useFocusRing();
   const { darkMode } = useTheme();
   const tone = getScreenTones(darkMode);
   const { width } = useWindowDimensions();
@@ -60,6 +214,20 @@ export default function AuditLogsScreen() {
 
   const log = useAuditLogs();
   const [expandedId, setExpandedId] = useState(null);
+  const [exportNotice, setExportNotice] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const { role } = useAuth();
+  // These sit on the page background, where the default skeleton gray is
+  // nearly invisible in light mode: a step darker there
+  const skeletonTint = darkMode ? null : { backgroundColor: LIGHT_SKELETON_ON_PAGE };
+
+  const runExport = async () => {
+    setExporting(true);
+    setExportNotice(await log.exportCsv());
+    setExporting(false);
+  };
+  const [searchTerm, setSearchTerm] = useState("");
+  const search = useUserSearch(log.byUser && !log.subject ? searchTerm : "");
 
   /**
    * Built from the server's meta response, not hardcoded. An admin is never
@@ -74,8 +242,11 @@ export default function AuditLogsScreen() {
         value: category,
         label: CATEGORY_LABELS[category] || category,
       })),
+      { value: BY_USER, label: "By User" },
+      // Held copies, superadmin only
+      ...(log.viewerRole === "superadmin" ? [{ value: HELD, label: "Held" }] : []),
     ];
-  }, [log.meta]);
+  }, [log.meta, log.viewerRole]);
 
   /** Actions within the chosen category, for the second-level drill-in. Only
    *  shown once a category narrows it to a readable handful. */
@@ -98,6 +269,12 @@ export default function AuditLogsScreen() {
         <View>
           <Text style={[styles.whenDate, { color: tone.text }]}>{formatDateOnly(row.createdAt)}</Text>
           <Text style={[styles.whenTime, { color: tone.muted }]}>{formatTimeOnly(row.createdAt)}</Text>
+          {/* A held row is kept regardless, so it needs no warning */}
+          {!row.held && daysLeft(row.expiresAt) !== null && daysLeft(row.expiresAt) <= EXPIRY_WARNING_DAYS && (
+            <Text style={[styles.whenTime, { color: colors.danger }]}>
+              Expires in {Math.max(daysLeft(row.expiresAt), 0)}d
+            </Text>
+          )}
         </View>
       ),
     },
@@ -116,6 +293,13 @@ export default function AuditLogsScreen() {
         <View>
           <Text numberOfLines={1} style={[styles.actionLabel, { color: tone.text }]}>{row.label}</Text>
           <Text numberOfLines={1} style={[styles.actionKey, { color: tone.muted }]}>{row.action}</Text>
+          {(row.held || row.noteCount > 0) && (
+            <Text numberOfLines={1} style={[styles.actionKey, { color: tone.text }]}>
+              {[row.heldCopy ? "Held copy" : row.held ? "Held" : null, row.noteCount ? `${row.noteCount} note${row.noteCount === 1 ? "" : "s"}` : null]
+                .filter(Boolean)
+                .join(" · ")}
+            </Text>
+          )}
         </View>
       ),
     },
@@ -124,9 +308,8 @@ export default function AuditLogsScreen() {
       title: "What happened",
       flex: 3,
       render: (row) => (
-        // Two lines, not one: the superadmin sentence carries values and an IP
-        // and would be truncated to uselessness at one. The full text is in
-        // the drawer regardless.
+        // Two lines, so a long name doesn't cut the sentence off. The full
+        // text and its values are in the drawer
         <Text numberOfLines={2} style={[styles.message, { color: tone.text }]}>{row.message}</Text>
       ),
     },
@@ -154,6 +337,18 @@ export default function AuditLogsScreen() {
     <View style={styles.expandedWrap}>
       <Text selectable style={[styles.fullMessage, { color: tone.text }]}>{row.message}</Text>
 
+      {/* The action's own values (reason, counts, filters...), already
+          worded by the server. Instants come as type "datetime" and are
+          shown in the reader's time zone */}
+      {row.fields?.length > 0 && (
+        <DetailGrid
+          items={row.fields.map((field) => ({
+            label: field.label,
+            value: field.type === "datetime" ? formatTimestamp(field.value) : field.value,
+          }))}
+        />
+      )}
+
       <DetailGrid
         items={[
           { label: "Action", value: row.action },
@@ -161,8 +356,9 @@ export default function AuditLogsScreen() {
           { label: "Severity", value: row.severity },
           { label: "When", value: formatTimestamp(row.createdAt) },
           { label: "Actor", value: row.actor },
-          { label: "Actor role", value: row.actorRole },
+          { label: "Actor role", value: actorRoleLabel(row) },
           { label: "Subject", value: row.target },
+          { label: "Subject role", value: row.targetRole ? ROLE_LABELS[row.targetRole] || row.targetRole : null },
           { label: "Subject type", value: row.targetType },
           // Present only for a superadmin; DetailGrid drops null entries, so
           // an admin's drawer simply has fewer cells rather than empty ones.
@@ -182,18 +378,27 @@ export default function AuditLogsScreen() {
           <Text style={[styles.changesTitle, { color: tone.muted }]}>CHANGES</Text>
           {row.changes.map((change) => (
             <View key={change.field} style={styles.changeRow}>
-              <Text style={[styles.changeField, { color: tone.text }]}>{change.field}</Text>
-              <Text selectable style={[styles.changeFrom, { color: tone.muted }]}>
-                {String(change.from ?? "empty")}
-              </Text>
-              <Ionicons name="arrow-forward" size={12} color={tone.muted} />
-              <Text selectable style={[styles.changeTo, { color: tone.text }]}>
-                {String(change.to ?? "empty")}
-              </Text>
+              <Text style={[styles.changeField, { color: tone.text }]}>{change.label}</Text>
+              {/* Health fields are recorded without values (HEALTH_FIELDS) */}
+              {change.hidden ? (
+                <Text style={[styles.changeFrom, styles.changeHidden, { color: tone.muted }]}>Value not recorded</Text>
+              ) : (
+                <>
+                  <Text selectable style={[styles.changeFrom, { color: tone.muted }]}>
+                    {String(change.from ?? "empty")}
+                  </Text>
+                  <Ionicons name="arrow-forward" size={12} color={tone.muted} />
+                  <Text selectable style={[styles.changeTo, { color: tone.text }]}>
+                    {String(change.to ?? "empty")}
+                  </Text>
+                </>
+              )}
             </View>
           ))}
         </View>
       )}
+
+      <RowNotesAndHold row={row} log={log} isSuper={log.viewerRole === "superadmin"} tone={tone} />
     </View>
   );
 
@@ -208,14 +413,35 @@ export default function AuditLogsScreen() {
             full entry.
           </Text>
         </View>
-        <Pressable onPress={log.refresh} style={styles.refreshBtn}>
-          <Ionicons name="refresh" size={16} color={colors.white} />
-          <Text style={styles.refreshText}>Refresh</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          {/* The session already says who may export; the button waits for the filter menu */}
+          {log.firstLoad && role === "superadmin" && <Skeleton width={128} height={38} borderRadius={radii.sm} style={skeletonTint} />}
+          {!log.firstLoad && log.viewerRole === "superadmin" && (
+            <Pressable
+              onPress={runExport}
+              disabled={exporting}
+              style={[styles.exportBtn, { borderColor: tone.border, backgroundColor: tone.card }, exporting && styles.btnDisabled]}
+            >
+              <Ionicons name="download-outline" size={16} color={tone.text} />
+              <Text style={[styles.exportText, { color: tone.text }]}>{exporting ? "Exporting…" : "Export CSV"}</Text>
+            </Pressable>
+          )}
+          <Pressable onPress={log.refresh} disabled={log.loading} style={[styles.refreshBtn, log.loading && { opacity: 0.6 }]}>
+            <Ionicons name="refresh" size={16} color={colors.white} />
+            <Text style={styles.refreshText}>{log.loading ? "Loading" : "Refresh"}</Text>
+          </Pressable>
+        </View>
       </View>
 
+      {/* Exports are recorded in the log too (admin.audit_log.exported) */}
+      {exportNotice && (
+        <Text style={[styles.exportNotice, { color: exportNotice.ok ? tone.muted : colors.danger }]}>
+          {exportNotice.message}
+        </Text>
+      )}
+
       {/*Says what is being withheld and why.*/}
-      {log.redacted && (
+      {!log.firstLoad && log.redacted && (
         <View style={[styles.banner, { backgroundColor: tone.soft, borderColor: tone.border }]}>
           <Ionicons name="eye-off-outline" size={16} color={tone.muted} />
           <Text style={[styles.bannerText, { color: tone.muted }]}>
@@ -226,8 +452,88 @@ export default function AuditLogsScreen() {
       )}
 
       <View style={styles.filters}>
-        <FilterRow options={categoryFilters} value={log.category} onChange={log.setCategory} />
-        {actionFilters.length > 0 && (
+        {/* The categories come with the filter menu; until then, pills in their place */}
+        {!log.firstLoad ? (
+          <FilterRow options={categoryFilters} value={log.category} onChange={log.setCategory} />
+        ) : (
+          <View style={styles.filterSkeleton}>
+            {[88, 52, 70, 62, 78, 84, 70].map((w, i) => <Skeleton key={i} width={w} height={30} borderRadius={radii.pill} style={skeletonTint} />)}
+          </View>
+        )}
+        {log.byUser && (
+          <View style={styles.byUserWrap}>
+            {log.subject ? (
+              <View style={[styles.subjectChip, { borderColor: tone.border, backgroundColor: tone.soft }]}>
+                <Ionicons name="person-circle-outline" size={16} color={shellColors.primary} />
+                <Text numberOfLines={1} style={[styles.subjectText, { color: tone.text }]}>{log.subject.label}</Text>
+                <Pressable
+                  hitSlop={8}
+                  accessibilityLabel="Clear selected user"
+                  onPress={() => {
+                    log.setSubject(null);
+                    setSearchTerm("");
+                  }}
+                >
+                  <Ionicons name="close" size={16} color={tone.muted} />
+                </Pressable>
+              </View>
+            ) : (
+              <View>
+                <View style={[styles.searchBox, { borderColor: tone.border }, ring.style]}>
+                  <Ionicons name="search" size={15} color={tone.muted} />
+                  <TextInput
+                    {...ring.handlers}
+                    value={searchTerm}
+                    onChangeText={setSearchTerm}
+                    placeholder="Search a user by name or email (e.g. juan@example.com)"
+                    placeholderTextColor={tone.muted}
+                    autoCapitalize="none"
+                    style={[ring.input, styles.searchInput, { color: tone.text }]}
+                  />
+                  {search.searching && <ActivityIndicator size="small" color={shellColors.primary} />}
+                </View>
+                {/* No name/email match but it's a full user id: search the logs by it
+                    anyway, which also covers accounts that have since been deleted */}
+                {!search.searching && !search.results.length && USER_ID_RE.test(searchTerm.trim()) && (
+                  <View style={[styles.results, { borderColor: tone.border }]}>
+                    <Pressable
+                      style={[styles.resultRow, { borderBottomColor: tone.border }]}
+                      onPress={() => log.setSubject({ id: searchTerm.trim().toLowerCase(), label: searchTerm.trim() })}
+                    >
+                      <Text numberOfLines={1} style={[styles.resultName, { color: tone.text }]}>
+                        User ID {searchTerm.trim()}
+                      </Text>
+                      <Text numberOfLines={1} style={[styles.resultMeta, { color: tone.muted }]}>
+                        No account matches this ID. Show its log entries anyway
+                      </Text>
+                    </Pressable>
+                  </View>
+                )}
+                {search.results.length > 0 && (
+                  <View style={[styles.results, { borderColor: tone.border }]}>
+                    {search.results.map((user) => (
+                      <Pressable
+                        key={user.id}
+                        style={[styles.resultRow, { borderBottomColor: tone.border }]}
+                        onPress={() => log.setSubject({ id: user.id, label: user.fullName || user.email })}
+                      >
+                        <Text numberOfLines={1} style={[styles.resultName, { color: tone.text }]}>
+                          {user.fullName || user.email}
+                        </Text>
+                        <Text numberOfLines={1} style={[styles.resultMeta, { color: tone.muted }]}>
+                          {user.email} · {ROLE_LABELS[user.role] || user.role}
+                          {user.emailVerified ? "" : " (Unverified)"}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+            <FilterRow options={SUBJECT_MODES} value={log.subjectMode} onChange={log.setSubjectMode} />
+          </View>
+        )}
+        {!log.byUser && actionFilters.length > 0 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subFilterRow}>
             {actionFilters.map((option) => {
               const active = log.action === option.value;
@@ -254,9 +560,11 @@ export default function AuditLogsScreen() {
         loading={log.loading}
         error={log.error}
         onRetry={log.refresh}
-        emptyTitle="No activity recorded yet"
+        emptyTitle={log.byUser && !log.subject ? "Pick a user" : "No activity recorded yet"}
         emptyBody={
-          log.category || log.action
+          log.byUser && !log.subject
+            ? "Search for a user above to see their activity."
+            : log.category || log.action
             ? "Nothing matches this filter yet. Clear it to see everything recorded so far."
             : "Audited events will appear here as they happen. Most event types aren't wired up yet — see the integration plan for what's coming and in what order."
         }
@@ -292,6 +600,34 @@ const styles = StyleSheet.create({
   bannerText: { flex: 1, fontSize: 12, lineHeight: 17 },
 
   filters: { gap: 8, marginBottom: 16 },
+
+  byUserWrap: { gap: 8, maxWidth: 560 },
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: 12,
+    height: 40,
+  },
+  searchInput: { flex: 1, fontSize: 13, ...(Platform.OS === "web" ? { outlineStyle: "none" } : null) },
+  results: { borderWidth: 1, borderRadius: radii.sm, marginTop: 6, overflow: "hidden" },
+  resultRow: { paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1 },
+  resultName: { fontSize: 13, fontWeight: "700" },
+  resultMeta: { fontSize: 11, marginTop: 1 },
+  subjectChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderRadius: radii.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    maxWidth: "100%",
+  },
+  subjectText: { fontSize: 13, fontWeight: "700", flexShrink: 1 },
   subFilterRow: { flexDirection: "row", gap: 4 },
   subFilter: { borderRadius: radii.sm, paddingHorizontal: 10, paddingVertical: 6 },
   subFilterText: { fontSize: 12, fontWeight: "600" },
@@ -323,4 +659,33 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   refreshText: { fontSize: 13, fontWeight: "700", color: colors.white },
+
+  // Wraps under the title on a narrow screen instead of squeezing it
+  headerActions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
+  changeHidden: { textDecorationLine: "none", fontStyle: "italic" },
+
+  notesBox: { borderWidth: 1, borderRadius: radii.sm, padding: 12, gap: 8 },
+  note: { gap: 2 },
+  noteMeta: { fontSize: 11 },
+  noteBody: { fontSize: 13, lineHeight: 18 },
+  // Wraps under the input on a narrow screen
+  noteForm: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: 8 },
+  noteInput: { flexGrow: 1, flexBasis: 220, minWidth: 0, borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
+  smallBtn: { borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12, paddingVertical: 9 },
+  smallBtnText: { fontSize: 12, fontWeight: "700" },
+  holdRow: { borderTopWidth: 1, paddingTop: 10, gap: 8 },
+  exportBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+  },
+  exportText: { fontSize: 13, fontWeight: "700" },
+  exportNotice: { fontSize: 12, marginBottom: 12 },
+  btnDisabled: { opacity: 0.5 },
+  noteSkeleton: { gap: 6 },
+  filterSkeleton: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
 });

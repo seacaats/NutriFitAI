@@ -1,9 +1,9 @@
 import { useTheme } from "@/shared/context/ThemeContext";
-import { Ionicons } from "@expo/vector-icons";
 import { useMemo } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
 
-export default function PrimaryButton({ title, onPress, icon, loading = false, disabled = false, style }) {
+// Text only, like every other button in the app
+export default function PrimaryButton({ title, onPress, loading = false, disabled = false, style }) {
   const { tokens } = useTheme();
   const { colors, radii, typography } = tokens;
   const styles = useMemo(() => createStyles(colors, radii, typography), [colors, radii, typography]);
@@ -22,10 +22,7 @@ export default function PrimaryButton({ title, onPress, icon, loading = false, d
       {loading ? (
         <ActivityIndicator color={colors.white} />
       ) : (
-        <>
-          {icon && <Ionicons name={icon} size={16} color={colors.white} style={styles.icon} />}
-          <Text style={styles.text}>{title}</Text>
-        </>
+        <Text style={styles.text}>{title}</Text>
       )}
     </Pressable>
   );
@@ -44,7 +41,6 @@ function createStyles(colors, radii, typography) {
     },
     pressed: { backgroundColor: colors.primaryDark },
     disabled: { opacity: 0.6 },
-    icon: { marginRight: 8 },
     text: { ...typography.button, color: colors.white },
   });
 }

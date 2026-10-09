@@ -1,4 +1,5 @@
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
+import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -8,7 +9,7 @@ import {
   RANGES,
   todayISO,
   weekdayLabel,
-} from "@/shared/services/steps/stepDates";
+} from "@/shared/utils/dates";
 
 /**
  * Backs BOTH step screens -- app/(main)/steps/index.jsx and index.web.jsx -- so
@@ -40,6 +41,8 @@ function bucketDays(days, preset, from, to) {
         date,
         label: weekdayLabel(date),
         steps: row ? row.stepCount : null,
+        // One day: its own count. Grouped buckets average theirs (below)
+        avg: row ? row.stepCount : null,
         distanceMeters: row?.distanceMeters ?? null,
         source: row?.source ?? null,
       };
@@ -49,13 +52,16 @@ function bucketDays(days, preset, from, to) {
   // Week and month buckets sum whatever exists inside them. A bucket with no
   // data at all stays null; a bucket with partial data reports the partial sum,
   // which is the honest number
+  // Months key on "YYYY-MM": a 365-day year spans the same month name twice
+  // (Oct last year and Oct now), and duplicate keys break the chart
   const groups = new Map();
   allDates.forEach((date, index) => {
     const key = bucket === "week"
       ? `W${Math.floor(index / 7) + 1}`
-      : monthLabel(date);
+      : date.slice(0, 7);
+    const label = bucket === "week" ? key : monthLabel(date);
 
-    if (!groups.has(key)) groups.set(key, { key, label: key, date, steps: null, days: 0 });
+    if (!groups.has(key)) groups.set(key, { key, label, date, steps: null, days: 0 });
     const group = groups.get(key);
 
     const row = byDate.get(date);
@@ -65,7 +71,12 @@ function bucketDays(days, preset, from, to) {
     }
   });
 
-  return Array.from(groups.values());
+  // Steps per day over the days that have data, so a week or month bar
+  // compares against the DAILY goal like a single day does
+  return Array.from(groups.values()).map((g) => ({
+    ...g,
+    avg: g.steps === null ? null : Math.round(g.steps / g.days),
+  }));
 }
 
 /**
@@ -94,7 +105,10 @@ export function useDailySteps(options = {}) {
     try {
       const data = await apiClient.get(`/steps?from=${from}&to=${to}`, { auth: true });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
-      setPayload({ ...data, from, to });
+      // The range travels with its data: switching ranges re-renders before
+      // the new data arrives, and bucketing old days by the new range is what
+      // produced 30 bars all labelled Mon to Sun (duplicate "Thu" keys)
+      setPayload({ ...data, from, to, preset });
     } catch (err) {
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
       setError(
@@ -111,13 +125,20 @@ export function useDailySteps(options = {}) {
 
   const refresh = useCallback(() => load(range), [load, range]);
 
+  // Pull-to-refresh: back to the first-load skeletons. The Steps screen's own
+  // pull handler syncs the phone and then reloads
+  usePullRefresh(() => {
+    setPayload(null);
+    setLoading(true);
+  });
+
   const derived = useMemo(() => {
     const from = payload?.from ?? rangeFor(range).from;
     const to = payload?.to ?? rangeFor(range).to;
     const days = payload?.days ?? [];
     const dailyGoal = payload?.dailyGoal ?? 10000;
 
-    const series = bucketDays(days, range, from, to);
+    const series = bucketDays(days, payload?.preset ?? range, from, to);
     const recorded = days.filter((d) => Number.isFinite(d.stepCount));
 
     const total = recorded.reduce((sum, d) => sum + d.stepCount, 0);
@@ -152,5 +173,7 @@ export function useDailySteps(options = {}) {
     };
   }, [payload, range]);
 
-  return { range, setRange, ranges: Object.keys(RANGES), loading, error, refresh, ...derived };
+  // `loaded` turns true with the first response and stays true, so screens
+  // show skeletons on the first load only, not on every range switch
+  return { range, setRange, ranges: Object.keys(RANGES), loading, loaded: Boolean(payload), error, refresh, ...derived };
 }

@@ -4,30 +4,56 @@
 // real authority; this only catches obvious typos before a request is sent
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-export const PASSWORD_MIN_LENGTH = 8;
-export const PASSWORD_MAX_LENGTH = 72; // bcrypt input limit, matches the backend
+// Letters (any script, incl. accents like "ñ"), plus spaces, hyphens,
+// apostrophes and periods. Must start with a letter. Mirrors NAME_RE on the backend
+const NAME_RE = /^[\p{L}\p{M}][\p{L}\p{M} '.-]*$/u;
+
+const PASSWORD_MIN_LENGTH = 8;
+// Mirrors the backend. Not advertised in the UI -- the hint only nudges users
+// toward 16, but anything up to this is accepted
+const PASSWORD_MAX_LENGTH = 64;
+
+// Age bounds, mirrors registerSchema / updateProfileSchema
+// Mirrors AGE_MIN and AGE_MAX in the backend's authValidators.js
+export const AGE_MIN = 13;
+export const AGE_MAX = 122;
+
+export const PASSWORD_HINT =
+  "Tip: mix upper & lowercase letters, numbers and symbols, or just make it longer (up to 16 characters).";
 
 export function isValidEmail(value) {
   return EMAIL_RE.test(String(value || "").trim());
 }
 
-// Returns an error string, or "" when the password is acceptable
-export function validatePassword(value) {
-  const password = String(value || "");
-  if (password.length < PASSWORD_MIN_LENGTH) {
-    return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
-  }
-  if (password.length > PASSWORD_MAX_LENGTH) {
-    return `Password must be ${PASSWORD_MAX_LENGTH} characters or fewer.`;
+// Returns an error string, or "" when the name is acceptable
+export function validateName(value, { label, required = false, max = 75 }) {
+  const name = String(value || "").trim();
+  if (!name) return required ? `Please enter your ${label.toLowerCase()}.` : "";
+  if (name.length > max) return `${label} is too long.`;
+  if (!NAME_RE.test(name)) {
+    return `${label} can only contain letters, spaces, hyphens (-), apostrophes (') and periods (.).`;
   }
   return "";
 }
 
-// Validates an optional numeric profile field against the same bounds the
-// server enforces. Returns an error string, or "" when valid/blank
-export function validateOptionalNumber(value, { label, min, max, integer = false }) {
+// Returns an error string, or "" when the password is acceptable
+export function validatePassword(value) {
+  const password = String(value || "");
+  if (!password) return "Please enter your password.";
+  if (!password.trim()) return "Password can't be only spaces.";
+  if (/\s/.test(password)) return "Password can't contain spaces.";
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+  }
+  if (password.length > PASSWORD_MAX_LENGTH) return "Password is too long.";
+  return "";
+}
+
+// Validates a numeric profile field against the same bounds the server
+// enforces. Returns an error string, or "" when valid (or blank and optional)
+export function validateNumber(value, { label, min, max, integer = false, required = false }) {
   const raw = String(value ?? "").trim();
-  if (!raw) return "";
+  if (!raw) return required ? `Please enter your ${label.toLowerCase()}.` : "";
 
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) return `${label} must be a number.`;

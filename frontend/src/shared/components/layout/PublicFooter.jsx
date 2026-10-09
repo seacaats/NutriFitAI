@@ -1,4 +1,4 @@
-import { colors, spacing, typography } from "@/shared/theme/nutrifit";
+import { colors, spacing, typography } from "@/shared/theme/nutrifitai";
 import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 

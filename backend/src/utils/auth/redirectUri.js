@@ -1,5 +1,5 @@
 const env = require('../../../config/env');
-const { listOwnedTunnelOrigins } = require('../../utils/publicUrl');
+const { listOwnedTunnelOrigins } = require('../../utils/network/publicUrl');
 
 /**
  * Decides whether an OAuth redirectUri may be used.

@@ -1,12 +1,20 @@
 import {
-    apiClient,
-    ApiClientError,
-    setSessionExpiredHandler,
-    setSessionUnreachableHandler,
+  apiClient,
+  ApiClientError,
+  setSessionExpiredHandler,
+  setSessionUnreachableHandler,
 } from "@/shared/api/apiClient";
+import { onReconnect } from "@/shared/api/connection";
+import { clearCached } from "@/shared/api/offlineCache";
+import LoadingScreen, { useLoadingGate } from "@/shared/components/ui/LoadingScreen";
 import { resolveMediaUrl } from "@/shared/services/mediaUrl";
+import { colors } from "@/shared/theme/nutrifitai";
+import { resetGoogleAuthChannel } from "@/shared/utils/authChannel";
 import { clearAccessToken, getAccessToken } from "@/shared/utils/authStorage";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { clearRemembered } from "@/shared/utils/rememberedState";
+import { Redirect, usePathname } from "expo-router";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Platform, Pressable, Text, View } from "react-native";
 
 /**
  * Single source of truth for "is there a valid session, and what may it do".
@@ -20,7 +28,7 @@ const AuthContext = createContext(null);
 
 /**
  * Weakest first. Used for hierarchical checks (an admin satisfies 'user').
- * Mirrors the `role` enum in the backend's models/schemas/userSchema.js and
+ * Mirrors the `role` enum in the backend's models/user/User.js and
  * ROLES in its middleware/authMiddleware.js.
  *
  * Order is load-bearing: hasAtLeastRole compares indexes, so appending a
@@ -55,6 +63,9 @@ export const AUTH_STATUS = {
 export function AuthProvider({ children }) {
   const [status, setStatus] = useState(AUTH_STATUS.LOADING);
   const [user, setUser] = useState(null);
+  // True after the user logs out themselves, so the guard sends them to the
+  // landing page rather than to login. Cleared by the next sign-in
+  const [loggedOut, setLoggedOut] = useState(false);
 
   const loadSession = useCallback(async () => {
     const token = await getAccessToken();
@@ -66,7 +77,7 @@ export function AuthProvider({ children }) {
     }
 
     try {
-      const data = await apiClient.get("/auth/me", { auth: true });
+      const data = await apiClient.get("/auth/me", { auth: true, wait: false });
 
       // The server returns avatarUrl as a root-relative path. Resolving it here,
       // once, means every consumer of useAuth() gets a loadable URL -- rather
@@ -74,6 +85,7 @@ export function AuthProvider({ children }) {
       // rendering initials when they forget.
       setUser(data ? { ...data, avatarUrl: resolveMediaUrl(data.avatarUrl) } : null);
       setStatus(AUTH_STATUS.AUTHENTICATED);
+      setLoggedOut(false);
       return data || null;
     } catch (err) {
       const status = err instanceof ApiClientError ? err.status : 0;
@@ -101,6 +113,7 @@ export function AuthProvider({ children }) {
        */
       if (status === 401) {
         await clearAccessToken();
+        await clearCached();
         setUser(null);
         setStatus(AUTH_STATUS.ANONYMOUS);
         return null;
@@ -125,10 +138,6 @@ export function AuthProvider({ children }) {
        * UNREACHABLE keeps the token AND keeps the user in place. The next
        * successful call recovers the session with no re-login.
        */
-      console.warn(
-        `[auth] /auth/me failed with status ${status || "network"} — keeping the stored token.`,
-        err?.message,
-      );
 
       setUser(null);
       setStatus(AUTH_STATUS.UNREACHABLE);
@@ -139,6 +148,14 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     loadSession();
   }, [loadSession]);
+
+  // Opened while the server was down: check again the moment it's back
+  const statusRef = useRef(status);
+  statusRef.current = status;
+  useEffect(
+    () => onReconnect(() => statusRef.current === AUTH_STATUS.UNREACHABLE && loadSession()),
+    [loadSession],
+  );
 
   /**
    * apiClient discovers a dead refresh cookie mid-request, on whichever
@@ -155,6 +172,7 @@ export function AuthProvider({ children }) {
    */
   useEffect(() => {
     setSessionExpiredHandler(() => {
+      clearCached();
       setUser(null);
       setStatus(AUTH_STATUS.ANONYMOUS);
     });
@@ -166,20 +184,29 @@ export function AuthProvider({ children }) {
      * stays usable rather than blanking out.
      */
     setSessionUnreachableHandler(() => {
+      // Signed in already: stay put, screens fall back to saved data (offlineCache)
       setStatus((current) =>
-        current === AUTH_STATUS.ANONYMOUS ? current : AUTH_STATUS.UNREACHABLE,
+        current === AUTH_STATUS.ANONYMOUS || current === AUTH_STATUS.AUTHENTICATED ? current : AUTH_STATUS.UNREACHABLE,
       );
     });
   }, []);
 
-  const signOut = useCallback(async () => {
+  // `byUser`: they pressed Log out (lands on the landing page), as opposed to
+  // a sign-out on their way to login
+  const signOut = useCallback(async ({ byUser = false } = {}) => {
     try {
       await apiClient.post("/auth/logout");
     } catch {
       // Clearing locally matters more than the server acknowledging it.
     }
     await clearAccessToken();
+    // Saved data belongs to this account only, as does where it left off
+    await clearCached();
+    await clearRemembered();
+    // Drop any leftover Google popup result so the next login screen can't pick it up
+    resetGoogleAuthChannel();
     setUser(null);
+    setLoggedOut(byUser);
     setStatus(AUTH_STATUS.ANONYMOUS);
   }, []);
 
@@ -207,6 +234,12 @@ export function AuthProvider({ children }) {
       user,
       role,
       emailVerified: Boolean(user?.emailVerified),
+      // Onboarding (/onboarding): not yet finished or skipped, and whether its
+      // answers are all still empty (the dashboard's banner). Only an explicit
+      // false counts, so a saved /auth/me from before the flag existed
+      // doesn't send anyone to the wizard while offline
+      onboarded: user?.onboarded !== false,
+      setupPending: Boolean(user?.setupPending),
 
       email: user?.email,
       fullName: fullName || null,
@@ -225,8 +258,9 @@ export function AuthProvider({ children }) {
 
       refresh: loadSession,
       signOut,
+      loggedOut,
     };
-  }, [status, user, loadSession, signOut]);
+  }, [status, user, loggedOut, loadSession, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -237,4 +271,168 @@ export function useAuth() {
     throw new Error("useAuth must be used inside an <AuthProvider>");
   }
   return ctx;
+}
+
+/**
+ * Single source of truth for which role may open which screen, and where each
+ * role lands after sign-in. Read by RoleGuard (the (main)/(admin)/(superadmin)
+ * layouts), the web sidebar, and every post-login redirect.
+ *
+ * Mirrors the backend's mount-point guards in src/routes/index.js:
+ *  - user-only screens  <-> /steps, /coach, /workouts  (requireRole('user'))
+ *  - admin screens      <-> /admin                     (requireMinimumRole('admin'))
+ *  - superadmin screens <-> /admin/admins, role edits  (requireMinimumRole('superadmin'))
+ *
+ * This is the usability layer; the API is the security layer. Both are needed.
+ */
+
+const ADMIN_ROLES = ["admin", "superadmin"];
+
+/** Where each role lands after sign-in (and when bounced off another role's screen) */
+const HOME_BY_ROLE = {
+  user: "/dashboard",
+  admin: "/analytics",
+  superadmin: "/analytics",
+};
+
+export function homeFor(role) {
+  return HOME_BY_ROLE[role] || HOME_BY_ROLE.user;
+}
+
+/**
+ * Pathname prefix -> roles allowed. Matches the prefix itself and anything
+ * nested under it ("/workouts" covers "/workouts/history"), so a new nested
+ * screen inherits its parent's rule instead of silently falling through.
+ *
+ * Deny by default: a guarded pathname with no entry here is refused, so adding
+ * a screen without deciding who may see it fails loudly
+ */
+const ROUTE_ROLES = [
+  // User-only
+  ["/dashboard", ["user"]],
+  ["/food-scanner", ["user"]],
+  ["/workouts", ["user"]],
+  ["/ai-coach", ["user"]],
+  ["/progress", ["user"]],
+  ["/steps", ["user"]],
+  ["/water", ["user"]],
+  ["/onboarding", ["user"]],
+
+  // Every signed-in role
+  ["/profile", ROLES],
+  ["/notifications", ROLES],
+  ["/settings", ROLES],
+
+  // Admin and superadmin
+  ["/analytics", ADMIN_ROLES],
+  ["/users", ADMIN_ROLES],
+  ["/audit-logs", ADMIN_ROLES],
+
+  // Superadmin only
+  ["/admins", ["superadmin"]],
+];
+
+/** Allowed roles for a pathname, or null when the route isn't listed */
+function rolesFor(pathname) {
+  const match = ROUTE_ROLES.find(
+    ([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+  return match ? match[1] : null;
+}
+
+export function canAccess(role, pathname) {
+  const allowed = rolesFor(pathname);
+  return Boolean(allowed && allowed.includes(role));
+}
+
+// Where to send someone after login when a `next` path was carried along
+// (e.g. from access-denied). Only an in-app path their role may open is
+// honoured; anything else, including full URLs, falls back to their home
+export function safeReturnTo(next, role) {
+  const path = Array.isArray(next) ? next[0] : next;
+  if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//")) return homeFor(role);
+  const pathname = path.split(/[?#]/)[0];
+  return canAccess(role, pathname) ? path : homeFor(role);
+}
+
+/**
+ * The one guard behind the (main), (admin) and (superadmin) layouts, so the
+ * three can't drift apart. Who may open what is ROUTE_ROLES above.
+ *
+ * Deny by default: nothing renders until the session is confirmed against the
+ * server, and a pathname with no rule is refused.
+ *
+ * Order of checks:
+ *  1. session loading / server unreachable  -> spinner / retry
+ *  2. not signed in                         -> /login (back here after),
+ *                                              or / right after logging out
+ *     email unverified                      -> /access-denied
+ *  3. admin or superadmin on native         -> /access-denied (web only)
+ *  4. role not allowed on this screen:
+ *       - admin/superadmin on a user-only screen -> silently to their home
+ *         (/users), so e.g. a post-login "/dashboard" lands them there
+ *       - anything else                          -> /access-denied (forbidden)
+ */
+export function RoleGuard({ children }) {
+  const { status, isAuthenticated, emailVerified, role, refresh, loggedOut } = useAuth();
+  const pathname = usePathname();
+  // The pathname is the app's, not this group's. With a public screen
+  // (/terms, the landing page) pushed on top, this guard stays mounted
+  // underneath and would judge /terms. Once it has guarded a listed screen,
+  // an unlisted pathname means it's in the background, so it stands down
+  const guardedOnce = useRef(false);
+  const gate = useLoadingGate(status === AUTH_STATUS.LOADING);
+  const listed = Boolean(rolesFor(pathname));
+  if (listed) guardedOnce.current = true;
+  if (!listed && guardedOnce.current) return children;
+
+  if (gate.pending) return <LoadingScreen visible={gate.visible} />;
+
+  // Token held but the server can't be reached to confirm it
+  if (status === AUTH_STATUS.UNREACHABLE) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 12, backgroundColor: colors.bgMint }}>
+        <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>
+          Can&apos;t reach the server
+        </Text>
+        <Text style={{ fontSize: 13, color: colors.textSecondary, textAlign: "center", maxWidth: 320, lineHeight: 19 }}>
+          You&apos;re still signed in. Check your connection and try again.
+        </Text>
+        <Pressable
+          onPress={refresh}
+          style={{ backgroundColor: colors.green600, borderRadius: 8, paddingHorizontal: 20, paddingVertical: 11 }}
+        >
+          <Text style={{ color: colors.white, fontWeight: "700", fontSize: 14 }}>Retry</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (!isAuthenticated) {
+    // Logged out on purpose: the landing page. Otherwise login, then back here
+    if (loggedOut) return <Redirect href="/" />;
+    return <Redirect href={{ pathname: "/login", params: { next: pathname } }} />;
+  }
+
+  if (!emailVerified) {
+    return <Redirect href={{ pathname: "/access-denied", params: { reason: "unverified", from: pathname } }} />;
+  }
+
+  const privileged = ADMIN_ROLES.includes(role);
+
+  if (Platform.OS !== "web" && privileged) {
+    return <Redirect href={{ pathname: "/access-denied", params: { reason: "admin-web-only", from: pathname } }} />;
+  }
+
+  if (!canAccess(role, pathname)) {
+    const allowed = rolesFor(pathname);
+    const userOnlyScreen = Boolean(allowed) && allowed.every((r) => r === "user");
+
+    if (privileged && userOnlyScreen) {
+      return <Redirect href={homeFor(role)} />;
+    }
+    return <Redirect href={{ pathname: "/access-denied", params: { reason: "forbidden", from: pathname } }} />;
+  }
+
+  return children;
 }

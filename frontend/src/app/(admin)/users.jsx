@@ -1,10 +1,12 @@
 import { RoleBadge } from "@/features/admin/components/Badges";
 import DataTable, { DetailGrid, FilterRow, Pager } from "@/features/admin/components/DataTable";
 import { useAdminUsers } from "@/features/admin/hooks/useAdminUsers";
+import Skeleton from "@/shared/components/Skeleton";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
-import { useAuth } from "@/shared/context/AuthContext";
+import { RingInput, useFocusRing } from "@/shared/components/ui/FormInput";
+import { ROLES, useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifit";
+import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { adminStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
@@ -48,23 +50,41 @@ function formatWhen(value) {
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+// Confirm-card copy per action. Every action needs a reason (adminValidators)
+const ACTION_COPY = {
+  role: { button: "Confirm change" },
+  rename: { title: (p) => `Rename ${p.name}?`, button: "Save name" },
+  suspend: { title: (p) => `Suspend ${p.name}?`, body: "They are signed out within 15 minutes and can't sign in until reinstated.", button: "Suspend" },
+  reinstate: { title: (p) => `Reinstate ${p.name}?`, body: "They can sign in again right away.", button: "Reinstate" },
+  reset: { title: (p) => `Require a password reset for ${p.name}?`, body: "Sign-in is refused until they set a new password through Forgot password.", button: "Require reset" },
+  cancelReset: { title: (p) => `Cancel the password reset for ${p.name}?`, body: "Their current password works again right away.", button: "Cancel reset" },
+  delete: { title: (p) => `Permanently delete ${p.name}?`, body: "Their account and all of their data are removed. This can't be undone.", button: "Delete account" },
+};
+
+// `value` null while the counts load: the card renders with a placeholder
 function StatCard({ label, value, tone }) {
   return (
     <View style={[styles.statCard, { backgroundColor: tone.card, borderColor: tone.border }]}>
       <Text style={[styles.statLabel, { color: tone.muted }]}>{label}</Text>
-      <Text style={[styles.statValue, { color: tone.text }]}>{value}</Text>
+      {value == null ? <Skeleton width={56} height={26} /> : <Text style={[styles.statValue, { color: tone.text }]}>{value}</Text>}
     </View>
   );
 }
 
 export default function AdminUsersScreen() {
+  const ring = useFocusRing();
   const { darkMode } = useTheme();
   const tone = getScreenTones(darkMode);
   const { width } = useWindowDimensions();
   const narrow = width < 900;
 
-  const { user, hasRole } = useAuth();
+  const { user, hasRole, role: myRole } = useAuth();
   const canChangeRoles = hasRole("superadmin");
+  const canDelete = hasRole("superadmin");
+
+  // Mirrors loadManageableTarget: never yourself, only a strictly lower role.
+  // A courtesy, the server enforces it
+  const canManage = (row) => row.id !== user?.id && ROLES.indexOf(myRole) > ROLES.indexOf(row.role);
 
   const users = useAdminUsers();
   const [expandedId, setExpandedId] = useState(null);
@@ -80,10 +100,30 @@ export default function AdminUsersScreen() {
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // A rename also needs a first name, the API rejects an empty one
+  const canSubmit = reason.trim().length >= 3
+    && !(pendingChange?.kind === "rename" && !pendingChange.firstName.trim());
+
+  const startAction = (kind, row, extra = {}) => {
+    setPendingChange({ kind, id: row.id, name: row.fullName || row.email, ...extra });
+    setReason("");
+    setNotice(null);
+  };
+
   const submitRoleChange = async () => {
-    if (!pendingChange || reason.trim().length < 3) return;
+    if (!pendingChange || !canSubmit) return;
     setSubmitting(true);
-    const result = await users.changeRole(pendingChange.id, pendingChange.nextRole, reason.trim());
+    const { kind, id } = pendingChange;
+    const why = reason.trim();
+    let result;
+    if (kind === "rename") {
+      result = await users.updateName(id, { firstName: pendingChange.firstName.trim(), lastName: pendingChange.lastName.trim() || null }, why);
+    } else if (kind === "suspend") result = await users.suspend(id, why);
+    else if (kind === "reinstate") result = await users.reinstate(id, why);
+    else if (kind === "reset") result = await users.forcePasswordReset(id, why);
+    else if (kind === "cancelReset") result = await users.cancelPasswordReset(id, why);
+    else if (kind === "delete") result = await users.deleteUser(id, why);
+    else result = await users.changeRole(id, pendingChange.nextRole, why);
     setSubmitting(false);
     setNotice({ ok: result.ok, message: result.message });
     if (result.ok) {
@@ -103,6 +143,7 @@ export default function AdminUsersScreen() {
             {row.fullName || "—"}
             {row.id === user?.id ? "  (you)" : ""}
           </Text>
+          {row.suspendedAt && <Text style={[styles.subCell, { color: colors.danger }]}>Suspended</Text>}
           {/* The email rides under the name below 1100px */}
           {width < 1100 && (
             <Text numberOfLines={1} style={[styles.subCell, { color: tone.muted }]}>{row.email}</Text>
@@ -155,8 +196,49 @@ export default function AdminUsersScreen() {
               ? [{ label: "Terms accepted", value: formatWhen(row.termsAcceptedAt) }]
               : []),
             { label: "Joined", value: formatWhen(row.createdAt) },
+            ...(row.suspendedAt
+              ? [{ label: "Suspended", value: `${formatWhen(row.suspendedAt)} — ${row.suspendedReason || "no reason"}` }]
+              : []),
+            ...(row.passwordResetRequired ? [{ label: "Password reset", value: "Required at next sign-in" }] : []),
           ]}
         />
+
+        {canManage(row) && (
+          <View style={[styles.roleActions, { borderTopColor: tone.border }]}>
+            <Text style={[styles.roleActionsLabel, { color: tone.muted }]}>Account actions</Text>
+            <View style={styles.roleBtnRow}>
+              <Pressable
+                onPress={() => startAction("rename", row, { firstName: row.firstName || "", lastName: row.lastName || "" })}
+                style={[styles.roleBtn, { borderColor: tone.border, backgroundColor: tone.card }]}
+              >
+                <Text style={[styles.roleBtnText, { color: tone.text }]}>Edit name</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => startAction(row.suspendedAt ? "reinstate" : "suspend", row)}
+                style={[styles.roleBtn, { borderColor: tone.border, backgroundColor: tone.card }]}
+              >
+                <Text style={[styles.roleBtnText, { color: tone.text }]}>{row.suspendedAt ? "Reinstate" : "Suspend"}</Text>
+              </Pressable>
+              {/* One button that flips, like Suspend / Reinstate */}
+              <Pressable
+                onPress={() => startAction(row.passwordResetRequired ? "cancelReset" : "reset", row)}
+                style={[styles.roleBtn, { borderColor: tone.border, backgroundColor: tone.card }]}
+              >
+                <Text style={[styles.roleBtnText, { color: tone.text }]}>
+                  {row.passwordResetRequired ? "Cancel password reset" : "Require password reset"}
+                </Text>
+              </Pressable>
+              {canDelete && (
+                <Pressable
+                  onPress={() => startAction("delete", row)}
+                  style={[styles.roleBtn, { borderColor: colors.danger, backgroundColor: tone.card }]}
+                >
+                  <Text style={[styles.roleBtnText, { color: colors.danger }]}>Delete account</Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
+        )}
 
         {canChangeRoles && !isSelf && (
           <View style={[styles.roleActions, { borderTopColor: tone.border }]}>
@@ -165,11 +247,7 @@ export default function AdminUsersScreen() {
               {roleOptions.map((nextRole) => (
                 <Pressable
                   key={nextRole}
-                  onPress={() => {
-                    setPendingChange({ id: row.id, name: row.fullName || row.email, from: row.role, nextRole });
-                    setReason("");
-                    setNotice(null);
-                  }}
+                  onPress={() => startAction("role", row, { from: row.role, nextRole })}
                   style={[styles.roleBtn, { borderColor: tone.border, backgroundColor: tone.card }]}
                 >
                   <Text style={[styles.roleBtnText, { color: tone.text }]}>{nextRole}</Text>
@@ -195,33 +273,32 @@ export default function AdminUsersScreen() {
           <Text style={[styles.eyebrow, { color: tone.muted }]}>ADMINISTRATION</Text>
           <Text style={[styles.pageTitle, { color: tone.text }]}>Users</Text>
           <Text style={[styles.pageSubtitle, { color: tone.muted }]}>
-            Everyone with a NutriFit AI account. Open a row for the full record.
+            Everyone with a NutriFitAI account. Open a row for the full record.
           </Text>
         </View>
-        <Pressable onPress={users.refresh} style={styles.refreshBtn}>
+        <Pressable onPress={users.refresh} disabled={users.loading} style={[styles.refreshBtn, users.loading && { opacity: 0.6 }]}>
           <Ionicons name="refresh" size={16} color={colors.white} />
-          <Text style={styles.refreshText}>Refresh</Text>
+          <Text style={styles.refreshText}>{users.loading ? "Loading" : "Refresh"}</Text>
         </Pressable>
       </View>
 
-      {users.counts && (
-        <View style={styles.statRow}>
-          <StatCard label="TOTAL ACCOUNTS" value={users.counts.total} tone={tone} />
-          <StatCard label="USERS" value={users.counts.user} tone={tone} />
-          <StatCard label="ADMINS" value={users.counts.admin} tone={tone} />
-          <StatCard label="SUPERADMINS" value={users.counts.superadmin} tone={tone} />
-        </View>
-      )}
+      <View style={styles.statRow}>
+        <StatCard label="TOTAL ACCOUNTS" value={users.counts?.total} tone={tone} />
+        <StatCard label="USERS" value={users.counts?.user} tone={tone} />
+        <StatCard label="ADMINS" value={users.counts?.admin} tone={tone} />
+        <StatCard label="SUPERADMINS" value={users.counts?.superadmin} tone={tone} />
+      </View>
 
       <View style={[styles.controls, narrow && styles.controlsNarrow]}>
-        <View style={[styles.searchBox, { backgroundColor: tone.card, borderColor: tone.border }]}>
+        <View style={[styles.searchBox, { backgroundColor: tone.card, borderColor: tone.border }, ring.style]}>
           <Ionicons name="search" size={16} color={tone.muted} />
           <TextInput
+            {...ring.handlers}
             value={users.search}
             onChangeText={users.setSearch}
             placeholder="Search by name or email"
             placeholderTextColor={tone.muted}
-            style={[styles.searchInput, { color: tone.text }]}
+            style={[ring.input, styles.searchInput, { color: tone.text }]}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -257,12 +334,33 @@ export default function AdminUsersScreen() {
       {pendingChange && (
         <View style={[styles.confirmCard, { backgroundColor: tone.card, borderColor: colors.danger }]}>
           <Text style={[styles.confirmTitle, { color: tone.text }]}>
-            Change {pendingChange.name} from {pendingChange.from} to {pendingChange.nextRole}?
+            {pendingChange.kind === "role"
+              ? `Change ${pendingChange.name} from ${pendingChange.from} to ${pendingChange.nextRole}?`
+              : ACTION_COPY[pendingChange.kind].title(pendingChange)}
           </Text>
           <Text style={[styles.confirmBody, { color: tone.muted }]}>
+            {ACTION_COPY[pendingChange.kind].body ? `${ACTION_COPY[pendingChange.kind].body} ` : ""}
             This is recorded in the audit log with your name, the time, and the reason below.
           </Text>
-          <TextInput
+          {pendingChange.kind === "rename" && (
+            <View style={styles.nameRow}>
+              <RingInput
+                value={pendingChange.firstName}
+                onChangeText={(firstName) => setPendingChange((p) => ({ ...p, firstName }))}
+                placeholder="First name"
+                placeholderTextColor={tone.muted}
+                style={[styles.reasonInput, styles.nameInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
+              />
+              <RingInput
+                value={pendingChange.lastName}
+                onChangeText={(lastName) => setPendingChange((p) => ({ ...p, lastName }))}
+                placeholder="Last name"
+                placeholderTextColor={tone.muted}
+                style={[styles.reasonInput, styles.nameInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
+              />
+            </View>
+          )}
+          <RingInput
             value={reason}
             onChangeText={setReason}
             placeholder="Reason (required)"
@@ -279,10 +377,10 @@ export default function AdminUsersScreen() {
             </Pressable>
             <Pressable
               onPress={submitRoleChange}
-              disabled={submitting || reason.trim().length < 3}
-              style={[styles.dangerBtn, (submitting || reason.trim().length < 3) && styles.btnDisabled]}
+              disabled={submitting || !canSubmit}
+              style={[styles.dangerBtn, (submitting || !canSubmit) && styles.btnDisabled]}
             >
-              <Text style={styles.dangerBtnText}>{submitting ? "Saving…" : "Confirm change"}</Text>
+              <Text style={styles.dangerBtnText}>{submitting ? "Saving…" : ACTION_COPY[pendingChange.kind].button}</Text>
             </Pressable>
           </View>
         </View>
@@ -340,6 +438,8 @@ const styles = StyleSheet.create({
   confirmTitle: { fontSize: 15, fontWeight: "700" },
   confirmBody: { fontSize: 12, lineHeight: 18 },
   reasonInput: { borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, minHeight: 64, textAlignVertical: "top" },
+  nameRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  nameInput: { flex: 1, minWidth: 160, minHeight: 0 },
   confirmActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
   secondaryBtn: { borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 16, paddingVertical: 10 },
   secondaryBtnText: { fontSize: 13, fontWeight: "700" },

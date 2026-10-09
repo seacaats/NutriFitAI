@@ -1,11 +1,18 @@
 import { useForgotPasswordForm } from "@/features/auth/hooks/useForgotPasswordForm";
-import FormInput from "@/shared/components/ui/FormInput";
-import NutriFitLogo from "@/shared/components/ui/NutriFitLogo";
+import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { colors, radii, spacing, typography } from "@/shared/theme/nutrifit";
+import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { forgotPasswordStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 
@@ -21,10 +28,6 @@ export default function ForgotPasswordScreen() {
           contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + spacing.lg }]}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.brandRow}>
-            <NutriFitLogo small />
-          </View>
-
           <View style={styles.iconCircle}>
             <Ionicons name="mail-outline" size={40} color={colors.primary} />
           </View>
@@ -36,7 +39,7 @@ export default function ForgotPasswordScreen() {
 
           <FormInput
             icon="mail-outline"
-            placeholder="Email Address"
+            placeholder="Email (e.g. name@example.com)"
             value={form.email}
             onChangeText={form.setEmail}
             keyboardType="email-address"
@@ -44,7 +47,7 @@ export default function ForgotPasswordScreen() {
             style={styles.fieldSpacing}
           />
 
-          {!!form.error && <Text style={styles.error}>{form.error}</Text>}
+          <FormAlert message={form.error} onDismiss={form.dismissError} />
 
           <View style={styles.spacer} />
 
@@ -65,7 +68,6 @@ const styles = StyleSheet.create({
   flex1: { flex: 1 },
   container: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: "center" },
 
-  brandRow: { position: "absolute", top: spacing.sm, left: spacing.lg },
 
   iconCircle: {
     width: 96,
@@ -82,7 +84,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: "800", color: colors.textPrimary },
   subtitle: { fontSize: 14, color: colors.textMuted, marginTop: 6 },
 
-  fieldSpacing: { marginBottom: spacing.md },
+  fieldSpacing: { marginBottom: 20 },
   spacer: { height: spacing.sm },
 
   backLinkWrap: { alignSelf: "center", marginTop: spacing.lg },

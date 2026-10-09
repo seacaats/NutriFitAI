@@ -1,44 +1,31 @@
-import FoodAnalysisChat from "@/features/food/components/FoodAnalysisChat";
+import { FoodCamera, NutritionGoalsCard, RecentMealsCard, RecentScansCard, ScanResultCard } from "@/features/food/components/FoodScanCards";
+import { useFoodScanner } from "@/features/food/hooks/useFoodScanner";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
+import { MenuButton } from "@/shared/components/layout/ScreenHeader";
+import Skeleton from "@/shared/components/Skeleton";
+import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { colors, radii, shellColors } from "@/shared/theme/nutrifit";
+import { resolveMediaUrl } from "@/shared/services/mediaUrl";
+import { colors, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { foodScannerStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
-import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Pressable, Image as RNImage, StyleSheet, Text, View } from "react-native";
 
-
-const DETECTED_FOOD = { name: "Lasagna", grams: "250g" };
-const NUTRITION = { kcal: 520, protein: "26.4g", carbs: "51.8g", fat: "23.8g" };
+// Saved scans come back as /uploads/... paths, staged photos as file:// uris
+const previewSource = (uri) => (uri.startsWith("/uploads/") ? resolveMediaUrl(uri) : uri);
 
 export default function FoodScannerScreen() {
   const { darkMode, shell: c } = useTheme();
-  const { width } = useWindowDimensions();
-  const compact = width < 380;
-
-  const [selectedImage, setSelectedImage] = useState(null);
+  const { meals, scanner, cameraOpen, setCameraOpen, takePhoto, pickImage, newScan, openRecent, first, scanning, imageUri } = useFoodScanner();
+  // Measured width of the photo box. The photo gets it as a plain number,
+  // since Android's image view drew nothing with stretch or % widths here
+  const [imageWidth, setImageWidth] = useState(0);
 
   const card = { backgroundColor: c.cardBg, borderColor: c.dropdownBorder };
   const textColor = { color: c.sidebarText };
   const mutedText = { color: colors.textMuted };
-
-  const pickImage = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) return;
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-
-    if (result.canceled || !result.assets?.[0]) return;
-    setSelectedImage(result.assets[0].uri);
-  };
-
-  const retake = () => setSelectedImage(null);
 
   return (
     <DashboardLayout hideTabBar>
@@ -48,94 +35,140 @@ export default function FoodScannerScreen() {
           <Ionicons name="chevron-back" size={22} color={c.sidebarText} />
         </Pressable>
 
-        <Text style={[styles.heading, textColor]}>Scan Food</Text>
-
-        <View style={styles.topBarIcons}>
-          <Ionicons name="flash-outline" size={20} color={c.notifIcon} />
-          <Ionicons name="ellipse-outline" size={20} color={c.notifIcon} />
+        <View style={styles.headingWrap}>
+          <Text style={[styles.heading, textColor]}>Scan Food</Text>
+          <Text style={styles.headingSub}>Snap a meal for its nutrition</Text>
         </View>
+
+        <View style={styles.topBarSpacer}><MenuButton /></View>
       </View>
 
-      {selectedImage ? (
+      {/* Recent first, so what's already logged is the first thing seen */}
+      <RecentMealsCard meals={meals} darkMode={darkMode} onViewAll={() => router.push("/food-scanner/meal-history")} loading={first} />
+      {/* Recent scans next to recent meals, so both histories sit together */}
+      <View style={styles.section}>
+        <RecentScansCard
+          scans={scanner.recent}
+          loading={first}
+          darkMode={darkMode}
+          onOpen={openRecent}
+          onViewAll={() => router.push("/food-scanner/scan-history")}
+          onDelete={scanner.removeScan}
+        />
+      </View>
+      {/* The day's targets, after what's been eaten against them */}
+      <View style={styles.section}>
+        <NutritionGoalsCard meals={meals} darkMode={darkMode} loading={first} />
+      </View>
+
+      {/* Scan Area */}
+      <Text style={[styles.sectionTitle, textColor]}>Scan Food</Text>
+      {first ? (
+        // Scan zone and its two buttons, at their real sizes
         <>
-          {/* Image Preview */}
-          <View style={styles.imageWrap}>
-            <Image source={{ uri: selectedImage }} style={styles.image} contentFit="cover" />
-            <View style={styles.markerDot} />
-          </View>
-
-          {/* Detected Food */}
-          <View style={[styles.detectedRow, compact && styles.stackRow]}>
-            <View style={styles.flex1}>
-              <Text style={[styles.detectedHeading, textColor]}>Detected Food</Text>
-              <View style={styles.detectedItemRow}>
-                <View style={styles.detectedDot} />
-                <Text style={[styles.detectedItemText, textColor]}>{DETECTED_FOOD.name}</Text>
-                <Text style={styles.detectedItemGrams}>{DETECTED_FOOD.grams}</Text>
-              </View>
-            </View>
-
-            {/* Total Nutrition */}
-            {/* No orange token exists in shellColors, so this pastel stays bespoke */}
-            <View style={[styles.nutritionCard, { backgroundColor: darkMode ? "#2c2620" : "#fdf1ea" }]}>
-              <Text style={[styles.nutritionHeading, textColor]}>Total Nutrition</Text>
-              <Text style={[styles.nutritionKcal, textColor]}>{NUTRITION.kcal} kcal</Text>
-
-              <NutritionRow label="Protein" value={NUTRITION.protein} color={colors.orange400} textColor={textColor} />
-              <NutritionRow label="Carbs" value={NUTRITION.carbs} color={shellColors.primary} textColor={textColor} />
-              <NutritionRow label="Fat" value={NUTRITION.fat} color={shellColors.primary} textColor={textColor} />
-            </View>
-          </View>
-
-          {/* Add to Meal */}
-          <Pressable style={styles.addBtn}>
-            <Text style={styles.addBtnText}>Add to Meal</Text>
-          </Pressable>
-
-          <View style={styles.chatSection}>
-            <FoodAnalysisChat food={DETECTED_FOOD} nutrition={NUTRITION} darkMode={darkMode} />
-          </View>
+          <Skeleton width="100%" height={260} />
+          <Skeleton width="100%" height={44} style={styles.buttonSkeleton} />
+          <Skeleton width="100%" height={44} style={styles.buttonSkeleton} />
         </>
       ) : (
-        <>
-          {/* Empty State */}
-          <View style={[styles.scanZone, { backgroundColor: c.activeNavBg }]}>
-            <View style={styles.scanIconCircle}>
-              <Ionicons name="camera" size={30} color={colors.white} />
+      <>
+      {cameraOpen ? (
+        <FoodCamera onCapture={takePhoto} onCancel={() => setCameraOpen(false)} darkMode={darkMode} height={420} />
+      ) : imageUri ? (
+        <View style={styles.imageWrap} onLayout={(e) => setImageWidth(Math.round(e.nativeEvent.layout.width))}>
+          {/* React Native's own Image here, not expo-image. Keyed by the
+              uri so a new photo or an opened scan always mounts a fresh view */}
+          {imageWidth > 0 && (
+            <RNImage
+              key={imageUri}
+              source={{ uri: previewSource(imageUri), headers: { "ngrok-skip-browser-warning": "true" } }}
+              style={{ width: imageWidth, height: 260, borderRadius: radii.sm }}
+              resizeMode="cover"
+            />
+          )}
+          {scanning && (
+            <View style={styles.scanningOverlay}>
+              <ActivityIndicator color={colors.white} size="large" />
+              <Text style={styles.scanningText}>Analyzing your food...</Text>
             </View>
-
-            <Text style={styles.scanTitle}>Scan or Upload Food</Text>
-            <Text style={[styles.scanDesc, mutedText]}>Take a photo of your food or upload from your gallery.</Text>
+          )}
+        </View>
+      ) : (
+        <View style={[styles.scanZone, { backgroundColor: c.activeNavBg }]}>
+          <View style={styles.scanIconCircle}>
+            <Ionicons name="camera" size={30} color={colors.white} />
           </View>
 
-          <Pressable
-            onPress={pickImage}
-            style={[styles.uploadBtn, { borderColor: card.borderColor, backgroundColor: c.cardBg }]}
-          >
+          <Text style={styles.scanTitle}>Scan or Upload Food</Text>
+          <Text style={[styles.scanDesc, mutedText]}>Take a photo of your food or upload from your gallery.</Text>
+        </View>
+      )}
+
+      {/* Staged: nothing has been sent yet, so the photo can still be swapped */}
+      {!cameraOpen && scanner.staged && (
+        <>
+          <ScreenError message={scanner.error} onDismiss={scanner.clearError} />
+          <Pressable onPress={scanner.analyze} disabled={scanning} style={[styles.cameraBtn, scanning && styles.disabled]}>
+            <Ionicons name="sparkles-outline" size={17} color={colors.white} />
+            <Text style={styles.cameraBtnText}>{scanning ? "Analyzing..." : "Analyze & Save"}</Text>
+          </Pressable>
+          <View style={styles.btnRow}>
+            <Pressable onPress={() => setCameraOpen(true)} disabled={scanning} style={[styles.uploadBtn, styles.flex1, card]}>
+              <Ionicons name="camera-outline" size={17} color={shellColors.primary} />
+              <Text style={styles.uploadBtnText}>Retake</Text>
+            </Pressable>
+            <Pressable onPress={pickImage} disabled={scanning} style={[styles.uploadBtn, styles.flex1, card]}>
+              <Ionicons name="images-outline" size={17} color={shellColors.primary} />
+              <Text style={styles.uploadBtnText}>Reupload</Text>
+            </Pressable>
+          </View>
+        </>
+      )}
+
+      {/* Saved scan on screen: start over */}
+      {!cameraOpen && !scanner.staged && scanner.scan && (
+        <Pressable onPress={newScan} style={[styles.uploadBtn, card]}>
+          <Ionicons name="add-circle-outline" size={17} color={shellColors.primary} />
+          <Text style={styles.uploadBtnText}>New Scan</Text>
+        </Pressable>
+      )}
+
+      {/* Nothing yet: choose a source */}
+      {!cameraOpen && !imageUri && (
+        <>
+          <ScreenError message={scanner.error} onDismiss={scanner.clearError} />
+          <Pressable onPress={() => setCameraOpen(true)} style={styles.cameraBtn}>
+            <Ionicons name="camera-outline" size={17} color={colors.white} />
+            <Text style={styles.cameraBtnText}>Take Photo</Text>
+          </Pressable>
+
+          <Pressable onPress={pickImage} style={[styles.uploadBtn, card]}>
             <Ionicons name="cloud-upload-outline" size={17} color={shellColors.primary} />
             <Text style={styles.uploadBtnText}>Upload Image</Text>
           </Pressable>
         </>
       )}
+      </>
+      )}
+
+      {/* Always on the page, filled in once a scan is analyzed. "Ask AI
+          Coach" there opens the coach about this scan or the logged meal */}
+      <View style={styles.lastSection}>
+        <ScanResultCard scanner={scanner} darkMode={darkMode} onScanAnother={newScan} loading={first} />
+      </View>
     </DashboardLayout>
   );
 }
 
-function NutritionRow({ label, value, color, textColor }) {
-  return (
-    <View style={styles.nutritionRow}>
-      <View style={[styles.nutritionBar, { backgroundColor: color }]} />
-      <Text style={[styles.nutritionLabel, textColor]}>{label}</Text>
-      <Text style={[styles.nutritionValue, textColor]}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
+  headingWrap: { alignItems: "center" },
+  headingSub: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
   ...foodScannerStyles,
 
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 },
-  topBarIcons: { flexDirection: "row", gap: 12 },
+  topBarSpacer: { width: 24, alignItems: "flex-end" },
+  sectionTitle: { fontSize: 16, fontWeight: "800", marginTop: 20, marginBottom: 10 },
+  disabled: { opacity: 0.5 },
 
   // Empty state
   scanZone: {
@@ -149,38 +182,36 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   scanIconCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: shellColors.primary, alignItems: "center", justifyContent: "center" },
-
-  // Result state
-  imageWrap: { borderRadius: radii.sm, overflow: "visible" },
-  image: { width: "100%", height: 260, borderRadius: radii.sm },
-  markerDot: {
-    position: "absolute",
-    bottom: -14,
-    alignSelf: "center",
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  cameraBtn: {
+    marginTop: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: radii.sm,
     backgroundColor: shellColors.primary,
-    borderWidth: 3,
-    borderColor: colors.white,
+    paddingVertical: 12,
   },
+  cameraBtnText: { fontSize: 14, fontWeight: "700", color: colors.white },
+  btnRow: { flexDirection: "row", gap: 8 },
 
-  detectedRow: { flexDirection: "row", gap: 12, marginTop: 28, alignItems: "flex-start" },
-  detectedHeading: { fontSize: 15, fontWeight: "700" },
-  detectedItemRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 },
-  detectedDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: shellColors.primary },
-  detectedItemText: { fontSize: 13, fontWeight: "500" },
-  detectedItemGrams: { fontSize: 13, color: colors.textMuted },
+  // Photo
+  // Holds the 260 height itself, the photo inside is sized from onLayout
+  // No overflow:hidden + borderRadius here. On Android that clip left the
+  // photo undrawn until something remounted it (same for the camera box),
+  // so the image and the overlay round their own corners instead
+  imageWrap: { alignSelf: "stretch", minHeight: 260 },
+  scanningOverlay: {
+    position: "absolute", top: 0, left: 0, right: 0, height: 260,
+    borderRadius: radii.sm,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  scanningText: { color: colors.white, fontSize: 13, fontWeight: "600" },
 
-  nutritionCard: { flex: 1, borderRadius: radii.sm, padding: 14 },
-  nutritionHeading: { fontSize: 13, fontWeight: "700" },
-  nutritionKcal: { fontSize: 20, fontWeight: "800", marginTop: 4, marginBottom: 8 },
-  nutritionRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
-  nutritionBar: { width: 3, height: 12, borderRadius: 2 },
-  nutritionLabel: { flex: 1, fontSize: 11 },
-  nutritionValue: { fontSize: 11, fontWeight: "700" },
-
-  addBtn: { marginTop: 28, borderRadius: radii.sm, backgroundColor: shellColors.primary, paddingVertical: 14, alignItems: "center" },
-  addBtnText: { fontSize: 15, fontWeight: "700", color: colors.white },
-  chatSection: { marginTop: 16, marginBottom: 16 },
+  section: { marginTop: 16 },
+  buttonSkeleton: { marginTop: 16 },
+  lastSection: { marginTop: 16, marginBottom: 16 },
 });

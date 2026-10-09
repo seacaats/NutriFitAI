@@ -3,7 +3,7 @@ const { Router } = require('express');
 const controller = require('../controllers/authController');
 const { validateBody } = require('../middleware/validateMiddleware');
 const { requireAuth } = require('../middleware/authMiddleware');
-const { allowOauthPopup } = require('../middleware/oauthheadersMiddleware');
+const { allowOauthPopup } = require('../middleware/oauthHeadersMiddleware');
 
 const { loginLimiter, registerLimiter, otpRequestLimiter, otpVerifyLimiter, 
         refreshLimiter } = require('../middleware/rateLimitMiddleware');

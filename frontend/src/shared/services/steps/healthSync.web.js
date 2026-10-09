@@ -5,7 +5,6 @@
  */
 
 export const MAX_BACKFILL_DAYS = 0;
-export const SOURCE = null;
 
 const healthSync = {
   source: null,

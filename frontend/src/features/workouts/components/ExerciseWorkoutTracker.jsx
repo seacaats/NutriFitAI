@@ -1,4 +1,6 @@
-import { chipTints, shellColors, colors as themeColors } from "@/shared/theme/nutrifit";
+import { requireOnline, unreachableMessage } from "@/shared/api/apiClient";
+import { FormAlert } from "@/shared/components/ui/FormInput";
+import { chipTints, shellColors, colors as themeColors } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -17,19 +19,25 @@ function formatTime(totalSeconds) {
  *   on completion or on abandoning after at least one set. Must not throw and
  *   must not block
  * @param {boolean} [props.darkMode]
+ * @param {number} [props.initialSets] starting target, e.g. from a routine or schedule
+ * @param {number} [props.initialReps]
  */
 export default function ExerciseWorkoutTracker({
   exerciseName,
   exerciseRef,
   onFinish,
   darkMode = false,
+  initialSets = 3,
+  initialReps = 10,
 }) {
-  const [sets, setSets] = useState(3);
-  const [reps, setReps] = useState(10);
+  const [sets, setSets] = useState(initialSets);
+  const [reps, setReps] = useState(initialReps);
   const [completedSets, setCompletedSets] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isActive, setIsActive] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
+  // Shown in the dialog itself: the screen's alert is behind it
+  const [blocked, setBlocked] = useState("");
 
   /**
    * elapsedSeconds is a counter, not a clock, so there was nothing here to
@@ -168,8 +176,15 @@ export default function ExerciseWorkoutTracker({
             <Counter label="Sets" value={sets} onDecrease={() => adjust(setSets, -1, 1, 10)} onIncrease={() => adjust(setSets, 1, 1, 10)} colors={colors} />
             <Counter label="Reps per set" value={reps} onDecrease={() => adjust(setReps, -1, 1, 100)} onIncrease={() => adjust(setReps, 1, 1, 100)} colors={colors} />
           </View>
+          <FormAlert message={blocked} onDismiss={() => setBlocked("")} />
           <Pressable
             onPress={() => {
+              // The session is logged when it ends, so don't start one offline
+              if (!requireOnline()) {
+                setBlocked(unreachableMessage());
+                return;
+              }
+              setBlocked("");
               startedAtRef.current = new Date().toISOString();
               loggedRef.current = false;
               setHasStarted(true);

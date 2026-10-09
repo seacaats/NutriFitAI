@@ -1,41 +1,37 @@
-import { useLogout } from "@/features/auth/hooks/useLogout";
+import { joinedLabel, OverviewBoxes } from "@/features/user/components/ProfileWidgets";
+import { ProfileInput, ProfilePlanField, ProfileSelect, ProfileWorkoutPrefs } from "@/features/user/components/ProfileFields";
 import { useProfileForm } from "@/features/user/hooks/useProfileForm";
+import { useWorkoutOptions } from "@/features/workouts/components/WorkoutPrefsPicker";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
 import Skeleton from "@/shared/components/Skeleton";
 import AvatarImage from "@/shared/components/ui/AvatarImage";
-import { ACTIVITY_LEVELS, GENDERS, GOALS } from "@/shared/constants/profileOptions";
+import { ScreenError } from "@/shared/components/ui/ScreenAlert";
+import {
+  ACTIVITY_OPTIONS,
+  DIET_PREFERENCES,
+  GOAL_OPTIONS,
+  HEALTH_CONDITIONS,
+  HEALTH_CONDITIONS_NOTE,
+  NO_DIET_PREFERENCE,
+  SEXES,
+} from "@/shared/constants/profileOptions";
+import { useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { colors, getScreenTones, radii, screenTones, shellColors } from "@/shared/theme/nutrifit";
+import { colors, getScreenPalette, getScreenTones, radii, screenTones, shellColors } from "@/shared/theme/nutrifitai";
 import { profileStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
-  Switch,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
 
-const GOAL_LABELS = GOALS.map((g) => g.label);
-const ACTIVITY_LABELS = ACTIVITY_LEVELS.map((a) => a.label);
-
-function joinedLabel(createdAt) {
-  if (!createdAt) return null;
-  const date = new Date(createdAt);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-}
-
 export default function ProfileScreen() {
-  const { darkMode, toggleTheme, shell: c } = useTheme();
-  const router = useRouter();
-  const logout = useLogout();
+  const { darkMode, shell: c } = useTheme();
   const { width } = useWindowDimensions();
   const compact = width < 380;
 
@@ -62,58 +58,37 @@ export default function ProfileScreen() {
     cancelEditing,
   } = useProfileForm();
 
-  const [avatarFailed, setAvatarFailed] = useState(false);
+  // Workout preferences are user-only, like the Workouts screen they shape
+  const isUser = useAuth().role === "user";
+  const workoutOptions = useWorkoutOptions(isUser);
+
+  // Remembered per URL, so a new photo after a failed load gets shown
+  const [failedUrl, setFailedUrl] = useState(null);
   // A staged pick is a local file, so it always renders; only a stored URL can
   // 404 and fall back to the placeholder.
-  const avatarUrl = avatarDirty || !avatarFailed ? avatarPreviewUri : null;
+  const avatarUrl = avatarDirty || avatarPreviewUri !== failedUrl ? avatarPreviewUri : null;
 
-  const card = { backgroundColor: c.cardBg, borderColor: c.dropdownBorder };
-  const textColor = { color: c.sidebarText };
-  const divider = { borderTopColor: c.dropdownBorder };
-  const iconCircleBg = { backgroundColor: c.activeNavBg };
+  // Same card tones as web and the dashboard
+  const { card, textColor } = getScreenPalette(darkMode);
   const inputBg = { backgroundColor: darkMode ? shellColors.dark.cardBg : colors.white };
   const disabledBg = { backgroundColor: getScreenTones(darkMode).surfaceMuted };
+  // Dropdown colors for the current theme
+  const palette = { surface: inputBg.backgroundColor, border: card.borderColor, text: textColor.color };
 
-  const notificationsOn = serverData?.notificationsEnabled ?? true;
   const displayName = [form.firstName, form.lastName].filter(Boolean).join(" ") || "Your profile";
   const joined = joinedLabel(serverData?.createdAt);
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <View style={styles.skeletonWrap}>
-          <View style={styles.skeletonTopBar}>
-            <Skeleton width={100} height={26} />
-          </View>
-
-          <View style={[styles.card, card, styles.skeletonHeaderCard]}>
-            <Skeleton width={72} height={72} borderRadius={36} />
-            <View style={styles.skeletonHeaderText}>
-              <Skeleton width="55%" height={18} />
-              <Skeleton width="35%" height={12} style={{ marginTop: 8 }} />
-            </View>
-          </View>
-
-          <View style={[styles.card, card, styles.skeletonFieldsCard]}>
-            <Skeleton width="30%" height={13} />
-            <Skeleton width="100%" height={40} style={{ marginTop: 10 }} />
-            <Skeleton width="30%" height={13} style={{ marginTop: 16 }} />
-            <Skeleton width="100%" height={40} style={{ marginTop: 10 }} />
-            <Skeleton width="30%" height={13} style={{ marginTop: 16 }} />
-            <Skeleton width="100%" height={40} style={{ marginTop: 10 }} />
-          </View>
-        </View>
-      </DashboardLayout>
-    );
-  }
-
+  // First load renders the real page with placeholders where the values go,
+  // so nothing shifts once the profile arrives. The title renders as is
   return (
     <DashboardLayout>
       {/* Header */}
       <View style={styles.topBar}>
         <Text style={[styles.pageTitle, textColor]}>Profile</Text>
 
-        {editing ? (
+        {loading ? (
+          <Skeleton width={76} height={32} borderRadius={radii.pill} />
+        ) : editing ? (
           <View style={styles.topActions}>
             <Pressable onPress={cancelEditing} disabled={saving}>
               <Text style={[styles.cancelText, { color: c.inactiveNavText }]}>Cancel</Text>
@@ -137,12 +112,7 @@ export default function ProfileScreen() {
         )}
       </View>
 
-      {!!error && (
-        <View style={styles.errorBanner}>
-          <Ionicons name="alert-circle-outline" size={15} color={colors.danger} />
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
+      <ScreenError message={error} />
 
       {saved && (
         <View style={styles.savedBanner}>
@@ -154,38 +124,50 @@ export default function ProfileScreen() {
       {/* Info Banner */}
       <View style={styles.banner}>
         <View style={[styles.bannerRow, compact && styles.bannerRowCompact]}>
-          <View style={[styles.avatarCircle, { backgroundColor: c.avatarBg }]}>
-            {avatarUrl ? (
-              <AvatarImage
-                uri={avatarUrl}
-                style={styles.avatarImg}
-                contentFit="cover"
-                onError={() => setAvatarFailed(true)}
-              />
-            ) : (
-              <Ionicons name="person" size={40} color={screenTones.dark.muted} />
-            )}
-            {avatarUploading && (
-              <View style={styles.avatarBusy}>
-                <ActivityIndicator size="small" color={colors.white} />
-              </View>
-            )}
+          {/* Photo, with Remove under it like web; the camera badge changes it */}
+          <View style={styles.avatarCol}>
+            <View style={[styles.avatarCircle, { backgroundColor: c.avatarBg }]}>
+              {loading ? null : avatarUrl ? (
+                <AvatarImage
+                  uri={avatarUrl}
+                  style={styles.avatarImg}
+                  contentFit="cover"
+                  onError={() => setFailedUrl(avatarPreviewUri)}
+                />
+              ) : (
+                <Ionicons name="person" size={40} color={screenTones.dark.muted} />
+              )}
+              {avatarUploading && (
+                <View style={styles.avatarBusy}>
+                  <ActivityIndicator size="small" color={colors.white} />
+                </View>
+              )}
 
-            {!avatarDirty && (
-              <Pressable
-                style={styles.avatarEditBadge}
-                onPress={changeAvatar}
-                disabled={avatarUploading}
-                hitSlop={6}
-              >
-                <Ionicons name="camera" size={13} color={colors.white} />
+              {!avatarDirty && !loading && (
+                <Pressable
+                  style={styles.avatarEditBadge}
+                  onPress={changeAvatar}
+                  disabled={avatarUploading}
+                  hitSlop={6}
+                >
+                  <Ionicons name="camera" size={13} color={colors.white} />
+                </Pressable>
+              )}
+            </View>
+            {!avatarDirty && !loading && !!avatarUrl && (
+              <Pressable onPress={removeAvatar} disabled={avatarUploading} hitSlop={6}>
+                <Text style={styles.removePhotoText}>Remove</Text>
               </Pressable>
             )}
           </View>
 
           <View style={styles.flex1}>
             <View style={styles.rowGap}>
-              <Text style={styles.name}>{displayName}</Text>
+              {loading ? (
+                <Skeleton width={140} height={20} style={styles.onBanner} />
+              ) : (
+                <Text style={styles.name}>{displayName}</Text>
+              )}
             </View>
 
             {/* Staged: nothing has been sent yet, so the choice is reversible. */}
@@ -204,172 +186,76 @@ export default function ProfileScreen() {
 
             <View style={styles.metaRow}>
               <Ionicons name="mail" size={13} color={colors.white} />
-              <Text style={styles.metaTextUnderline}>{form.email || "—"}</Text>
+              {loading ? (
+                <Skeleton width={160} height={12} style={styles.onBanner} />
+              ) : (
+                <Text style={styles.metaTextUnderline}>{form.email || "—"}</Text>
+              )}
             </View>
 
-            {!!joined && (
+            {(loading || !!joined) && (
               <View style={styles.metaRow}>
                 <Ionicons name="calendar" size={13} color={colors.white} />
-                <Text style={styles.metaText}>Joined {joined}</Text>
+                {loading ? (
+                  <Skeleton width={110} height={12} style={styles.onBanner} />
+                ) : (
+                  <Text style={styles.metaText}>Joined {joined}</Text>
+                )}
               </View>
             )}
           </View>
         </View>
       </View>
 
-      {/* My Overview */}
+      {/* Overview: the body numbers at a glance, BMI worked out from them */}
       <View style={[styles.card, card, styles.overviewCard]}>
-        <Text style={[styles.cardTitle, textColor]}>My Overview</Text>
+        <Text style={[styles.cardTitle, textColor]}>Overview</Text>
 
-        <View style={[styles.overviewRow, compact && styles.wrapRow]}>
-          <OverviewBox icon="resize-outline" label="Height" value={form.height || "—"} unit={form.height ? "cm" : ""} compact={compact} card={card} textColor={textColor} />
-          <OverviewBox icon="barbell" label="Weight" value={form.weight || "—"} unit={form.weight ? "kg" : ""} compact={compact} card={card} textColor={textColor} />
-          <OverviewBox icon="body-outline" label="BMI" value={bmi ?? "—"} note={bmiLabel} compact={compact} card={card} textColor={textColor} />
-          <OverviewBox icon="locate" label="Goal" value={form.goal || "Not set"} compact={compact} card={card} textColor={textColor} />
-        </View>
+        <OverviewBoxes form={form} bmi={bmi} bmiLabel={bmiLabel} card={card} textColor={textColor} loading={loading} compact={compact} />
       </View>
 
       {/* Personal Information */}
       <View style={[styles.card, card]}>
         <Text style={[styles.cardTitle, textColor]}>Personal Information</Text>
 
-        <Field label="First Name" value={form.firstName} onChangeText={(v) => handleChange("firstName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} />
-        <Field label="Last Name" value={form.lastName} onChangeText={(v) => handleChange("lastName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} />
-        <Field label="Age" value={String(form.age ?? "")} onChangeText={(v) => handleChange("age", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} />
-        <Field label="Height (cm)" value={String(form.height ?? "")} onChangeText={(v) => handleChange("height", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} />
-        <Field label="Weight (kg)" value={String(form.weight ?? "")} onChangeText={(v) => handleChange("weight", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} />
-
+        <ProfileInput label="First Name" value={form.firstName} onChangeText={(v) => handleChange("firstName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput label="Last Name" value={form.lastName} onChangeText={(v) => handleChange("lastName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
         {/* Email is read-only: changing it would invalidate email verification,
             so it needs its own re-verification flow rather than a silent edit. */}
-        <Field label="Email" value={form.email} editing={false} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} />
+        <ProfileInput label="Email" value={form.email} editing={false} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
 
-        <Chips label="Gender" value={form.gender} options={GENDERS} onSelect={(v) => handleChange("gender", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} />
+        <ProfileInput label="Age" value={String(form.age ?? "")} onChangeText={(v) => handleChange("age", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput label="Height (cm)" value={String(form.height ?? "")} onChangeText={(v) => handleChange("height", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput label="Weight (kg)" value={String(form.weight ?? "")} onChangeText={(v) => handleChange("weight", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+
+        <ProfileSelect label="Sex" value={form.sex} options={SEXES} onSelect={(v) => handleChange("sex", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} loading={loading} />
       </View>
 
-      {/* My Plan */}
+      {/* Fitness Goals */}
       <View style={[styles.card, card]}>
-        <Text style={[styles.cardTitle, textColor]}>My Plan</Text>
+        <Text style={[styles.cardTitle, textColor]}>Fitness Goals</Text>
 
-        <Chips label="Fitness Goal" value={form.goal} options={GOAL_LABELS} onSelect={(v) => handleChange("goal", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} />
-        <Chips label="Activity Level" value={form.activity} options={ACTIVITY_LABELS} onSelect={(v) => handleChange("activity", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} />
-        <Field label="Diet Preference" value={form.dietPreference} onChangeText={(v) => handleChange("dietPreference", v)} editing={editing} placeholder="e.g. High Protein" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} />
-        <Field label="Health Conditions" value={form.healthConditions} onChangeText={(v) => handleChange("healthConditions", v)} editing={editing} placeholder="None" multiline card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} />
+        {/* Same dropdowns as registration; "Other" allows custom text */}
+        <ProfilePlanField label="Primary Goal" value={form.goal} options={GOAL_OPTIONS} icon="flag-outline" placeholder="Select your goal" otherPlaceholder="Your goal (e.g. Run a 10K)" onChange={(v) => handleChange("goal", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
+        <ProfilePlanField label="Activity Level" value={form.activity} options={ACTIVITY_OPTIONS} icon="pulse-outline" placeholder="Select your activity level" otherPlaceholder="Your activity (e.g. Shift work)" onChange={(v) => handleChange("activity", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
+        <ProfilePlanField label="Diet Preference" value={form.dietPreference} options={DIET_PREFERENCES} multiple exclusive={NO_DIET_PREFERENCE} icon="nutrition-outline" placeholder="Select any that apply" otherPlaceholder="Your diet (e.g. Intermittent Fasting)" onChange={(v) => handleChange("dietPreference", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
+        <ProfilePlanField label="Health Conditions" value={form.healthConditions} options={HEALTH_CONDITIONS} multiple icon="medkit-outline" placeholder="Select any that apply (or None)" otherPlaceholder="Your condition (e.g. Gout)" onChange={(v) => handleChange("healthConditions", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} note={HEALTH_CONDITIONS_NOTE} />
+
+        <ProfileInput label="Target Weight (kg)" value={String(form.targetWeight ?? "")} onChangeText={(v) => handleChange("targetWeight", v)} editing={editing} keyboardType="numeric" placeholder="Not set" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput label="Weekly Pace (kg/week, 0.1–1)" value={String(form.weeklyPace ?? "")} onChangeText={(v) => handleChange("weeklyPace", v)} editing={editing} keyboardType="decimal-pad" placeholder="Not set" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        {isUser && (
+          <ProfileWorkoutPrefs label="Workout Preferences" value={form.workoutPrefs} onChange={(v) => handleChange("workoutPrefs", v)} options={workoutOptions} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} loading={loading} darkMode={darkMode} />
+        )}
       </View>
 
-      {/* Settings */}
-      <View style={[styles.card, card]}>
-        <Text style={[styles.cardTitle, textColor]}>Settings</Text>
-
-        <View style={styles.listDivider}>
-          <View style={styles.listRow}>
-            <Ionicons name="notifications-outline" size={19} color={c.notifIcon} style={styles.rowIconPlain} />
-            <Text style={[styles.rowLabel, textColor]}>Notifications</Text>
-            {/* Read-only for now: the column is persisted but nothing
-                consumes it yet, so offering a toggle would imply a
-                notification system that doesn't exist. */}
-            <Switch
-              value={notificationsOn}
-              disabled
-              trackColor={{ true: c.primary, false: c.toggleTrackOff }}
-              thumbColor={colors.white}
-            />
-          </View>
-
-          <Pressable style={[styles.listRow, styles.listRowBorder, divider]} onPress={toggleTheme}>
-            <Ionicons name={darkMode ? "moon" : "sunny"} size={19} color={c.notifIcon} style={styles.rowIconPlain} />
-            <Text style={[styles.rowLabel, textColor]}>Theme</Text>
-            <Text style={styles.rowValue}>{darkMode ? "Dark" : "Light"}</Text>
-            <Ionicons name="chevron-forward" size={16} color={screenTones.dark.muted} />
-          </Pressable>
-
-          <Pressable style={[styles.listRow, styles.listRowBorder, divider]} onPress={logout}>
-            <Ionicons name="log-out-outline" size={19} color={c.danger} style={styles.rowIconPlain} />
-            <Text style={[styles.rowLabel, styles.logoutText]}>Logout</Text>
-          </Pressable>
-        </View>
-      </View>
     </DashboardLayout>
-  );
-}
-
-function OverviewBox({ icon, label, value, unit, note, compact, card, textColor }) {
-  return (
-    <View style={[styles.overviewBox, compact && styles.overviewBoxCompact, { borderColor: card.borderColor }]}>
-      <View style={styles.overviewLabelRow}>
-        <Ionicons name={icon} size={13} color={shellColors.primary} />
-        <Text style={[styles.overviewLabel, textColor]}>{label}</Text>
-      </View>
-      <Text style={[styles.overviewValue, textColor]} numberOfLines={1}>
-        {value}
-        {unit ? <Text style={styles.overviewUnit}> {unit}</Text> : null}
-      </Text>
-      {!!note && <Text style={styles.overviewNote}>{note}</Text>}
-    </View>
-  );
-}
-
-function Field({ label, value, onChangeText, editing, card, textColor, inputBg, disabledBg, keyboardType = "default", placeholder, multiline = false }) {
-  return (
-    <View style={styles.fieldWrap}>
-      <Text style={[styles.fieldLabel, textColor]}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        editable={editing && !!onChangeText}
-        keyboardType={keyboardType}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textMuted}
-        multiline={multiline}
-        style={[
-          styles.input,
-          multiline && styles.inputMultiline,
-          { borderColor: card.borderColor },
-          editing && onChangeText ? inputBg : disabledBg,
-          textColor,
-        ]}
-      />
-    </View>
-  );
-}
-
-function Chips({ label, value, options, onSelect, editing, card, textColor, disabledBg }) {
-  return (
-    <View style={styles.fieldWrap}>
-      <Text style={[styles.fieldLabel, textColor]}>{label}</Text>
-
-      {editing ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
-          {options.map((opt) => {
-            const active = opt === value;
-            return (
-              <Pressable
-                key={opt}
-                onPress={() => onSelect(opt)}
-                style={[styles.chip, { borderColor: card.borderColor }, active && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, active ? styles.chipTextActive : textColor]}>{opt}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      ) : (
-        <View style={[styles.input, { borderColor: card.borderColor }, disabledBg, styles.selectDisplay]}>
-          <Text style={[styles.selectDisplayText, textColor]}>{value || "Not set"}</Text>
-        </View>
-      )}
-    </View>
   );
 }
 
 const styles = StyleSheet.create({
   ...profileStyles,
 
-  loadingWrap: { paddingVertical: 64, alignItems: "center", justifyContent: "center" },
-  skeletonWrap: {},
-  skeletonTopBar: { marginBottom: 12 },
-  skeletonHeaderCard: { flexDirection: "row", alignItems: "center", gap: 16 },
-  skeletonHeaderText: { flex: 1 },
-  skeletonFieldsCard: {},
+  onBanner: { backgroundColor: "rgba(255,255,255,0.25)" },
 
   topBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   pageTitle: { fontSize: 22, fontWeight: "800" },
@@ -388,16 +274,6 @@ const styles = StyleSheet.create({
   },
   saveBtnText: { fontSize: 12, fontWeight: "700", color: colors.white },
 
-  errorBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: colors.dangerBg,
-    borderRadius: radii.sm,
-    padding: 10,
-    marginBottom: 10,
-  },
-  errorText: { flex: 1, fontSize: 12, color: colors.danger, fontWeight: "600" },
   savedBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -452,39 +328,12 @@ const styles = StyleSheet.create({
   avatarStagedSave: { fontSize: 11, fontWeight: "800", color: colors.white },
   avatarStagedUndo: { fontSize: 11, fontWeight: "700", color: colors.white },
   metaText: { fontSize: 12, color: colors.white },
+  avatarCol: { alignItems: "center", gap: 6 },
+  removePhotoText: { fontSize: 11, fontWeight: "700", color: colors.white, textDecorationLine: "underline" },
   metaTextUnderline: { fontSize: 12, color: colors.white, textDecorationLine: "underline" },
 
   // Cards
   card: { borderRadius: radii.sm, borderWidth: 1, padding: 16, marginTop: 12 },
   overviewCard: { marginTop: -10 },
   cardTitle: { fontSize: 17, fontWeight: "700", marginBottom: 12 },
-
-  // Overview
-  overviewRow: { flexDirection: "row", gap: 8 },
-  overviewBox: { flex: 1, borderRadius: radii.sm, borderWidth: 1, padding: 8 },
-  overviewBoxCompact: { flexBasis: "47%" },
-  overviewLabelRow: { flexDirection: "row", alignItems: "center", gap: 4, flexWrap: "wrap" },
-  overviewLabel: { fontSize: 10, fontWeight: "600" },
-  overviewValue: { fontSize: 15, fontWeight: "800", marginTop: 8 },
-  overviewUnit: { fontSize: 11, fontWeight: "500", color: colors.textMuted },
-  overviewNote: { fontSize: 10, fontWeight: "700", color: shellColors.primary, marginTop: 2 },
-
-  // Fields
-  fieldWrap: { marginBottom: 12 },
-  fieldLabel: { fontSize: 12, fontWeight: "700", marginBottom: 6 },
-  input: { borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
-  inputMultiline: { minHeight: 72, textAlignVertical: "top" },
-  selectDisplayText: { fontSize: 14 },
-  chipsRow: { flexDirection: "row", gap: 8, paddingVertical: 2 },
-  chip: { borderWidth: 1, borderRadius: radii.pill, paddingHorizontal: 12, paddingVertical: 7 },
-  chipText: { fontSize: 12, fontWeight: "600" },
-
-  // Settings list
-  listDivider: {},
-  listRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
-  listRowBorder: { borderTopWidth: 1 },
-  rowIconPlain: { width: 22 },
-  rowLabel: { flex: 1, fontSize: 14, fontWeight: "700" },
-  rowValue: { maxWidth: "42%", flexShrink: 1, textAlign: "right", fontSize: 12, color: colors.textMuted, marginRight: 4 },
-  logoutText: { color: colors.danger },
 });

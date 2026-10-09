@@ -1,18 +1,29 @@
-import { ACTIVITY_LEVELS, GENDERS, GOALS, useRegisterForm } from "@/features/auth/hooks/useRegisterForm";
-import FormInput from "@/shared/components/ui/FormInput";
-import NutriFitLogo from "@/shared/components/ui/NutriFitLogo";
+import OptionSelect from "@/features/auth/components/OptionSelect";
+import {
+  ACTIVITY_OPTIONS,
+  DIET_PREFERENCES,
+  GOAL_OPTIONS,
+  HEALTH_CONDITIONS,
+  SEXES,
+  useRegisterForm,
+} from "@/features/auth/hooks/useRegisterForm";
+import { AuthBackLink } from "@/shared/components/layout/PublicHeader";
+import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { colors, radii, spacing } from "@/shared/theme/nutrifit";
+import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { registerStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import {
-  KeyboardAvoidingView, Platform, Pressable, ScrollView,
-  StyleSheet, Text, TextInput, View
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-const ACTIVITY_LABELS = ACTIVITY_LEVELS.map((a) => a.label);
 
 export default function RegisterScreen() {
   const form = useRegisterForm();
@@ -32,85 +43,65 @@ export default function RegisterScreen() {
           {/* Step 2 replaces step 1 in place -- same container */}
           {!form.detailsOpen ? (
             <>
-              <Pressable style={styles.brandRow} onPress={() => router.push("/")} hitSlop={8}>
-                <NutriFitLogo small />
-              </Pressable>
+              {/* Step 1 only; step 2 has its own Back to step 1 */}
+              <AuthBackLink fallback={form.backTo} />
 
               <View style={styles.headerBlock}>
                 <Text style={styles.title}>Create your account</Text>
                 <Text style={styles.subtitle}>Start your healthy lifestyle today!</Text>
               </View>
+              <FormAlert tone="info" message={form.notice} onDismiss={form.dismissNotice} />
 
-              <View style={[styles.row, styles.fieldSpacing]}>
-                <FormInput
-                  icon="person-outline"
-                  placeholder="First Name"
-                  value={form.firstName}
-                  onChangeText={form.setFirstName}
-                  style={styles.thirdField}
-                />
-                <FormInput
-                  placeholder="Last Name"
-                  value={form.lastName}
-                  onChangeText={form.setLastName}
-                  style={styles.thirdField}
-                />
-              </View>
+              <FormInput
+                icon="person-outline"
+                placeholder="First name (e.g. Juan)"
+                value={form.firstName}
+                onChangeText={form.setFirstName}
+                style={styles.accountFieldSpacing}
+              />
+              <FormInput
+                icon="person-outline"
+                placeholder="Last name (e.g. Dela Cruz)"
+                value={form.lastName}
+                onChangeText={form.setLastName}
+                style={styles.accountFieldSpacing}
+              />
 
               <FormInput
                 icon="mail-outline"
-                placeholder="Email Address"
+                placeholder="Email (e.g. name@example.com)"
                 value={form.email}
                 onChangeText={form.setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
-                style={styles.fieldSpacing}
+                style={styles.accountFieldSpacing}
               />
 
               <FormInput
                 icon="lock-closed-outline"
-                placeholder="Password"
+                placeholder="Password (min. 8 characters)"
                 value={form.password}
                 onChangeText={form.setPassword}
                 secureTextEntry
                 showToggle
                 visible={form.showPassword}
                 onToggleVisible={form.toggleShowPassword}
-                style={styles.fieldSpacing}
+                style={styles.accountFieldSpacing}
               />
 
               <FormInput
                 icon="lock-closed-outline"
-                placeholder="Confirm Password"
+                placeholder="Re-enter password"
                 value={form.confirmPassword}
                 onChangeText={form.setConfirmPassword}
                 secureTextEntry
                 showToggle
                 visible={form.showConfirmPassword}
                 onToggleVisible={form.toggleShowConfirmPassword}
-                style={styles.fieldSpacing}
+                style={styles.accountFieldSpacing}
               />
 
-              {/* Age / Height / Weight */}
-              <View style={[styles.row, styles.fieldSpacing]}>
-                <FormInput icon="calendar-outline" placeholder="Age" value={form.age} onChangeText={form.setAge} keyboardType="number-pad" style={styles.thirdField} />
-                <FormInput icon="resize-outline" placeholder="Height" value={form.height} onChangeText={form.setHeight} style={styles.thirdField} />
-                <FormInput icon="barbell-outline" placeholder="Weight" value={form.weight} onChangeText={form.setWeight} style={styles.thirdField} />
-              </View>
-
-              {/* Gender */}
-              <Text style={styles.sectionLabel}>
-                <Ionicons name="person-circle-outline" size={13} color={colors.green700} /> Gender
-              </Text>
-              <View style={[styles.genderRow, styles.fieldSpacing]}>
-                {GENDERS.map((g) => (
-                  <Pressable key={g} onPress={() => form.setGender(g)} style={[styles.genderPill, form.gender === g && styles.genderPillActive]}>
-                    <Text style={[styles.genderText, form.gender === g && styles.genderTextActive]}>{g}</Text>
-                  </Pressable>
-                ))}
-              </View>
-
-              {!!form.error && <Text style={styles.error}>{form.error}</Text>}
+              <FormAlert message={form.error} onDismiss={form.dismissError} />
 
               <PrimaryButton title="Continue" onPress={form.continueToDetails} style={styles.submitBtn} />
 
@@ -129,79 +120,108 @@ export default function RegisterScreen() {
               </Pressable>
 
               <View style={styles.headerBlock}>
-                <Text style={styles.title}>Nutrition & health</Text>
-                <Text style={styles.subtitle}>Help us tailor your plan. Everything here is optional except the consent below.</Text>
+                <Text style={styles.title}>About You</Text>
+                <Text style={styles.subtitle}>Help us tailor your plan. Pick "None" or "No Preference" if nothing applies, or "Other" to type your own.</Text>
               </View>
+
+              {/* Age */}
+              <FormInput
+                icon="calendar-outline"
+                placeholder="Age"
+                value={form.age}
+                onChangeText={form.setAge}
+                keyboardType="number-pad"
+                style={styles.fieldSpacing}
+              />
+
+              {/* Height / Weight */}
+              <View style={[styles.row, styles.fieldSpacing]}>
+                <FormInput icon="resize-outline" placeholder="Height (cm)" value={form.height} onChangeText={form.setHeight} keyboardType="decimal-pad" style={styles.thirdField} />
+                <FormInput icon="barbell-outline" placeholder="Weight (kg)" value={form.weight} onChangeText={form.setWeight} keyboardType="decimal-pad" style={styles.thirdField} />
+              </View>
+
+              {/* Sex -- optional; tap again to clear */}
+              <Text style={styles.sectionLabel}>
+                <Ionicons name="person-circle-outline" size={13} color={colors.green700} /> Sex <Text style={styles.optional}>(optional)</Text>
+              </Text>
+              <View style={[styles.genderRow, styles.fieldSpacing]}>
+                {SEXES.map((g) => (
+                  <Pressable key={g} onPress={() => form.selectSex(g)} style={[styles.genderPill, form.sex === g && styles.genderPillActive]}>
+                    <Text style={[styles.genderText, form.sex === g && styles.genderTextActive]}>{g}</Text>
+                  </Pressable>
+                ))}
+              </View>
+
 
               <Text style={styles.sectionLabel}>
                 <Ionicons name="restaurant-outline" size={13} color={colors.green700} /> Diet Preference
               </Text>
-              <FormInput
+              <OptionSelect
+                multiple
                 icon="nutrition-outline"
-                placeholder="e.g. High Protein, Vegetarian"
+                placeholder="Select any that apply"
+                options={DIET_PREFERENCES}
                 value={form.dietPreference}
-                onChangeText={form.setDietPreference}
+                open={form.openPicker === "diet"}
+                onToggle={() => form.togglePicker("diet")}
+                onSelect={form.toggleDietPreference}
+                otherValue={form.dietOther}
+                onOtherChange={form.setDietOther}
+                otherPlaceholder="Your diet (e.g. Intermittent Fasting)"
                 style={styles.fieldSpacing}
               />
 
               <Text style={styles.sectionLabel}>
                 <Ionicons name="medkit-outline" size={13} color={colors.green700} /> Health Conditions
               </Text>
-              <TextInput
-                style={[styles.textArea, styles.fieldSpacing]}
-                placeholder="e.g. Diabetes, food allergies -- or leave blank"
-                placeholderTextColor={colors.textMuted}
+              <OptionSelect
+                multiple
+                icon="medkit-outline"
+                placeholder="Select any that apply (or None)"
+                options={HEALTH_CONDITIONS}
                 value={form.healthConditions}
-                onChangeText={form.setHealthConditions}
-                multiline
-                numberOfLines={3}
+                open={form.openPicker === "health"}
+                onToggle={() => form.togglePicker("health")}
+                onSelect={form.toggleHealthCondition}
+                otherValue={form.healthOther}
+                onOtherChange={form.setHealthOther}
+                otherPlaceholder="Your condition (e.g. Gout)"
+                style={styles.fieldSpacing}
               />
 
-              {/* Activity Level -- same dropdown pattern as Fitness Goal */}
               <Text style={styles.sectionLabel}>
                 <Ionicons name="pulse-outline" size={13} color={colors.green700} /> Activity Level
               </Text>
-              <Pressable style={[styles.goalSelect, styles.fieldSpacing]} onPress={form.toggleActivityPicker}>
-                <View style={styles.goalSelectLeft}>
-                  <Ionicons name="pulse-outline" size={16} color={colors.green600} />
-                  <Text style={form.activity ? styles.goalText : styles.goalPlaceholder}>{form.activity || "Select your activity level"}</Text>
-                </View>
-                <Ionicons name={form.activityPickerOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.green600} />
-              </Pressable>
+              <OptionSelect
+                icon="pulse-outline"
+                placeholder="Select your activity level"
+                options={ACTIVITY_OPTIONS}
+                value={form.activity}
+                open={form.openPicker === "activity"}
+                onToggle={() => form.togglePicker("activity")}
+                onSelect={form.selectActivity}
+                otherValue={form.activityOther}
+                onOtherChange={form.setActivityOther}
+                otherPlaceholder="Your activity (e.g. Shift work, on my feet)"
+                style={styles.fieldSpacing}
+              />
 
-              {form.activityPickerOpen && (
-                <View style={[styles.goalOptions, styles.fieldSpacing]}>
-                  {ACTIVITY_LABELS.map((label) => (
-                    <Pressable key={label} style={styles.goalOption} onPress={() => form.selectActivity(label)}>
-                      <Text style={styles.goalOptionText}>{label}</Text>
-                      {form.activity === label && <Ionicons name="checkmark" size={16} color={colors.primary} />}
-                    </Pressable>
-                  ))}
-                </View>
-              )}
-
-              {/* Fitness Goal */}
               <Text style={styles.sectionLabel}>
                 <Ionicons name="flag-outline" size={13} color={colors.green700} /> Fitness Goal
               </Text>
-              <Pressable style={[styles.goalSelect, styles.fieldSpacing]} onPress={form.toggleGoalPicker}>
-                <View style={styles.goalSelectLeft}>
-                  <Ionicons name="flag-outline" size={16} color={colors.green600} />
-                  <Text style={form.goal ? styles.goalText : styles.goalPlaceholder}>{form.goal || "Select your goal"}</Text>
-                </View>
-                <Ionicons name={form.goalPickerOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.green600} />
-              </Pressable>
-
-              {form.goalPickerOpen && (
-                <View style={[styles.goalOptions, styles.fieldSpacing]}>
-                  {GOALS.map((g) => (
-                    <Pressable key={g.value} style={styles.goalOption} onPress={() => form.selectGoal(g.label)}>
-                      <Text style={styles.goalOptionText}>{g.label}</Text>
-                      {form.goal === g.label && <Ionicons name="checkmark" size={16} color={colors.primary} />}
-                    </Pressable>
-                  ))}
-                </View>
-              )}
+              <OptionSelect
+                icon="flag-outline"
+                placeholder="Select your goal"
+                options={GOAL_OPTIONS}
+                value={form.goal}
+                open={form.openPicker === "goal"}
+                onToggle={() => form.togglePicker("goal")}
+                onSelect={form.selectGoal}
+                otherValue={form.goalOther}
+                onOtherChange={form.setGoalOther}
+                otherPlaceholder="Your goal (e.g. Run a 10K)"
+                style={styles.fieldSpacing}
+              />
 
               {/* Consent */}
               <Pressable style={styles.termsRow} onPress={form.toggleAgreeTerms}>
@@ -209,7 +229,7 @@ export default function RegisterScreen() {
                   {form.agreeTerms && <Ionicons name="checkmark" size={11} color={colors.white} />}
                 </View>
                 <Text style={styles.termsText}>
-                  I consent to NutriFit AI collecting and storing the dietary and health information I provide above, as described in the{" "}
+                  I consent to NutriFitAI collecting and storing the dietary and health information I provide above, as described in the{" "}
                   <Text onPress={form.goToTerms} style={styles.termsLink}>
                     Terms of Service and Privacy Policy
                   </Text>
@@ -217,9 +237,9 @@ export default function RegisterScreen() {
                 </Text>
               </Pressable>
 
-              {!!form.error && <Text style={styles.error}>{form.error}</Text>}
+              <FormAlert message={form.error} onDismiss={form.dismissError} />
 
-              <PrimaryButton title="Create Account" icon="person-add-outline" onPress={form.handleCreateAccount} loading={form.loading} style={styles.submitBtn} />
+              <PrimaryButton title="Create Account" onPress={form.handleCreateAccount} loading={form.loading} style={styles.submitBtn} />
             </>
           )}
         </ScrollView>
@@ -241,19 +261,12 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: "800", color: colors.textPrimary },
   subtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 4 },
 
-  fieldSpacing: { marginBottom: spacing.sm },
+  fieldSpacing: { marginBottom: 14 },
+  // Sits under the field above it, inside that field's spacing
+  fieldNote: { marginTop: -8, marginBottom: 14, fontSize: 11, lineHeight: 16, color: colors.textSecondary },
   genderPill: { flex: 1, paddingVertical: 12, borderRadius: radii.sm, backgroundColor: colors.white, alignItems: "center", borderWidth: 1, borderColor: colors.border },
-  goalSelect: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: colors.white,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 12,
-    height: 46,
-  },
+  hint: { ...typography.tiny, color: colors.textSecondary, marginTop: -4, marginBottom: 10 },
+  optional: { fontWeight: "400", color: colors.textMuted },
 
   checkbox: {
     width: 18,

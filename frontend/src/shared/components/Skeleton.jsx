@@ -1,5 +1,6 @@
+import { useTrackSkeleton } from "@/shared/state/skeletonTracker";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { getScreenTones, radii } from "@/shared/theme/nutrifit";
+import { getScreenTones, radii } from "@/shared/theme/nutrifitai";
 import { useEffect, useRef } from "react";
 import { Animated, Easing } from "react-native";
 
@@ -17,6 +18,8 @@ export default function Skeleton({ width = "100%", height = 16, borderRadius = r
   const { darkMode } = useTheme();
   const tone = getScreenTones(darkMode);
   const opacity = useRef(new Animated.Value(0.45)).current;
+
+  useTrackSkeleton();
 
   useEffect(() => {
     const pulse = Animated.loop(

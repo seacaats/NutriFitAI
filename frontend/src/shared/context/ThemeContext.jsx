@@ -1,4 +1,4 @@
-import defaultTokens, { getShellColors } from "@/shared/theme/nutrifit";
+import defaultTokens, { getShellColors } from "@/shared/theme/nutrifitai";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 

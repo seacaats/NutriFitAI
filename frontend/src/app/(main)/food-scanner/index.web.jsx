@@ -1,182 +1,185 @@
-import FoodAnalysisChat from "@/features/food/components/FoodAnalysisChat";
+import { FoodCamera, NutritionGoalsCard, RecentMealsCard, RecentScansCard, ScanResultCard } from "@/features/food/components/FoodScanCards";
+import { RESULT_CARD_MIN_HEIGHT, ScanImage } from "@/features/food/components/FoodScanParts";
+import { useFoodScanner } from "@/features/food/hooks/useFoodScanner";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
+import Skeleton from "@/shared/components/Skeleton";
+import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { chipTints, colors, getScreenPalette, getScreenTones, radii, screenTones, shellColors, spacing } from "@/shared/theme/nutrifit";
+import { colors, getScreenPalette, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { foodScannerStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
-import * as ImagePicker from "expo-image-picker";
-import { useState } from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-
-const RECENT_SCANS = [
-  { name: "Mixed Fruits", calories: "250 kcal", time: "Today, 12:45 PM" },
-  { name: "Vegetable Macaroni", calories: "450 kcal", time: "Today, 8:15 AM" },
-  { name: "Vegetable Salad", calories: "320 kcal", time: "Today, 7:30 AM" },
-];
-
-const DETECTED_FOOD = { name: "Lasagna", grams: "250g" };
-const NUTRITION = { kcal: 520, protein: "26.4g", carbs: "51.8g", fat: "23.8g" };
+import { useRouter } from "expo-router";
+import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 export default function FoodScannerScreen() {
   const { width } = useWindowDimensions();
   const narrow = width < 900;
-  const { darkMode } = useTheme();
-
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [fileName, setFileName] = useState("");
+  const { darkMode, shell: c } = useTheme();
+  const router = useRouter();
+  const { meals, scanner, cameraOpen, setCameraOpen, takePhoto, pickImage, newScan, openRecent, first, scanning, imageUri } = useFoodScanner();
 
   const { card, textColor, mutedText } = getScreenPalette(darkMode);
-
-  // Select image
-  const pickImage = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) return;
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-
-    if (result.canceled || !result.assets?.[0]) return;
-
-    const asset = result.assets[0];
-
-    setSelectedImage(asset.uri);
-    setFileName(asset.fileName || asset.uri.split("/").pop() || "photo.jpg");
-  };
-
-  // Remove image
-  const removeImage = () => {
-    setSelectedImage(null);
-    setFileName("");
-  };
+  // Side by side, both cards of a row fill its height so their edges line up
+  const fill = narrow ? null : styles.fill;
 
   return (
     <DashboardLayout>
+      <Text style={[styles.pageTitle, { color: c.sidebarText }]}>Food Scanner</Text>
+
+      {/* Recent first: Recent Meals | Recent Scans */}
       <View style={[styles.row, narrow && styles.stackRow]}>
-        {/* Scan Area */}
-        <View style={[styles.card, card, styles.flex1]}>
-          <Text style={[styles.heading, textColor]}>Scan Food</Text>
-          <Text style={[styles.subheading, mutedText]}>Take a photo or upload an image of your food.</Text>
-
-          <View style={[styles.scanArea, { backgroundColor: darkMode ? "#253522" : "#f0ffe9" }]}>
-            {selectedImage ? (
-              <View style={styles.previewWrap}>
-                <Image source={{ uri: selectedImage }} style={styles.previewImage} contentFit="contain" />
-
-                <Pressable onPress={removeImage} style={styles.removeBtn}>
-                  <Ionicons name="close" size={16} color={colors.white} />
-                </Pressable>
-
-                <Text style={[styles.fileName, mutedText]}>{fileName}</Text>
-              </View>
-            ) : (
-              <>
-                <View style={styles.scanIconCircle}>
-                  <Ionicons name="camera" size={30} color={colors.white} />
-                </View>
-
-                <Text style={styles.scanTitle}>Scan or Upload Food</Text>
-
-                <Text style={[styles.scanDesc, mutedText]}>
-                  Take a photo of your food or upload from your gallery.
-                </Text>
-              </>
-            )}
-          </View>
-
-          {/* Upload Button */}
-          <Pressable
-            onPress={pickImage}
-            style={[styles.uploadBtn, { borderColor: card.borderColor, backgroundColor: darkMode ? "#252525" : colors.white }]}
-          >
-            <Ionicons name="cloud-upload-outline" size={17} color={shellColors.primary} />
-            <Text style={styles.uploadBtnText}>Upload Image</Text>
-          </Pressable>
+        <View style={[styles.flex1, narrow && styles.stackItem]}>
+          <RecentMealsCard meals={meals} darkMode={darkMode} onViewAll={() => router.push("/food-scanner/meal-history")} style={fill} loading={first} />
         </View>
-
-        {/* Scan History */}
-        <View style={[styles.card, card, styles.flex1]}>
-          <View style={styles.rowBetween}>
-            <Text style={[styles.heading, textColor]}>Recent Scans</Text>
-            <Pressable>
-              <Text style={styles.viewAll}>View All</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.scansList}>
-            {RECENT_SCANS.map((scan) => (
-              <RecentScan key={scan.name} {...scan} dark={darkMode} borderColor={card.borderColor} textColor={textColor} />
-            ))}
-          </View>
+        <View style={[styles.flex1, narrow && styles.stackItem]}>
+          <RecentScansCard
+            scans={scanner.recent}
+            loading={first}
+            darkMode={darkMode}
+            onOpen={openRecent}
+            onViewAll={() => router.push("/food-scanner/scan-history")}
+            onDelete={scanner.removeScan}
+            style={fill}
+          />
         </View>
       </View>
 
-      {selectedImage && (
-        <View style={[styles.analysisRow, narrow && styles.stackRow]}>
-          <View style={[styles.card, card, styles.resultCard]}>
-            <View style={styles.resultHeader}>
-              <View style={styles.detectedIcon}><Ionicons name="checkmark" size={18} color={colors.white} /></View>
-              <View>
-                <Text style={[styles.resultEyebrow, mutedText]}>DETECTED FOOD</Text>
-                <Text style={[styles.resultName, textColor]}>{DETECTED_FOOD.name}</Text>
-                <Text style={[styles.resultServing, mutedText]}>Estimated serving: {DETECTED_FOOD.grams}</Text>
+      {/* The day's targets, under what's been eaten against them */}
+      <NutritionGoalsCard meals={meals} darkMode={darkMode} loading={first} style={styles.goalsCard} />
+
+      {/* Then Scan Food | Detected Food */}
+      <View style={[styles.row, styles.rowGap, narrow && styles.stackRow]}>
+        {/* Scan Area */}
+        <View style={[styles.card, styles.scanCard, card, styles.flex1, narrow && styles.stackItem]}>
+          <Text style={[styles.heading, textColor]}>Scan Food</Text>
+          <Text style={[styles.subheading, mutedText]}>Use your camera or upload an image of your food.</Text>
+
+          {first ? (
+            // Scan area and its two buttons, at their real sizes
+            <>
+              <Skeleton width="100%" height={285} style={styles.cameraWrap} />
+              <View style={styles.actions}>
+                <Skeleton width="100%" height={44} style={styles.flex1} />
+                <Skeleton width="100%" height={44} style={styles.flex1} />
               </View>
+            </>
+          ) : (
+          <>
+          {cameraOpen ? (
+            <View style={styles.cameraWrap}>
+              <FoodCamera onCapture={takePhoto} onCancel={() => setCameraOpen(false)} darkMode={darkMode} height={320} />
             </View>
-            <Text style={[styles.nutritionTitle, textColor]}>Nutrition estimate</Text>
-            <View style={styles.nutritionGrid}>
-              <NutritionMetric label="Calories" value={`${NUTRITION.kcal}`} suffix="kcal" color={colors.orange400} textColor={textColor} />
-              <NutritionMetric label="Protein" value={NUTRITION.protein} color={shellColors.primary} textColor={textColor} />
-              <NutritionMetric label="Carbs" value={NUTRITION.carbs} color={colors.blue400} textColor={textColor} />
-              <NutritionMetric label="Fat" value={NUTRITION.fat} color={chipTints.orange.icon} textColor={textColor} />
+          ) : (
+            <View style={[styles.scanArea, { backgroundColor: darkMode ? "#253522" : "#f0ffe9" }]}>
+              {imageUri ? (
+                <View style={styles.previewWrap}>
+                  <ScanImage uri={imageUri} style={styles.previewImage} contentFit="contain" />
+
+                  {scanning && (
+                    <View style={styles.scanningOverlay}>
+                      <ActivityIndicator color={colors.white} size="large" />
+                      <Text style={styles.scanningText}>Analyzing your food...</Text>
+                    </View>
+                  )}
+
+                  {!!scanner.staged?.name && <Text style={[styles.fileName, mutedText]}>{scanner.staged.name}</Text>}
+                </View>
+              ) : (
+                <>
+                  <View style={styles.scanIconCircle}>
+                    <Ionicons name="camera" size={30} color={colors.white} />
+                  </View>
+
+                  <Text style={styles.scanTitle}>Scan or Upload Food</Text>
+
+                  <Text style={[styles.scanDesc, mutedText]}>
+                    Take a photo with your camera or webcam, or upload one.
+                  </Text>
+                </>
+              )}
             </View>
-          </View>
-          <View style={styles.chatWrap}>
-            <FoodAnalysisChat food={DETECTED_FOOD} nutrition={NUTRITION} darkMode={darkMode} />
-          </View>
+          )}
+
+          <ScreenError message={scanner.scan ? "" : scanner.error} onDismiss={scanner.clearError} />
+
+          {/* Staged: nothing has been sent yet, so the photo can still be swapped */}
+          {!cameraOpen && scanner.staged && (
+            <>
+              <Pressable onPress={scanner.analyze} disabled={scanning} style={[styles.cameraBtn, styles.analyzeBtn, scanning && styles.disabled]}>
+                <Ionicons name="sparkles-outline" size={17} color={colors.white} />
+                <Text style={styles.cameraBtnText}>{scanning ? "Analyzing..." : "Analyze & Save"}</Text>
+              </Pressable>
+              <View style={styles.actions}>
+                <SecondaryButton icon="camera-outline" label="Retake" onPress={() => setCameraOpen(true)} disabled={scanning} card={card} darkMode={darkMode} />
+                <SecondaryButton icon="images-outline" label="Reupload" onPress={pickImage} disabled={scanning} card={card} darkMode={darkMode} />
+              </View>
+            </>
+          )}
+
+          {/* Saved scan on screen: start over */}
+          {!cameraOpen && !scanner.staged && scanner.scan && (
+            <View style={styles.actions}>
+              <SecondaryButton icon="add-circle-outline" label="New Scan" onPress={newScan} card={card} darkMode={darkMode} />
+            </View>
+          )}
+
+          {/* Nothing yet: choose a source */}
+          {!cameraOpen && !imageUri && (
+            <View style={styles.actions}>
+              <Pressable onPress={() => setCameraOpen(true)} style={[styles.cameraBtn, styles.flex1]}>
+                <Ionicons name="camera-outline" size={17} color={colors.white} />
+                <Text style={styles.cameraBtnText}>Use Camera</Text>
+              </Pressable>
+              <SecondaryButton icon="cloud-upload-outline" label="Upload Image" onPress={pickImage} card={card} darkMode={darkMode} />
+            </View>
+          )}
+          </>
+          )}
         </View>
-      )}
+
+        {/* Always on the page, filled in once a scan is analyzed. "Ask AI
+            Coach" there opens the coach about this scan or the logged meal */}
+        <View style={[styles.flex1, narrow && styles.stackItem]}>
+          <ScanResultCard scanner={scanner} darkMode={darkMode} onScanAnother={newScan} style={fill} loading={first} />
+        </View>
+      </View>
     </DashboardLayout>
   );
 }
 
-function NutritionMetric({ label, value, suffix, color, textColor }) {
+function SecondaryButton({ icon, label, onPress, disabled, card, darkMode }) {
   return (
-    <View style={styles.nutritionMetric}>
-      <View style={[styles.metricLine, { backgroundColor: color }]} />
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={[styles.metricValue, textColor]}>{value}<Text style={styles.metricSuffix}> {suffix}</Text></Text>
-    </View>
-  );
-}
-
-function RecentScan({ name, calories, time, dark, borderColor, textColor }) {
-  return (
-    <Pressable style={[styles.scanRow, { borderColor }]}>
-      <View style={[styles.scanThumb, { backgroundColor: getScreenTones(dark).border }]} />
-
-      <View style={styles.flex1}>
-        <Text style={[styles.scanName, textColor]}>{name}</Text>
-        <Text style={styles.scanCalories}>{calories}</Text>
-        <Text style={styles.scanTime}>{time}</Text>
-      </View>
-
-      <Ionicons name="chevron-forward" size={18} color={screenTones.dark.muted} />
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={[
+        styles.uploadBtn,
+        styles.flex1,
+        styles.actionUpload,
+        { borderColor: card.borderColor, backgroundColor: darkMode ? "#252525" : colors.white },
+        disabled && styles.disabled,
+      ]}
+    >
+      <Ionicons name={icon} size={17} color={shellColors.primary} />
+      <Text style={styles.uploadBtnText}>{label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  pageTitle: { fontSize: 24, fontWeight: "800", marginBottom: 16 },
   ...foodScannerStyles,
 
   row: { flexDirection: "row", gap: 16 },
+  fill: { flex: 1 },
+  // Same floor as the Detected Food card next to it
+  scanCard: { minHeight: RESULT_CARD_MIN_HEIGHT },
+  rowGap: { marginTop: 16 },
+  goalsCard: { marginTop: 16 },
   card: { borderRadius: radii.sm, borderWidth: 1, padding: 16 },
-  rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  disabled: { opacity: 0.5 },
 
   subheading: { fontSize: 12, marginTop: 4 },
-  viewAll: { fontSize: 12, fontWeight: "600", color: shellColors.primary },
 
   // Scan area
   scanArea: {
@@ -190,6 +193,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  cameraWrap: { marginTop: 20 },
   scanIconCircle: {
     width: 64,
     height: 64,
@@ -201,48 +205,38 @@ const styles = StyleSheet.create({
 
   previewWrap: { width: "100%", position: "relative" },
   previewImage: { width: "100%", height: 230, borderRadius: radii.sm },
-  removeBtn: {
+  scanningOverlay: {
     position: "absolute",
-    right: 8,
-    top: 8,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.danger,
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 230,
+    borderRadius: radii.sm,
+    backgroundColor: "rgba(0,0,0,0.45)",
     alignItems: "center",
     justifyContent: "center",
+    gap: 10,
   },
+  scanningText: { color: colors.white, fontSize: 13, fontWeight: "600" },
   fileName: { marginTop: 12, textAlign: "center", fontSize: 12 },
+  alert: { marginTop: 12 },
 
-  // Scan history
-  scansList: { marginTop: 16, gap: spacing.sm },
-  scanRow: {
+  actions: { flexDirection: "row", gap: 8, marginTop: 12 },
+  // uploadBtn carries its own marginTop for when it stands alone
+  actionUpload: { marginTop: 0 },
+  cameraBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    justifyContent: "center",
+    gap: 8,
     borderRadius: radii.sm,
-    borderWidth: 1,
-    padding: 8,
+    backgroundColor: shellColors.primary,
+    paddingVertical: 12,
   },
-  scanThumb: { width: 64, height: 64, borderRadius: 6 },
-  scanName: { fontSize: 14, fontWeight: "600" },
-  scanCalories: { marginTop: 4, fontSize: 12, fontWeight: "600", color: shellColors.primary },
-  scanTime: { marginTop: 4, fontSize: 10, color: colors.textMuted },
+  analyzeBtn: { marginTop: 16 },
+  cameraBtnText: { fontSize: 14, fontWeight: "700", color: colors.white },
 
-  // Scan result and result-aware assistant
-  analysisRow: { flexDirection: "row", gap: 16, marginTop: 16, alignItems: "stretch" },
-  resultCard: { flex: 0.75 },
-  chatWrap: { flex: 1.25 },
-  resultHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
-  detectedIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: shellColors.primary, alignItems: "center", justifyContent: "center" },
-  resultEyebrow: { fontSize: 9, fontWeight: "800", letterSpacing: 0.8 },
-  resultName: { marginTop: 2, fontSize: 20, fontWeight: "800" },
-  resultServing: { marginTop: 2, fontSize: 10 },
-  nutritionTitle: { marginTop: 22, marginBottom: 10, fontSize: 12, fontWeight: "700" },
-  nutritionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  nutritionMetric: { width: "48%", minHeight: 68, borderRadius: 8, backgroundColor: "rgba(127,127,127,0.07)", padding: 10 },
-  metricLine: { width: 22, height: 3, borderRadius: 2, marginBottom: 7 },
-  metricLabel: { color: colors.textMuted, fontSize: 9 },
-  metricValue: { marginTop: 2, fontSize: 15, fontWeight: "800" },
-  metricSuffix: { color: colors.textMuted, fontSize: 9, fontWeight: "500" },
+  // Stacked (narrow) children size to their content. With flex: n they get a
+  // zero basis in a column, collapse, and the next card draws over them
+  stackItem: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
 });

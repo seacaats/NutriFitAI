@@ -1,21 +1,25 @@
+import { RangeTabs, RecentDaysCard, StepGoalCard, StepStats, TodayStepsCard } from "@/features/steps/components/StepCards";
+import { StepDayEditModal } from "@/features/steps/components/StepHistory";
 import { useDailySteps } from "@/features/steps/hooks/useDailySteps";
 import { useStepSync } from "@/features/steps/hooks/useStepSync";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
+import ScreenHeader from "@/shared/components/layout/ScreenHeader";
 import Skeleton from "@/shared/components/Skeleton";
+import { ScreenAlert, ScreenError } from "@/shared/components/ui/ScreenAlert";
+import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { formatNumber, friendlyDate } from "@/shared/services/steps/stepDates";
-import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifit";
+import { formatNumber, todayISO } from "@/shared/utils/dates";
+import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { stepsStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback } from "react";
+import { useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
-    Linking,
-    Pressable,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 /**
@@ -34,6 +38,9 @@ const BAR_HEIGHT = 120;
 export default function StepsScreen() {
   const { shell: c, darkMode } = useTheme();
   const steps = useDailySteps();
+  const router = useRouter();
+  // { date, current } while the edit dialog is open
+  const [editing, setEditing] = useState(null);
   // Re-reading after a sync is what turns "pushed 7 days" into visible bars.
   const sync = useStepSync({ onSynced: steps.refresh });
 
@@ -49,26 +56,29 @@ export default function StepsScreen() {
   };
 
   const onRefresh = useCallback(async () => {
-    await sync.refresh();
-    steps.refresh();
+    // Reload even when the phone sync fails, or the skeletons would stay
+    try {
+      await sync.refresh();
+    } finally {
+      steps.refresh();
+    }
   }, [sync, steps]);
+  usePullRefresh(onRefresh);
 
-  const maxSteps = Math.max(...steps.series.map((d) => d.steps || 0), steps.dailyGoal);
+  // The daily goal is the top of every bar. Month and Year bars use steps per
+  // day (`avg`) so they compare against that same daily goal
+  // First load only: numbers and lists are placeholders the size of what
+  // replaces them. Later range switches keep the old content until new data lands
+  const first = !steps.loaded;
+  const maxSteps = steps.dailyGoal;
 
   return (
-    <DashboardLayout>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={sync.syncing || steps.loading}
-            onRefresh={onRefresh}
-            tintColor={shellColors.primary}
-          />
-        }
-      >
-        <Text style={[styles.eyebrow, { color: palette.muted }]}>ACTIVITY</Text>
-        <Text style={[styles.title, { color: palette.text }]}>Steps</Text>
+    // The layout scrolls; its pull syncs the phone, then reloads (onRefresh)
+    <DashboardLayout hideTabBar screenAlert={false}>
+      <View style={styles.content}>
+        {/* Opened from the ☰ menu, so no bottom bar; the header has a back arrow */}
+        <ScreenHeader title="Steps" subtitle="Your daily movement" />
+        <ScreenAlert />
 
         <ConnectionCard palette={palette} sync={sync} />
 
@@ -80,52 +90,45 @@ export default function StepsScreen() {
               </View>
               <View>
                 <Text style={[styles.kicker, { color: palette.muted }]}>TODAY</Text>
-                <Text style={[styles.heroValue, { color: palette.text }]}>
-                  {/* null means "not recorded", which is a different claim from
-                      zero steps -- show a dash rather than inventing a 0. */}
-                  {steps.todaySteps === null ? "--" : formatNumber(steps.todaySteps)}
-                </Text>
+                {first ? <Skeleton width={120} height={32} /> : (
+                  <Text style={[styles.heroValue, { color: palette.text }]}>
+                    {/* null means "not recorded", which is a different claim from
+                        zero steps -- show a dash rather than inventing a 0. */}
+                    {steps.todaySteps === null ? "--" : formatNumber(steps.todaySteps)}
+                  </Text>
+                )}
               </View>
             </View>
-            <Text style={styles.goalPercent}>{steps.goalPercent}%</Text>
+            {first ? <Skeleton width={44} height={22} /> : <Text style={styles.goalPercent}>{steps.goalPercent}%</Text>}
           </View>
 
           <View style={[styles.goalTrack, { backgroundColor: palette.track }]}>
             <View style={[styles.goalFill, { width: `${steps.goalPercent}%` }]} />
           </View>
 
-          <View style={styles.rowBetween}>
-            <Text style={[styles.muted, { color: palette.muted }]}>
-              {steps.todaySteps === null
-                ? "No steps recorded yet today"
-                : `${formatNumber(Math.max(steps.dailyGoal - steps.todaySteps, 0))} to go`}
-            </Text>
-            <Text style={[styles.strong, { color: palette.text }]}>
-              Goal {formatNumber(steps.dailyGoal)}
-            </Text>
-          </View>
+          {first ? (
+            <View style={styles.rowBetween}>
+              <Skeleton width={130} height={15} />
+              <Skeleton width={80} height={15} />
+            </View>
+          ) : (
+            <View style={styles.rowBetween}>
+              <Text style={[styles.muted, { color: palette.muted }]}>
+                {steps.todaySteps === null
+                  ? "No steps recorded yet today"
+                  : `${formatNumber(Math.max(steps.dailyGoal - steps.todaySteps, 0))} to go`}
+              </Text>
+              <Text style={[styles.strong, { color: palette.text }]}>
+                Goal {formatNumber(steps.dailyGoal)}
+              </Text>
+            </View>
+          )}
         </View>
 
-        <View style={[styles.rangeTabs, { backgroundColor: palette.soft }]}>
-          {steps.ranges.map((item) => (
-            <Pressable
-              key={item}
-              onPress={() => steps.setRange(item)}
-              style={[styles.rangeTab, steps.range === item && styles.rangeTabActive]}
-            >
-              <Text style={[styles.rangeText, { color: steps.range === item ? colors.white : palette.muted }]}>
-                {item}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+        <RangeTabs steps={steps} palette={palette} />
 
         <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <View style={styles.statsRow}>
-            <Stat value={formatNumber(steps.total)} label="Total" palette={palette} />
-            <Stat value={formatNumber(steps.average)} label="Daily avg" palette={palette} />
-            <Stat value={String(steps.goalDays)} label="Goal days" palette={palette} />
-          </View>
+          <StepStats steps={steps} palette={palette} loading={first} />
 
           {steps.loading ? (
             <View style={styles.chart}>
@@ -144,8 +147,8 @@ export default function StepsScreen() {
             <View style={styles.chart}>
               {steps.series.map((day) => {
                 // A day with no row renders as an empty slot, never a zero bar.
-                const hasData = day.steps !== null;
-                const height = hasData ? Math.max(4, (day.steps / maxSteps) * BAR_HEIGHT) : 0;
+                const hasData = day.avg !== null;
+                const height = hasData ? Math.max(4, Math.min(day.avg / maxSteps, 1) * BAR_HEIGHT) : 0;
                 return (
                   <View key={day.key} style={styles.barColumn}>
                     <View style={[styles.barTrack, { backgroundColor: palette.track, height: BAR_HEIGHT }]}>
@@ -155,7 +158,7 @@ export default function StepsScreen() {
                             styles.bar,
                             {
                               height,
-                              backgroundColor: day.steps >= steps.dailyGoal ? shellColors.primary : colors.stepsInactiveFill,
+                              backgroundColor: day.avg >= steps.dailyGoal ? shellColors.primary : colors.stepsInactiveFill,
                             },
                           ]}
                         />
@@ -175,38 +178,34 @@ export default function StepsScreen() {
           )}
         </View>
 
-        {steps.recentDays.length > 0 && (
-          <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
-            <Text style={[styles.sectionTitle, { color: palette.text }]}>Recent days</Text>
-            {steps.recentDays.map((day, index) => (
-              <View
-                key={day.activityDate}
-                style={[
-                  styles.recentRow,
-                  index > 0 && { borderTopWidth: 1, borderTopColor: palette.border },
-                ]}
-              >
-                <View style={[styles.recentIcon, { backgroundColor: palette.soft }]}>
-                  <Ionicons name="walk-outline" size={18} color={shellColors.primary} />
-                </View>
-                <View style={styles.flex1}>
-                  <Text style={[styles.strong, { color: palette.text }]}>
-                    {friendlyDate(day.activityDate)}
-                  </Text>
-                  <Text style={[styles.tiny, { color: palette.muted }]}>
-                    {day.source === "manual" ? "Entered manually" : sync.label}
-                  </Text>
-                </View>
-                <Text style={[styles.recentValue, { color: palette.text }]}>
-                  {formatNumber(day.stepCount)}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
+        <TodayStepsCard
+          todaySteps={steps.todaySteps}
+          loading={first}
+          onSaved={steps.refresh}
+          onEdit={() => setEditing({ date: todayISO(), current: steps.todaySteps ?? 0 })}
+          style={styles.goalSpacing}
+        />
+        <StepGoalCard goal={steps.dailyGoal} onSaved={steps.refresh} style={styles.goalSpacing} />
 
-        {Boolean(steps.error) && <Text style={styles.error}>{steps.error}</Text>}
-      </ScrollView>
+        <RecentDaysCard
+          steps={steps}
+          palette={palette}
+          loading={first}
+          sourceLabel={sync.label}
+          onEdit={(day) => setEditing({ date: day.activityDate, current: day.stepCount })}
+          onHistory={() => router.push("/steps/history")}
+        />
+
+        <ScreenError message={steps.error} />
+      </View>
+
+      <StepDayEditModal
+        visible={Boolean(editing)}
+        date={editing?.date}
+        current={editing?.current}
+        onClose={() => setEditing(null)}
+        onSaved={steps.refresh}
+      />
     </DashboardLayout>
   );
 }
@@ -255,9 +254,9 @@ function ConnectionCard({ palette, sync }) {
         <View style={styles.flex1}>
           <Text style={[styles.strong, { color: palette.text }]}>Connect {sync.label}</Text>
           <Text style={[styles.tiny, { color: palette.muted }]}>
-            NutriFit reads your daily step totals. Nothing is written back.
+            NutriFitAI reads your daily step totals. Nothing is written back.
           </Text>
-          {Boolean(sync.error) && <Text style={styles.error}>{sync.error}</Text>}
+          <ScreenError message={sync.error} />
         </View>
         <Pressable onPress={sync.connect} style={styles.smallButton}>
           <Text style={styles.smallButtonText}>Connect</Text>
@@ -272,15 +271,6 @@ function ConnectionCard({ palette, sync }) {
       <Text style={[styles.tiny, { color: palette.muted }]}>
         {sync.syncing ? "Syncing..." : `Connected to ${sync.label}`}
       </Text>
-    </View>
-  );
-}
-
-function Stat({ value, label, palette }) {
-  return (
-    <View style={styles.flex1}>
-      <Text style={[styles.statValue, { color: palette.text }]}>{value}</Text>
-      <Text style={[styles.tiny, { color: palette.muted }]}>{label}</Text>
     </View>
   );
 }
@@ -313,12 +303,6 @@ const styles = StyleSheet.create({
   goalTrack: { height: 8, borderRadius: 4, overflow: "hidden" },
   goalFill: { height: 8, borderRadius: 4, backgroundColor: shellColors.primary },
 
-  rangeTabs: { flexDirection: "row", borderRadius: radii.pill, padding: 4 },
-  rangeTab: { flex: 1, paddingVertical: 8, borderRadius: radii.pill, alignItems: "center" },
-  rangeText: { fontSize: 13, fontWeight: "700" },
-
-  statsRow: { flexDirection: "row", gap: 12 },
-  statValue: { fontSize: 18, fontWeight: "800" },
 
   chart: { flexDirection: "row", alignItems: "flex-end", gap: 6, marginTop: 4 },
   chartPlaceholder: { height: BAR_HEIGHT + 20, alignItems: "center", justifyContent: "center" },
@@ -327,10 +311,7 @@ const styles = StyleSheet.create({
   bar: { width: "100%", borderRadius: 6 },
   barLabel: { fontSize: 10 },
 
-  sectionTitle: { fontSize: 15, fontWeight: "700" },
-  recentRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
-  recentIcon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
-  recentValue: { fontSize: 15, fontWeight: "800" },
+  goalSpacing: { marginBottom: 12 },
 
   notice: {
     flexDirection: "row",

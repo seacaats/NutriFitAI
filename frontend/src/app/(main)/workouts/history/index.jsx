@@ -1,17 +1,17 @@
-import {
-  groupByDay,
-  useWorkoutHistory,
-} from "@/features/workouts/hooks/useWorkoutHistory";
+import { ExerciseSessionModal, RoutineDetailsModal, SessionTile } from "@/features/workouts/components/PlanPanels";
+import { useWorkoutHistory } from "@/features/workouts/hooks/useWorkoutHistory";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
 import Skeleton from "@/shared/components/Skeleton";
+import { ScreenError } from "@/shared/components/ui/ScreenAlert";
+import { usePullRefreshState } from "@/shared/context/PullRefreshContext";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { chipTints, colors, radii, screenTones, shellColors } from "@/shared/theme/nutrifit";
+import { colors, radii, screenTones, shellColors } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
 import {
   FlatList,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -31,24 +31,12 @@ import {
 export default function WorkoutHistoryScreen() {
   const { shell: c, darkMode } = useTheme();
   const router = useRouter();
-
   const textColor = { color: c.sidebarText };
-  const { sessions, total, loading, loadingMore, hasMore, error, loadMore } =
-    useWorkoutHistory();
-
-  const groups = groupByDay(sessions);
-
-  // Which day headings are collapsed. Keyed by group.key rather than
-  // expanded-by-default, so a day appended later by "load more" opens
-  // automatically without this screen tracking it.
-  const [collapsed, setCollapsed] = useState(() => new Set());
-  const toggleGroup = (key) =>
-    setCollapsed((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  const {
+    viewing, setViewing, viewingExercise, setViewingExercise, openSession,
+    sessions, total, loading, loadingMore, hasMore, error, loadMore,
+    deletes, groups, imageOf, collapsed, toggleGroup,
+  } = useWorkoutHistory();
 
   /**
    * Flattened into a single list of headers and rows rather than nested
@@ -73,6 +61,7 @@ export default function WorkoutHistoryScreen() {
       count: group.sessions.length,
       isOpen,
       onToggle: () => toggleGroup(group.key),
+      onDelete: () => deletes.askDay(group),
     });
     if (isOpen) {
       for (const session of group.sessions) {
@@ -81,32 +70,11 @@ export default function WorkoutHistoryScreen() {
     }
   }
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <View style={styles.skeletonWrap}>
-          <Skeleton width={90} height={20} />
-          {[0, 1, 2].map((g) => (
-            <View key={g} style={{ marginTop: 20 }}>
-              <Skeleton width={140} height={14} />
-              {[0, 1].map((r) => (
-                <View key={r} style={[styles.skeletonRow, { borderColor: c.dropdownBorder }]}>
-                  <Skeleton width={40} height={40} borderRadius={20} />
-                  <View style={{ flex: 1 }}>
-                    <Skeleton width="45%" height={13} />
-                    <Skeleton width="25%" height={11} style={{ marginTop: 6 }} />
-                  </View>
-                </View>
-              ))}
-            </View>
-          ))}
-        </View>
-      </DashboardLayout>
-    );
-  }
+  const pull = usePullRefreshState();
 
+  // The FlatList does the scrolling; a page ScrollView around it breaks its windowing
   return (
-    <DashboardLayout>
+    <DashboardLayout scrollable={false}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8}>
           <Ionicons name="chevron-back" size={20} color={c.sidebarText} />
@@ -137,12 +105,26 @@ export default function WorkoutHistoryScreen() {
         </Pressable>
       </View>
 
-      {/*
-        Empty state, not an error. A user with no history has not done anything
-        wrong — the copy points at the next action rather than reporting an
-        absence.
-      */}
-      {sessions.length === 0 ? (
+      {/* Header stays real while loading; only the list is a placeholder */}
+      {loading ? (
+        <View style={styles.skeletonWrap}>
+          {[0, 1, 2].map((g) => (
+            <View key={g} style={{ marginTop: 20 }}>
+              <Skeleton width={140} height={14} />
+              {[0, 1].map((r) => (
+                <View key={r} style={[styles.skeletonRow, { borderColor: c.dropdownBorder }]}>
+                  <Skeleton width={40} height={40} borderRadius={20} />
+                  <View style={{ flex: 1 }}>
+                    <Skeleton width="45%" height={13} />
+                    <Skeleton width="25%" height={11} style={{ marginTop: 6 }} />
+                  </View>
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
+      ) : sessions.length === 0 ? (
+        // Empty state, not an error: the copy points at the next action
         <View style={styles.empty}>
           <Ionicons name="barbell-outline" size={34} color={screenTones.light.mutedAlt} />
           <Text style={[styles.emptyTitle, textColor]}>No workouts yet</Text>
@@ -167,15 +149,19 @@ export default function WorkoutHistoryScreen() {
                 />
                 <Text style={[styles.dayHeader, { color: c.sidebarText }]}>{item.label}</Text>
                 <Text style={styles.dayCount}>{item.count}</Text>
+                <Pressable onPress={item.onDelete} hitSlop={8} style={styles.dayDelete} accessibilityLabel={`Delete ${item.label}'s sessions`}>
+                  <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
+                </Pressable>
               </Pressable>
             ) : (
-              <HistoryRow
-                session={item.session}
-                textColor={textColor}
-                borderColor={c.dropdownBorder}
-              />
+              // Same image cards as the Recent tab
+              <View style={styles.tileSlot}>
+                <SessionTile session={item.session} imageOf={imageOf} darkMode={darkMode} timeOnly onDelete={deletes.askSession} onOpen={openSession} />
+              </View>
             )
           }
+          // The list scrolls here, not the layout, so the pull lives here too
+          refreshControl={pull ? <RefreshControl refreshing={pull.refreshing} onRefresh={pull.refresh} tintColor={c.primary} /> : undefined}
           onEndReached={loadMore}
           /**
            * 0.4 rather than the default 0.5: rows are short, so a later trigger
@@ -183,69 +169,36 @@ export default function WorkoutHistoryScreen() {
            * bottom and stopped.
            */
           onEndReachedThreshold={0.4}
+          style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
       )}
 
-      {error && sessions.length === 0 && (
-        <Text style={styles.error}>{error}</Text>
-      )}
+      <ScreenError message={sessions.length === 0 ? error : ""} />
+      {deletes.modal}
+
+      <RoutineDetailsModal
+        visible={viewing !== null}
+        routine={viewing}
+        imageOf={imageOf}
+        onClose={() => setViewing(null)}
+        darkMode={darkMode}
+      />
+
+      <ExerciseSessionModal
+        visible={viewingExercise !== null}
+        session={viewingExercise}
+        onClose={() => setViewingExercise(null)}
+        darkMode={darkMode}
+      />
     </DashboardLayout>
   );
 }
 
-/**
- * One session.
- *
- * Skipped sessions are shown, not hidden — the user did that work — but marked
- * in amber so the list stays honest about what was finished without colouring
- * an abandoned set like an error.
- */
-function HistoryRow({ session, textColor, borderColor }) {
-  const skipped = session.status === "skipped";
-  const minutes = session.actualDurationSeconds
-    ? Math.round(session.actualDurationSeconds / 60)
-    : null;
-
-  return (
-    <View style={[styles.row, { borderBottomColor: borderColor }]}>
-      <View
-        style={[styles.icon, { backgroundColor: skipped ? chipTints.orange.light : chipTints.green.light }]}
-      >
-        <Ionicons
-          name={skipped ? "pause" : "barbell"}
-          size={16}
-          color={skipped ? colors.skippedAmber : shellColors.primary}
-        />
-      </View>
-
-      <View style={styles.body}>
-        <Text style={[styles.name, textColor]} numberOfLines={1}>
-          {session.exerciseName}
-        </Text>
-        <Text style={styles.meta}>
-          {skipped
-            ? `${session.completedSets} of ${session.targetSets} sets`
-            : `${session.completedSets} × ${session.targetReps}`}
-          {minutes ? ` · ${minutes} min` : ""}
-        </Text>
-      </View>
-
-      <Text style={styles.time}>
-        {session.completedAt
-          ? new Date(session.completedAt).toLocaleTimeString(undefined, {
-              hour: "numeric",
-              minute: "2-digit",
-            })
-          : ""}
-      </Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  centered: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 60 },
+  tileSlot: { marginBottom: 12 },
+  dayDelete: { marginLeft: "auto", padding: 4 },
   skeletonWrap: {},
   skeletonRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, borderTopWidth: 1, marginTop: 4 },
 
@@ -261,6 +214,7 @@ const styles = StyleSheet.create({
   headerAction: { fontSize: 12, fontWeight: "700", color: shellColors.primary },
   subtitle: { fontSize: 11, color: colors.textMuted, marginTop: 1 },
 
+  list: { flex: 1 },
   listContent: { paddingBottom: 28 },
 
   dayHeaderRow: {
@@ -280,21 +234,10 @@ const styles = StyleSheet.create({
   },
   dayCount: { fontSize: 10, color: screenTones.light.mutedAlt, marginLeft: "auto" },
 
-  row: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 11, borderBottomWidth: 1 },
-  icon: { width: 34, height: 34, borderRadius: radii.sm, alignItems: "center", justifyContent: "center" },
-  body: { flex: 1, minWidth: 0 },
-  name: { fontSize: 13, fontWeight: "700" },
-  meta: { fontSize: 11, color: colors.textMuted, marginTop: 1 },
-  time: { fontSize: 11, color: screenTones.light.mutedAlt },
-
-  footer: { paddingVertical: 18, alignItems: "center" },
-  footerEnd: { paddingVertical: 20, textAlign: "center", fontSize: 11, color: screenTones.light.mutedAlt },
-
   empty: { alignItems: "center", paddingVertical: 56, gap: 8 },
   emptyTitle: { fontSize: 15, fontWeight: "800", marginTop: 4 },
   emptyBody: { fontSize: 12, color: colors.textMuted, textAlign: "center", maxWidth: 260, lineHeight: 18 },
   emptyButton: { marginTop: 10, backgroundColor: shellColors.primary, borderRadius: radii.sm, paddingHorizontal: 18, paddingVertical: 10 },
   emptyButtonText: { color: colors.white, fontSize: 12, fontWeight: "800" },
 
-  error: { textAlign: "center", fontSize: 12, color: colors.dangerAlt, paddingVertical: 16 },
 });

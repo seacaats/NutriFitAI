@@ -1,17 +1,14 @@
 import GoogleIcon from "@/features/auth/components/GoogleIcon";
 import { useLoginForm } from "@/features/auth/hooks/useLoginForm";
-import { apiClient } from "@/shared/api/apiClient";
-import FormInput from "@/shared/components/ui/FormInput";
-import NutriFitLogo from "@/shared/components/ui/NutriFitLogo";
+import { useSessionRedirect } from "@/features/auth/hooks/useSessionRedirect";
+import { AuthBackLink } from "@/shared/components/layout/PublicHeader";
+import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
+import LoadingScreen, { useLoadingGate } from "@/shared/components/ui/LoadingScreen";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { colors, radii, spacing, typography } from "@/shared/theme/nutrifit";
+import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { loginStyles } from "@/shared/theme/screenStyles";
-import { getAccessToken } from "@/shared/utils/authStorage";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -24,50 +21,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function LoginScreen() {
   const form = useLoginForm();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [checkingSession, setCheckingSession] = useState(true);
+  const checkingSession = useSessionRedirect();
+  const gate = useLoadingGate(checkingSession);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function checkExistingSession() {
-      const token = await getAccessToken();
-
-      if (!token) {
-        if (!cancelled) setCheckingSession(false);
-        return;
-      }
-
-      // A stored access token only proves one existed at some point — it may
-      // be expired. Confirm the session is actually still valid via
-      // /auth/me before redirecting away from login, otherwise an expired
-      // token bounces the user to /dashboard only to get bounced straight
-      // back by that screen's own auth guard.
-      try {
-        await apiClient.get("/auth/me", { auth: true });
-        if (!cancelled) router.replace("/dashboard");
-        return; // navigating away — don't flip checkingSession
-      } catch {
-        // Not authenticated after all (expired token, refresh cookie also expired, etc.)
-        if (!cancelled) setCheckingSession(false);
-      }
-    }
-
-    checkExistingSession();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (checkingSession) {
-    return (
-      <View style={styles.sessionCheckRoot}>
-        <ActivityIndicator size="large" color={colors.green600} />
-      </View>
-    );
-  }
+  if (gate.pending) return <LoadingScreen visible={gate.visible} />;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -79,9 +37,8 @@ export default function LoginScreen() {
           contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + spacing.lg }]}
           keyboardShouldPersistTaps="handled"
         >
-          <Pressable style={styles.brandRow} onPress={() => router.push("/")} hitSlop={8}>
-            <NutriFitLogo small />
-          </Pressable>
+          {/* Back to the landing page (or wherever they came from) */}
+          <AuthBackLink />
 
           <View style={styles.headerBlock}>
             <Text style={styles.title}>Welcome back!</Text>
@@ -91,7 +48,7 @@ export default function LoginScreen() {
           <View style={styles.form}>
             <FormInput
               icon="mail-outline"
-              placeholder="Email Address"
+              placeholder="Email (e.g. name@example.com)"
               value={form.email}
               onChangeText={form.setEmail}
               keyboardType="email-address"
@@ -124,7 +81,7 @@ export default function LoginScreen() {
               </Pressable>
             </View>
 
-            {!!form.error && <Text style={styles.errorText}>{form.error}</Text>}
+            <FormAlert message={form.error} onDismiss={form.dismissError} style={styles.alert} />
 
             <View style={styles.spacer} />
 
@@ -170,8 +127,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  brandRow: { alignSelf: "flex-start", marginBottom: spacing.xl, marginTop: spacing.sm },
-
   headerBlock: { marginBottom: spacing.lg },
   title: { fontSize: 26, fontWeight: "800", color: colors.textPrimary },
   subtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 4 },
@@ -191,7 +146,7 @@ const styles = StyleSheet.create({
   forgotRow: {},
   link: { ...typography.caption, color: colors.green700, fontWeight: "700" },
 
-  errorText: { ...typography.caption, color: colors.danger, marginTop: spacing.md, textAlign: "center" },
+  alert: { marginTop: spacing.md, marginBottom: 0 },
   spacer: { height: spacing.lg },
 
   socialBtn: {

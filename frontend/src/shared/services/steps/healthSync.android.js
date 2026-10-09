@@ -8,7 +8,7 @@ import {
   SdkAvailabilityStatus,
 } from "react-native-health-connect";
 
-import { addDays, eachDay, todayISO } from "./stepDates";
+import { addDays, eachDay, todayISO } from "@/shared/utils/dates";
 
 /**
  * Android step source, backed by Health Connect
@@ -21,10 +21,7 @@ import { addDays, eachDay, todayISO } from "./stepDates";
 export const MAX_BACKFILL_DAYS = 30;
 
 // Matches the daily_steps_source_check constraint
-export const SOURCE = "health_connect";
-
-export const EMPTY_STORE_HINT =
-  "Health Connect has no step data yet. Steps are written by apps like Samsung Health, Fitbit or Google Fit — install and open one, then sync again.";
+const SOURCE = "health_connect";
 
 const STEP_PERMISSION = { accessType: "read", recordType: "Steps" };
 

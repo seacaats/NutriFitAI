@@ -1,5 +1,3 @@
-const path = require('path');
-
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -8,8 +6,13 @@ const cookieParser = require('cookie-parser');
 const env = require('../config/env');
 const routes = require('./routes');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandlerMiddleware');
+const { readTimeZone } = require('./middleware/authMiddleware');
 
 const app = express();
+
+// Behind Render's proxy: rate limits and logs use the client's real IP,
+// not the proxy's (one shared IP would lock everyone out together)
+app.set('trust proxy', 1);
 
 const LAN = /^http:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/;
 
@@ -36,12 +39,15 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
+// req.timeZone from the X-Timezone header, see authMiddleware.js
+app.use(readTimeZone);
 
 
-// Locally stored avatars. Different files have different 
+// Locally stored avatars and scan photos (STORAGE_DRIVER=local only; R2
+// serves its own signed links). Different files have different
 // hashes, avatars aren't overwritten and have set cache.
 // If-None-Match triggers after 30 days to fetch avatar from server.
-app.use(
+if (env.storage.driver === 'local') app.use(
   '/uploads',
   express.static(env.uploadsDir, {
     maxAge: '30d',
@@ -61,7 +67,7 @@ app.use(
 
 // Fetches server health, with details such as LAN address and tunnel if any.
 app.get('/health', (req, res) => {
-  const { getResolved } = require('./utils/publicUrl');
+  const { getResolved } = require('./utils/network/publicUrl');
   const reachable = getResolved();
   return res.json({
     success: true,

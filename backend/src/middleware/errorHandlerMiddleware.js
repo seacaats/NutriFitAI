@@ -13,9 +13,17 @@ function errorHandler(err, req, res, next) {
 
   if (err && err.code === MONGO_DUPLICATE_KEY) {
     // Returns which field and value caused a duplicate key conflict
-    error = ApiError.conflict('A record with these details already exists', {
+    error = ApiError.conflict('A record with these details already exists.', {
       details: env.nodeEnv === 'development' ? err.keyValue : undefined,
     });
+  }
+
+  // Multer rejects oversized or extra files before the controller runs.
+  // Without this they surfaced as a 500 (avatars included)
+  if (err && err.name === 'MulterError') {
+    error = err.code === 'LIMIT_FILE_SIZE'
+      ? new ApiError(413, 'That image is too large.', { code: 'FILE_TOO_LARGE' })
+      : ApiError.badRequest('That upload could not be read.', { code: 'BAD_UPLOAD' });
   }
 
   if (!(error instanceof ApiError)) {

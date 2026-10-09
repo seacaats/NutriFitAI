@@ -1,92 +1,16 @@
-import OtpInputRow from "@/features/auth/components/OtpInputRow";
-import { useOtpInput } from "@/features/auth/hooks/useOtpInput";
-import { useResendCooldown } from "@/features/auth/hooks/useResendCooldown";
-import { apiClient, ApiClientError } from "@/shared/api/apiClient";
-import NutriFitLogo from "@/shared/components/ui/NutriFitLogo";
+import OtpInputRow, { OtpHelpLine } from "@/features/auth/components/OtpInputRow";
+import { useVerifyResetPassword } from "@/features/auth/hooks/useForgotPasswordForm";
+import { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { colors, radii, spacing, typography } from "@/shared/theme/nutrifit";
+import { colors, radii, spacing } from "@/shared/theme/nutrifitai";
 import { verifyResetPasswordStyles } from "@/shared/theme/screenStyles";
-import { validateOtp } from "@/shared/utils/authValidators";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function VerifyOtpScreen() {
-  const router = useRouter();
-  const { email } = useLocalSearchParams();
-  const otp = useOtpInput(4);
-  const resend = useResendCooldown();
+  const form = useVerifyResetPassword();
   const insets = useSafeAreaInsets();
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [resending, setResending] = useState(false);
-
-  async function handleVerify() {
-    if (!email) {
-      setError("We've lost track of which account you're resetting. Please start again.");
-      return;
-    }
-
-    const otpError = validateOtp(otp.codeValue, otp.length);
-    if (otpError) {
-      setError(otpError);
-      return;
-    }
-
-    setError("");
-    setSuccess("");
-    setLoading(true);
-    try {
-      // Verifies the OTP and exchanges it for a short-lived reset
-      // authorization — the password itself hasn't changed yet
-      const data = await apiClient.post("/auth/verify-password-reset", {
-        email,
-        code: otp.codeValue,
-      });
-
-      if (!data?.resetToken) {
-        setError("The server didn't return a reset authorization. Please try again.");
-        otp.reset();
-        return;
-      }
-
-      router.replace({ pathname: "/reset-password", params: { email, resetToken: data.resetToken } });
-    } catch (err) {
-      const message = err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.";
-      setError(message);
-      otp.reset();
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleResend() {
-    if (!resend.canResend || resending) return;
-    if (!email) {
-      setError("We've lost track of which account you're resetting. Please start again.");
-      return;
-    }
-    setResending(true);
-    setError("");
-    setSuccess("");
-    try {
-      // forgot-password invalidates any active challenge and issues a new
-      // one, so it doubles as the resend endpoint for this flow
-      const payload = await apiClient.post("/auth/forgot-password", { email }, { full: true });
-      // Generic by design on the server, to avoid confirming the account exists
-      setSuccess(payload?.message || "If an account exists for this email, a new code has been sent.");
-      resend.start();
-      otp.reset();
-    } catch (err) {
-      const message = err instanceof ApiClientError ? err.message : "Couldn't resend the code.";
-      setError(message);
-    } finally {
-      setResending(false);
-    }
-  }
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -95,10 +19,6 @@ export default function VerifyOtpScreen() {
           contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + spacing.lg }]}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.brandRow}>
-            <NutriFitLogo small />
-          </View>
-
           <View style={styles.iconCircle}>
             <Ionicons name="shield-checkmark-outline" size={40} color={colors.primary} />
           </View>
@@ -106,32 +26,26 @@ export default function VerifyOtpScreen() {
           <View style={styles.headerBlock}>
             <Text style={styles.title}>Verify your email</Text>
             <Text style={styles.subtitle}>We've sent a 4-digit code to</Text>
-            <Text style={styles.email}>{email || "your email"}</Text>
+            <Text style={styles.email}>{form.email || "your email"}</Text>
           </View>
 
           <View style={styles.otpWrap}>
-            <OtpInputRow otp={otp} />
+            <OtpInputRow otp={form.otp} />
           </View>
 
-          {!!error && <Text style={styles.error}>{error}</Text>}
-          {!!success && <Text style={styles.success}>{success}</Text>}
+          <FormAlert message={form.error} onDismiss={form.dismissError} style={styles.alert} />
+          <FormAlert tone="success" message={form.success} onDismiss={form.dismissSuccess} style={styles.alert} />
 
-          <View style={styles.resendBlock}>
-            <Text style={styles.resendPrompt}>Didn't receive the code?</Text>
-            <Pressable onPress={handleResend} disabled={!resend.canResend || resending} hitSlop={6}>
-              <Text style={[styles.link, !resend.canResend && styles.linkDisabled]}>
-                {resend.canResend ? "Resend OTP" : `Resend OTP (${resend.remaining}s)`}
-              </Text>
-            </Pressable>
-          </View>
+          <OtpHelpLine
+            onResend={form.handleResend}
+            onUpdateEmail={form.updateEmail}
+            resending={form.resending}
+            cooldown={form.cooldown}
+          />
 
           <View style={styles.spacer} />
 
-          <PrimaryButton title="Verify" onPress={handleVerify} loading={loading} />
-
-          <Pressable style={styles.changeEmailWrap} onPress={() => router.replace("/forgot-password")} hitSlop={8}>
-            <Text style={styles.changeEmail}>Change email</Text>
-          </Pressable>
+          <PrimaryButton title="Verify" onPress={form.handleVerify} loading={form.loading} />
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -139,12 +53,14 @@ export default function VerifyOtpScreen() {
 }
 
 const styles = StyleSheet.create({
+  // Centred under the code boxes: FormAlert stretches by default, so with a
+  // maxWidth alone it sat against the left edge
+  alert: { marginTop: spacing.sm, marginBottom: 0, maxWidth: 384, width: "100%", alignSelf: "center" },
   ...verifyResetPasswordStyles,
 
   flex1: { flex: 1 },
   container: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: "center" },
 
-  brandRow: { position: "absolute", top: spacing.sm, left: spacing.lg },
 
   iconCircle: {
     width: 96,
@@ -162,10 +78,5 @@ const styles = StyleSheet.create({
 
   otpWrap: { alignItems: "center", marginTop: spacing.xl, marginBottom: spacing.sm },
 
-  resendBlock: { alignItems: "center", marginTop: spacing.md },
-  resendPrompt: { ...typography.caption, color: colors.textMuted },
-
   spacer: { height: spacing.lg },
-  changeEmailWrap: { alignSelf: "center", marginTop: spacing.md },
-  changeEmail: { ...typography.caption, color: colors.textMuted },
 });

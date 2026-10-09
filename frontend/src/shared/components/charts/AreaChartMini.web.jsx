@@ -1,10 +1,10 @@
+import ChartBox from "@/shared/components/charts/ChartBox";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { screenTones } from "@/shared/theme/nutrifit";
+import { CHART_FONT, screenTones } from "@/shared/theme/nutrifitai";
 import {
   Area,
   AreaChart,
   CartesianGrid,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -26,18 +26,26 @@ export default function AreaChartMini({
 }) {
   const { tokens } = useTheme();
   const { colors } = tokens;
-  const chartData = data.map((d) => ({ x: d.label, y: d.value }));
+  // Keyed by position, not label: series that print only every 5th label
+  // repeat "" as a category, and Recharts then showed the wrong point's value
+  // (0) in the tooltip. `tip` is the full label for the tooltip, when given
+  const chartData = data.map((d, i) => ({ x: i, label: d.label, tip: d.tip ?? d.label, y: d.value }));
+  const labelAt = (i) => chartData[i]?.label ?? "";
+  const tipAt = (i) => chartData[i]?.tip ?? "";
 
   return (
-    <div style={{ width: "100%", height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={chartData} margin={{ top: 5, right: 8, left: yTicks ? 0 : 5, bottom: 0 }}>
+    <ChartBox height={height}>
+      {(width) => (
+        <AreaChart width={width} height={height} data={chartData} margin={{ top: 5, right: 8, left: yTicks ? 0 : 5, bottom: 0 }}>
           <CartesianGrid stroke={screenTones.light.border} vertical={false} />
 
           {showXLabels ? (
             <XAxis
               dataKey="x"
-              tick={{ fontSize: 8, fill: colors.textMuted }}
+              tickFormatter={labelAt}
+              // Pre-thinned series (blank labels) print every tick; others auto-thin
+              interval={chartData.some((d) => !d.label) ? 0 : "preserveEnd"}
+              tick={{ fontSize: 8, fill: colors.textMuted, fontFamily: CHART_FONT }}
               axisLine={{ stroke: screenTones.dark.muted }}
               tickLine={false}
             />
@@ -50,7 +58,7 @@ export default function AreaChartMini({
               domain={[yMin, yMax]}
               ticks={yTicks}
               tickFormatter={yTickFormat}
-              tick={{ fontSize: 8, fill: colors.textMuted }}
+              tick={{ fontSize: 8, fill: colors.textMuted, fontFamily: CHART_FONT }}
               axisLine={false}
               tickLine={false}
               width={30}
@@ -60,7 +68,8 @@ export default function AreaChartMini({
           )}
 
           <Tooltip
-            formatter={(value) => [`${value} ${unit}`, name]}
+            formatter={(value) => [`${value} ${unit}`.trim(), name]}
+            labelFormatter={tipAt}
             contentStyle={{ fontSize: 12 }}
           />
 
@@ -76,7 +85,7 @@ export default function AreaChartMini({
             activeDot={{ r: dotRadius + 2 }}
           />
         </AreaChart>
-      </ResponsiveContainer>
-    </div>
+      )}
+    </ChartBox>
   );
 }

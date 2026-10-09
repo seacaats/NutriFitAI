@@ -1,4 +1,8 @@
-import { apiClient, ApiClientError } from "@/shared/api/apiClient";
+import { routineForSession, useSessionDeletes } from "@/features/workouts/components/PlanPanels";
+import { groupByDay } from "@/features/workouts/components/PlanParts";
+import { useExerciseImages } from "@/features/workouts/hooks/useWorkoutSessions";
+import { apiClient, ApiClientError, requireOnline } from "@/shared/api/apiClient";
+import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { useCallback, useEffect, useState } from "react";
 
 const PAGE_SIZE = 20;
@@ -18,7 +22,7 @@ const HISTORY_WINDOW_DAYS = 30;
  * carries page cursors and a loadMore it never calls. Different lifetimes,
  * different hooks
  */
-export function useWorkoutHistory() {
+function useHistoryPages() {
   const [sessions, setSessions] = useState([]);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -42,7 +46,7 @@ export function useWorkoutHistory() {
       setHasMore(Boolean(data?.hasMore));
       setError(null);
     } catch (err) {
-      setError(err instanceof ApiClientError ? err.message : "Could not load your history");
+      setError(err instanceof ApiClientError ? err.message : "Couldn't load your workout history.");
     } finally {
       setLoading(false);
     }
@@ -77,62 +81,60 @@ export function useWorkoutHistory() {
       // Deliberately not surfaced: the rows already on screen are still valid,
       // and an error banner over a working list is worse than a list that
       // simply stopped growing. Scrolling again retries
-      console.warn("[workouts] failed to load more history:", err?.status, err?.message);
+      if (err?.status !== 0) console.warn("[workouts] failed to load more history:", err?.status, err?.message);
       setHasMore(false);
     } finally {
       setLoadingMore(false);
     }
   }, [fetchPage, hasMore, loading, loadingMore, sessions.length]);
 
+  usePullRefresh(() => {
+    setSessions([]);
+    return load();
+  });
+
   return { sessions, total, hasMore, loading, loadingMore, error, loadMore, refresh: load };
 }
 
-/**
- * Groups sessions under day headings
- *
- * Done client-side on an already-fetched page rather than with a $group in the
- * aggregation: grouping server-side would have to pick a timezone and would
- * break paging, since a group can straddle a page boundary. The list arrives
- * sorted newest-first, so a single pass is enough
- */
-export function groupByDay(sessions) {
-  const groups = [];
-  let current = null;
+// Workout History, shared by web and phone: the paged sessions grouped by
+// day, collapsed days, deletes, and the details dialogs
+export function useWorkoutHistory() {
+  // What a past session was, read-only, opened here: a routine with the
+  // exercises it kept, an exercise with its catalog details
+  const [viewing, setViewing] = useState(null);
+  const [viewingExercise, setViewingExercise] = useState(null);
+  // No details dialogs while the server can't be reached
+  const openSession = (session) => {
+    if (!requireOnline()) return;
+    if (session.kind === "routine") setViewing(routineForSession(session));
+    else setViewingExercise(session);
+  };
 
-  for (const session of sessions) {
-    const key = dayKey(session.completedAt);
-    if (!current || current.key !== key) {
-      current = { key, label: dayLabel(session.completedAt), sessions: [] };
-      groups.push(current);
-    }
-    current.sessions.push(session);
-  }
+  const { sessions, total, loading, loadingMore, hasMore, error, loadMore, refresh } = useHistoryPages();
+  // Delete a session or a day, with the confirm dialog; reloads after
+  const deletes = useSessionDeletes(refresh);
 
-  return groups;
-}
+  const groups = groupByDay(sessions);
 
-/** Local calendar day, so sessions group the way the user experienced them */
-function dayKey(iso) {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
+  // Cover images for every listed session: a routine's exercises, or the one exercise
+  const imageOf = useExerciseImages(
+    sessions.flatMap((s) => (s.kind === "routine" ? (s.exercises || []).map((e) => e.exerciseRef) : [s.exerciseRef])),
+  );
 
-function dayLabel(iso) {
-  const then = new Date(iso);
-  const now = new Date();
-  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const days = Math.round((startOfDay(now) - startOfDay(then)) / 86400000);
+  // Collapsed-by-key rather than expanded-by-default, so a day appended by
+  // "Load more" opens on its own
+  const [collapsed, setCollapsed] = useState(() => new Set());
+  const toggleGroup = (key) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
-  if (days <= 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days < 7) return then.toLocaleDateString(undefined, { weekday: "long" });
-
-  // The year is included only when it is not the current one — "12 Mar" reads
-  // better than "12 Mar 2026" until the distinction actually matters
-  const sameYear = then.getFullYear() === now.getFullYear();
-  return then.toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    ...(sameYear ? {} : { year: "numeric" }),
-  });
+  return {
+    viewing, setViewing, viewingExercise, setViewingExercise, openSession,
+    sessions, total, loading, loadingMore, hasMore, error, loadMore,
+    deletes, groups, imageOf, collapsed, toggleGroup,
+  };
 }

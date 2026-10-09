@@ -1,12 +1,33 @@
+import { RangeTabs, RecentDaysCard, StepGoalCard, StepStats, TodayStepsCard } from "@/features/steps/components/StepCards";
+import { StepDayEditModal } from "@/features/steps/components/StepHistory";
 import { useDailySteps } from "@/features/steps/hooks/useDailySteps";
+import ChartBox from "@/shared/components/charts/ChartBox.web";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
+import Skeleton from "@/shared/components/Skeleton";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { formatNumber, friendlyDate } from "@/shared/services/steps/stepDates";
-import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifit";
+import { formatNumber, todayISO } from "@/shared/utils/dates";
+import { CHART_FONT, chipTints, colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { stepsStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, Tooltip, XAxis, YAxis } from "recharts";
+
+const CHART_HEIGHT = 260;
+
+// The weekly challenge card. Deep green on the dark theme; a soft green tint
+// on the light one, where the deep green stood out against every other card
+const CHALLENGE_TONES = {
+  dark: {
+    card: { backgroundColor: "#244c1b" }, icon: "rgba(255,255,255,0.12)", title: colors.white, accent: "#aeda9d",
+    copy: "#cde8c2", track: "rgba(255,255,255,0.18)", fill: "#9ed67e",
+  },
+  light: {
+    card: { backgroundColor: chipTints.green.light, borderWidth: 1, borderColor: "#cdebbd" }, icon: "rgba(76,175,31,0.14)",
+    title: colors.deepGreenText, accent: colors.green700, copy: "#3f6b33", track: "rgba(20,83,45,0.12)", fill: shellColors.primary,
+  },
+};
 
 /**
  * Web is a READER of step data, never a source: there is no browser API for
@@ -21,21 +42,33 @@ import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis
 export default function StepsScreen() {
   const { width } = useWindowDimensions();
   const narrow = width < 900;
-  const phone = width < 620;
   const { darkMode } = useTheme();
 
   const steps = useDailySteps();
+  const router = useRouter();
+  // { date, current } while the edit dialog is open
+  const [editing, setEditing] = useState(null);
 
   // recharts needs a value per bar, so days with no data are mapped to 0 for
   // layout purposes but tagged `hasData: false` -- the Cell fill and the
   // tooltip both read that flag so a gap never renders as a real zero.
+  // Week bars are days; Month and Year bars are steps per day over each week
+  // or month (`avg`), so every bar compares against the same daily goal
   const data = steps.series.map((bucket) => ({
+    key: bucket.key,
     day: bucket.label,
-    steps: bucket.steps ?? 0,
-    hasData: bucket.steps !== null,
+    steps: bucket.avg ?? 0,
+    hasData: bucket.avg !== null,
   }));
+  const perDay = steps.range !== "Week";
 
   const connected = Boolean(steps.tracking.connectedAt);
+  // First load only: the page renders in full with its numbers and lists as
+  // placeholders. Switching ranges later keeps the old bars until the new ones land
+  const first = !steps.loaded;
+  // Ticks at quarters of the daily goal, which is the top of the chart.
+  // Without them recharts rounds the top up to a "nice" number (10.5k)
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(steps.dailyGoal * f));
 
   // The weekly challenge is a real target measured against real steps rather
   // than the hardcoded 58,947 it used to show.
@@ -44,9 +77,10 @@ export default function StepsScreen() {
   const challengeRemaining = Math.max(CHALLENGE_TARGET - challengeTotal, 0);
 
   // Same card/border/muted/soft/track tones every dashboard screen shares
-  // (see shared/theme/nutrifit.js); `text` keeps its own light-mode value
+  // (see shared/theme/nutrifitai.js); `text` keeps its own light-mode value
   // (#172015) rather than the usual #111111.
   const palette = { ...getScreenTones(darkMode), text: darkMode ? colors.white : colors.deepGreenText };
+  const ch = CHALLENGE_TONES[darkMode ? "dark" : "light"];
 
   return (
     <DashboardLayout>
@@ -63,9 +97,9 @@ export default function StepsScreen() {
               {connected ? `Syncing from ${steps.tracking.source === "healthkit" ? "Apple Health" : "Health Connect"}` : "No phone connected"}
             </Text>
           </View>
-          <Pressable onPress={steps.refresh} style={styles.startButton}>
+          <Pressable onPress={steps.refresh} disabled={steps.loading} style={[styles.startButton, steps.loading && { opacity: 0.6 }]}>
             <Ionicons name="refresh" size={17} color={colors.white} />
-            <Text style={styles.startButtonText}>Refresh</Text>
+            <Text style={styles.startButtonText}>{steps.loading ? "Loading" : "Refresh"}</Text>
           </Pressable>
         </View>
       </View>
@@ -77,61 +111,78 @@ export default function StepsScreen() {
               <View style={styles.stepIcon}><Ionicons name="footsteps" size={24} color={colors.white} /></View>
               <View>
                 <Text style={[styles.cardKicker, { color: palette.muted }]}>TODAY'S STEPS</Text>
-                <Text style={[styles.heroValue, { color: palette.text }]}>
-                  {steps.todaySteps === null ? "--" : formatNumber(steps.todaySteps)}
-                </Text>
+                {first ? <Skeleton width={130} height={34} /> : (
+                  <Text style={[styles.heroValue, { color: palette.text }]}>
+                    {steps.todaySteps === null ? "--" : formatNumber(steps.todaySteps)}
+                  </Text>
+                )}
               </View>
             </View>
-            <Text style={styles.goalPercent}>{steps.goalPercent}%</Text>
+            {first ? <Skeleton width={48} height={24} /> : <Text style={styles.goalPercent}>{steps.goalPercent}%</Text>}
           </View>
           <View style={[styles.goalTrack, { backgroundColor: palette.track }]}><View style={[styles.goalFill, { width: `${steps.goalPercent}%` }]} /></View>
           <View style={styles.rowBetween}>
-            <Text style={[styles.goalCopy, { color: palette.muted }]}>
-              {steps.todaySteps === null
-                ? "Nothing recorded yet today"
-                : `${formatNumber(Math.max(steps.dailyGoal - steps.todaySteps, 0))} steps to your daily goal`}
-            </Text>
-            <Text style={[styles.goalCopyStrong, { color: palette.text }]}>Goal {formatNumber(steps.dailyGoal)}</Text>
+            {first ? (
+              <>
+                <Skeleton width={170} height={13} style={styles.goalCopySkeleton} />
+                <Skeleton width={70} height={13} style={styles.goalCopySkeleton} />
+              </>
+            ) : (
+              <>
+                <Text style={[styles.goalCopy, { color: palette.muted }]}>
+                  {steps.todaySteps === null
+                    ? "Nothing recorded yet today"
+                    : `${formatNumber(Math.max(steps.dailyGoal - steps.todaySteps, 0))} steps to your daily goal`}
+                </Text>
+                <Text style={[styles.goalCopyStrong, { color: palette.text }]}>Goal {formatNumber(steps.dailyGoal)}</Text>
+              </>
+            )}
           </View>
         </View>
         {/* Only metrics the database actually holds. Calories and active time
             were invented constants before; showing a real "best day" beats
             showing a plausible fiction. */}
-        <MetricCard icon="navigate-outline" label="Distance" value={(steps.distanceMeters / 1000).toFixed(1)} suffix="km" palette={palette} />
-        <MetricCard icon="calendar-outline" label="Days logged" value={String(steps.recordedDays)} suffix={steps.range.toLowerCase()} palette={palette} />
-        <MetricCard icon="trophy-outline" label="Best day" value={steps.bestDay ? formatNumber(steps.bestDay.stepCount) : "--"} suffix="steps" palette={palette} />
+        <MetricCard icon="navigate-outline" label="Distance" value={(steps.distanceMeters / 1000).toFixed(1)} suffix="km" palette={palette} loading={first} />
+        <MetricCard icon="calendar-outline" label="Days logged" value={String(steps.recordedDays)} suffix={steps.range.toLowerCase()} palette={palette} loading={first} />
+        <MetricCard icon="trophy-outline" label="Best day" value={steps.bestDay ? formatNumber(steps.bestDay.stepCount) : "--"} suffix="steps" palette={palette} loading={first} />
       </View>
 
       <View style={[styles.contentRow, narrow && styles.stackRow]}>
-        <View style={[styles.chartCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <View style={[styles.chartHeader, phone && styles.chartHeaderPhone]}>
+        <View style={[styles.chartCard, narrow && styles.stackItem, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <View style={styles.chartHeader}>
             <View>
               <Text style={[styles.sectionTitle, { color: palette.text }]}>Step activity</Text>
               <Text style={[styles.sectionSubtitle, { color: palette.muted }]}>Your movement across this {steps.range.toLowerCase()}</Text>
             </View>
-            <View style={[styles.rangeTabs, { backgroundColor: palette.soft }]}>
-              {steps.ranges.map((item) => (
-                <Pressable key={item} onPress={() => steps.setRange(item)} style={[styles.rangeTab, steps.range === item && styles.rangeTabActive]}>
-                  <Text style={[styles.rangeText, { color: steps.range === item ? colors.white : palette.muted }]}>{item}</Text>
-                </Pressable>
-              ))}
-            </View>
+            <RangeTabs steps={steps} palette={palette} wide />
           </View>
-          <View style={styles.chartStats}>
-            <ChartStat value={formatNumber(steps.total)} label="Total steps" palette={palette} />
-            <View style={[styles.statDivider, { backgroundColor: palette.border }]} />
-            <ChartStat value={formatNumber(steps.average)} label="Daily average" palette={palette} />
-            <View style={[styles.statDivider, { backgroundColor: palette.border }]} />
-            <ChartStat value={String(steps.goalDays)} label="Goal days" palette={palette} />
-          </View>
+          <StepStats steps={steps} palette={palette} loading={first} wide />
           <View style={styles.chartWrap}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data} margin={{ top: 8, right: 4, left: -14, bottom: 0 }}>
+            {first ? (
+              // Seven bars, like the Week view this page opens on
+              <View style={styles.chartSkeleton}>
+                {[0.55, 0.3, 0.75, 0.45, 0.9, 0.35, 0.6].map((h, i) => (
+                  <Skeleton key={i} width="9%" height={`${h * 100}%`} borderRadius={7} />
+                ))}
+              </View>
+            ) : (
+            <ChartBox height={CHART_HEIGHT}>
+              {(width) => (
+              <BarChart width={width} height={CHART_HEIGHT} data={data} margin={{ top: 8, right: 4, left: -14, bottom: 0 }}>
                 <CartesianGrid stroke={palette.border} vertical={false} strokeDasharray="3 3" />
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: palette.muted, fontSize: 11 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: palette.muted, fontSize: 10 }} tickFormatter={(v) => `${v / 1000}k`} />
+                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: palette.muted, fontSize: 11, fontFamily: CHART_FONT }} />
+                {/* The daily goal is the top of the chart; a bar over it fills it */}
+                <YAxis
+                  domain={[0, steps.dailyGoal]}
+                  ticks={ticks}
+                  allowDataOverflow
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: palette.muted, fontSize: 10, fontFamily: CHART_FONT }}
+                  tickFormatter={(v) => `${v / 1000}k`}
+                />
                 <Tooltip
-                  formatter={(value, name, entry) => [entry?.payload?.hasData ? formatNumber(value) : "No data", "Steps"]}
+                  formatter={(value, name, entry) => [entry?.payload?.hasData ? formatNumber(value) : "No data", perDay ? "Steps per day" : "Steps"]}
                   cursor={{ fill: palette.soft }}
                   contentStyle={{ borderRadius: 8, borderColor: palette.border, backgroundColor: palette.card, color: palette.text }}
                   // `contentStyle.color` only styles the tooltip's outer
@@ -145,110 +196,84 @@ export default function StepsScreen() {
                 <Bar dataKey="steps" radius={[7, 7, 0, 0]} maxBarSize={42}>
                   {data.map((item) => (
                     <Cell
-                      key={item.day}
+                      key={item.key}
                       fill={!item.hasData ? palette.track : item.steps >= steps.dailyGoal ? shellColors.primary : colors.stepsInactiveFill}
                     />
                   ))}
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+              )}
+            </ChartBox>
+            )}
           </View>
         </View>
 
-        <View style={styles.challengeCard}>
-          <View style={styles.challengeIcon}><Ionicons name="trophy" size={22} color="#f9c74f" /></View>
-          <Text style={styles.challengeKicker}>WEEKLY CHALLENGE</Text>
-          <Text style={styles.challengeTitle}>Walk {formatNumber(CHALLENGE_TARGET)} steps</Text>
-          <Text style={styles.challengeCopy}>
+        {/* The challenge beside the chart, stretched to the chart's height */}
+        <View style={[styles.challengeCard, ch.card, narrow && styles.stackItem]}>
+          <View style={[styles.challengeIcon, { backgroundColor: ch.icon }]}><Ionicons name="trophy" size={22} color="#f9c74f" /></View>
+          <Text style={[styles.challengeKicker, { color: ch.accent }]}>WEEKLY CHALLENGE</Text>
+          <Text style={[styles.challengeTitle, { color: ch.title }]}>Walk {formatNumber(CHALLENGE_TARGET)} steps</Text>
+          <Text style={[styles.challengeCopy, { color: ch.copy }]}>
             {challengeRemaining > 0
               ? `You are ${formatNumber(challengeRemaining)} steps away. One short walk could get you there.`
               : "Challenge complete. Great work staying active this week!"}
           </Text>
           <View style={styles.challengeNumbers}>
-            <Text style={styles.challengeCurrent}>{formatNumber(challengeTotal)}</Text><Text style={styles.challengeGoal}> / {formatNumber(CHALLENGE_TARGET)}</Text>
+            <Text style={[styles.challengeCurrent, { color: ch.title }]}>{formatNumber(challengeTotal)}</Text><Text style={[styles.challengeGoal, { color: ch.accent }]}> / {formatNumber(CHALLENGE_TARGET)}</Text>
           </View>
-          <View style={styles.challengeTrack}><View style={[styles.challengeFill, { width: `${Math.min((challengeTotal / CHALLENGE_TARGET) * 100, 100)}%` }]} /></View>
+          <View style={[styles.challengeTrack, { backgroundColor: ch.track }]}><View style={[styles.challengeFill, { backgroundColor: ch.fill, width: `${Math.min((challengeTotal / CHALLENGE_TARGET) * 100, 100)}%` }]} /></View>
           <View style={styles.challengeFooter}>
-            <Ionicons name="calendar-outline" size={15} color="#cde8c2" /><Text style={styles.challengeFooterText}>This week</Text>
+            <Ionicons name="calendar-outline" size={15} color={ch.copy} /><Text style={[styles.challengeFooterText, { color: ch.copy }]}>This week</Text>
           </View>
         </View>
       </View>
 
-      <View style={[styles.recentCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-        <View style={styles.rowBetween}>
-          <View>
-            <Text style={[styles.sectionTitle, { color: palette.text }]}>Recent days</Text>
-            <Text style={[styles.sectionSubtitle, { color: palette.muted }]}>Your latest synced activity</Text>
-          </View>
-          <View style={[styles.filterButton, { borderColor: palette.border }]}>
-            <Ionicons name="options-outline" size={16} color={palette.text} /><Text style={[styles.filterText, { color: palette.text }]}>All activity</Text>
-          </View>
-        </View>
-        {steps.recentDays.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name={connected ? "footsteps-outline" : "phone-portrait-outline"} size={28} color={palette.muted} />
-            <Text style={[styles.emptyTitle, { color: palette.text }]}>
-              {connected ? "No steps recorded in this period" : "Connect your phone to track steps"}
-            </Text>
-            <Text style={[styles.emptyCopy, { color: palette.muted }]}>
-              {/* The distinction the tracking.connectedAt flag exists for: a
-                  brand-new account needs different advice from an account that
-                  simply had a quiet week. */}
-              {connected
-                ? "Open NutriFit on your phone to sync your latest activity."
-                : "Step counts come from your phone's health data. Open NutriFit on iOS or Android and connect Apple Health or Health Connect."}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.activityList}>
-            {steps.recentDays.map((day, index) => (
-              <View
-                key={day.activityDate}
-                style={[styles.activityRow, phone && styles.activityRowPhone, index > 0 && { borderTopColor: palette.border, borderTopWidth: 1 }]}
-              >
-                <View style={[styles.activityIcon, { backgroundColor: palette.soft }]}>
-                  <Ionicons name="walk-outline" size={20} color={shellColors.primary} />
-                </View>
-                <View style={styles.activityInfo}>
-                  <Text style={[styles.activityTitle, { color: palette.text }]}>{friendlyDate(day.activityDate)}</Text>
-                  <Text style={[styles.activityDate, { color: palette.muted }]}>
-                    {day.source === "manual" ? "Entered manually" : "From your phone"}
-                  </Text>
-                </View>
-                <ActivityMetric value={formatNumber(day.stepCount)} label="steps" palette={palette} />
-                <ActivityMetric
-                  value={day.distanceMeters ? `${(day.distanceMeters / 1000).toFixed(1)} km` : "--"}
-                  label="distance"
-                  palette={palette}
-                />
-                <ActivityMetric
-                  value={day.stepCount >= steps.dailyGoal ? "Goal hit" : `${Math.round((day.stepCount / steps.dailyGoal) * 100)}%`}
-                  label="of goal"
-                  palette={palette}
-                />
-              </View>
-            ))}
-          </View>
-        )}
+      {/* Manual entry and the goal side by side under the chart */}
+      <View style={[styles.editRow, narrow && styles.stackRow]}>
+        <TodayStepsCard
+          todaySteps={steps.todaySteps}
+          loading={first}
+          onSaved={steps.refresh}
+          onEdit={() => setEditing({ date: todayISO(), current: steps.todaySteps ?? 0 })}
+          style={narrow ? styles.stackItem : styles.editItem}
+        />
+        <StepGoalCard goal={steps.dailyGoal} onSaved={steps.refresh} style={narrow ? styles.stackItem : styles.editItem} />
       </View>
+
+      <RecentDaysCard
+        steps={steps}
+        palette={palette}
+        loading={first}
+        wide
+        sourceLabel="From your phone"
+        connected={connected}
+        onEdit={(day) => setEditing({ date: day.activityDate, current: day.stepCount })}
+        onHistory={() => router.push("/steps/history")}
+        style={styles.recentSpacing}
+      />
+
+      <StepDayEditModal
+        visible={Boolean(editing)}
+        date={editing?.date}
+        current={editing?.current}
+        onClose={() => setEditing(null)}
+        onSaved={steps.refresh}
+      />
     </DashboardLayout>
   );
 }
 
-function MetricCard({ icon, label, value, suffix, palette }) {
+// `loading` swaps the value for a placeholder of the same height
+function MetricCard({ icon, label, value, suffix, palette, loading = false }) {
   return <View style={[styles.metricCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
     <View style={[styles.metricIcon, { backgroundColor: palette.soft }]}><Ionicons name={icon} size={19} color={shellColors.primary} /></View>
     <Text style={[styles.metricLabel, { color: palette.muted }]}>{label}</Text>
-    <View style={styles.metricValueRow}><Text style={[styles.metricValue, { color: palette.text }]}>{value}</Text><Text style={[styles.metricSuffix, { color: palette.muted }]}>{suffix}</Text></View>
+    <View style={styles.metricValueRow}>
+      {loading ? <Skeleton width={80} height={27} /> : (
+        <><Text style={[styles.metricValue, { color: palette.text }]}>{value}</Text><Text style={[styles.metricSuffix, { color: palette.muted }]}>{suffix}</Text></>
+      )}
+    </View>
   </View>;
-}
-
-function ChartStat({ value, label, palette }) {
-  return <View><Text style={[styles.chartStatValue, { color: palette.text }]}>{value}</Text><Text style={[styles.chartStatLabel, { color: palette.muted }]}>{label}</Text></View>;
-}
-
-function ActivityMetric({ value, label, palette }) {
-  return <View style={styles.activityMetric}><Text style={[styles.activityMetricValue, { color: palette.text }]}>{value}</Text><Text style={[styles.activityMetricLabel, { color: palette.muted }]}>{label}</Text></View>;
 }
 
 const styles = StyleSheet.create({
@@ -257,21 +282,27 @@ const styles = StyleSheet.create({
   pageHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginBottom: 20 },
   pageHeaderNarrow: { flexWrap: "wrap", alignItems: "flex-start" },
   stackRow: { flexDirection: "column" },
+  // Stacked (narrow) children size to their content. With flex: n they get a
+  // zero basis in a column, collapse, and the next card draws over them
+  stackItem: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
   eyebrow: { fontSize: 10, fontWeight: "800", letterSpacing: 1.3 }, pageTitle: { marginTop: 2, fontSize: 28, fontWeight: "800" }, pageSubtitle: { marginTop: 4, fontSize: 13 },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 8 }, syncPill: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 }, syncText: { color: "#4f7150", fontSize: 10, fontWeight: "700" },
-  startButton: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, backgroundColor: shellColors.primary }, pauseButton: { backgroundColor: "#ef7d22" }, startButtonText: { color: colors.white, fontSize: 11, fontWeight: "800" },
+  startButton: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, backgroundColor: shellColors.primary }, startButtonText: { color: colors.white, fontSize: 11, fontWeight: "800" },
   rowGap: { flexDirection: "row", alignItems: "center", gap: 13 },
   heroRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 }, heroCard: { minWidth: 280, flex: 2.2, borderWidth: 1, borderRadius: radii.md, padding: 18 },
   stepIcon: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: shellColors.primary }, cardKicker: { fontSize: 9, fontWeight: "800", letterSpacing: 1 }, heroValue: { fontSize: 30, lineHeight: 34, fontWeight: "800" }, goalPercent: { color: shellColors.primary, fontSize: 20, fontWeight: "800" },
   goalTrack: { height: 9, borderRadius: 5, overflow: "hidden", marginTop: 17 }, goalFill: { height: 9, borderRadius: 5, backgroundColor: shellColors.primary }, goalCopy: { fontSize: 10, marginTop: 9 }, goalCopyStrong: { fontSize: 10, fontWeight: "700", marginTop: 9 },
   metricCard: { minWidth: 145, flex: 1, borderWidth: 1, borderRadius: radii.md, padding: 16 }, metricIcon: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" }, metricLabel: { marginTop: 12, fontSize: 10, fontWeight: "700" }, metricValueRow: { flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 3 }, metricValue: { fontSize: 22, fontWeight: "800" }, metricSuffix: { fontSize: 10, fontWeight: "600" },
-  contentRow: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 12 }, chartCard: { minWidth: 280, flex: 2.2, borderWidth: 1, borderRadius: radii.md, padding: 18 }, chartHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }, chartHeaderPhone: { flexDirection: "column", alignItems: "flex-start" }, sectionTitle: { fontSize: 17, fontWeight: "800" }, sectionSubtitle: { marginTop: 3, fontSize: 10 },
-  rangeTabs: { flexDirection: "row", padding: 3, borderRadius: 8 }, rangeTab: { borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 }, rangeText: { fontSize: 10, fontWeight: "700" },
-  chartStats: { flexDirection: "row", alignItems: "center", gap: 22, marginTop: 18 }, chartStatValue: { fontSize: 17, fontWeight: "800" }, chartStatLabel: { marginTop: 2, fontSize: 9 }, statDivider: { width: 1, height: 30 }, chartWrap: { height: 220, marginTop: 14 },
-  emptyState: { alignItems: "center", gap: 8, paddingVertical: 34, paddingHorizontal: 20 },
-  emptyTitle: { fontSize: 14, fontWeight: "700", textAlign: "center" },
-  emptyCopy: { fontSize: 11, lineHeight: 17, textAlign: "center", maxWidth: 420 },
-  challengeCard: { minWidth: 250, flex: 1, borderRadius: radii.md, padding: 20, backgroundColor: "#244c1b" }, challengeIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" }, challengeKicker: { marginTop: 28, color: "#aeda9d", fontSize: 9, fontWeight: "800", letterSpacing: 1.1 }, challengeTitle: { marginTop: 5, color: colors.white, fontSize: 21, fontWeight: "800" }, challengeCopy: { marginTop: 8, color: "#cde8c2", fontSize: 11, lineHeight: 17 },
-  challengeNumbers: { flexDirection: "row", alignItems: "baseline", marginTop: 22 }, challengeCurrent: { color: colors.white, fontSize: 19, fontWeight: "800" }, challengeGoal: { color: "#aeda9d", fontSize: 10, fontWeight: "600" }, challengeTrack: { height: 8, backgroundColor: "rgba(255,255,255,0.18)", borderRadius: 4, overflow: "hidden", marginTop: 8 }, challengeFill: { height: 8, borderRadius: 4, backgroundColor: "#9ed67e" }, challengeFooter: { flexDirection: "row", gap: 6, alignItems: "center", marginTop: 13 }, challengeFooterText: { color: "#cde8c2", fontSize: 10, fontWeight: "600" },
-  recentCard: { marginTop: 12, borderWidth: 1, borderRadius: radii.md, padding: 18 }, filterButton: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 7 }, filterText: { fontSize: 10, fontWeight: "700" }, activityList: { marginTop: 13 }, activityRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 }, activityRowPhone: { flexWrap: "wrap" }, activityIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" }, activityInfo: { flex: 1, minWidth: 180 }, activityTitle: { fontSize: 12, fontWeight: "700" }, activityDate: { marginTop: 3, fontSize: 9 }, activityMetric: { width: 100 }, activityMetricValue: { fontSize: 12, fontWeight: "800" }, activityMetricLabel: { marginTop: 2, fontSize: 8 },
+  contentRow: { flexDirection: "row", alignItems: "stretch", gap: 12, marginTop: 12 },
+  editRow: { flexDirection: "row", alignItems: "stretch", gap: 12, marginTop: 12 },
+  editItem: { flex: 1, minWidth: 0 }, chartCard: { minWidth: 280, flex: 2.2, borderWidth: 1, borderRadius: radii.md, padding: 18, flexDirection: "column" }, // Wraps the tabs under the title once the card is too narrow for both
+  chartHeader: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12 }, sectionTitle: { fontSize: 17, fontWeight: "800" }, sectionSubtitle: { marginTop: 3, fontSize: 10 },
+  // Fixed height. The card no longer stretches to the side column (see
+  // contentRow), so there is no empty space under it either
+  chartWrap: { height: CHART_HEIGHT, marginTop: 14 },
+  chartSkeleton: { flex: 1, flexDirection: "row", alignItems: "flex-end", justifyContent: "space-around", paddingLeft: 30 },
+  goalCopySkeleton: { marginTop: 9 },
+  challengeCard: { flex: 1, minWidth: 250, borderRadius: radii.md, padding: 20 }, challengeIcon: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" }, challengeKicker: { marginTop: 28, fontSize: 9, fontWeight: "800", letterSpacing: 1.1 }, challengeTitle: { marginTop: 5, fontSize: 21, fontWeight: "800" }, challengeCopy: { marginTop: 8, fontSize: 11, lineHeight: 17 },
+  challengeNumbers: { flexDirection: "row", alignItems: "baseline", marginTop: 22 }, challengeCurrent: { fontSize: 19, fontWeight: "800" }, challengeGoal: { fontSize: 10, fontWeight: "600" }, challengeTrack: { height: 8, borderRadius: 4, overflow: "hidden", marginTop: 8 }, challengeFill: { height: 8, borderRadius: 4 }, challengeFooter: { flexDirection: "row", gap: 6, alignItems: "center", marginTop: 13 }, challengeFooterText: { fontSize: 10, fontWeight: "600" },
+  recentSpacing: { marginTop: 12 },
 });

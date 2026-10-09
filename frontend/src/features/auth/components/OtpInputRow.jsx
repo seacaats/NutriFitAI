@@ -1,6 +1,7 @@
 import { useTheme } from "@/shared/context/ThemeContext";
+import { colors, spacing, typography } from "@/shared/theme/nutrifitai";
 import { useMemo, useState } from "react";
-import { Platform, StyleSheet, TextInput, View } from "react-native";
+import { Platform, StyleSheet, Text, TextInput, View } from "react-native";
 
 export default function OtpInputRow({ otp, variant = "green500" }) {
   const { tokens } = useTheme();
@@ -40,7 +41,8 @@ function getFocusStyle(ringColor, alsoChangeBorder) {
   if (Platform.OS === "web") {
     return {
       boxShadow: `0 0 0 2px ${ringColor}`,
-      ...(alsoChangeBorder ? { borderColor: ringColor } : null),
+      // The gray 1px border would otherwise show as a dark line inside the ring
+      borderColor: alsoChangeBorder ? ringColor : "transparent",
     };
   }
   return { borderColor: ringColor, borderWidth: 2 };
@@ -60,6 +62,43 @@ function createStyles(colors, radii) {
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.sm,
+      // The browser's own focus outline drew a black ring inside the green
+      // one; the ring from getFocusStyle is the only focus mark
+      ...(Platform.OS === "web" ? { outlineStyle: "none" } : null),
     },
   });
 }
+
+/**
+ * "Didn't get the code? Resend it or update your email address."
+ * Both actions are inline links. Shared by the registration and
+ * password-reset OTP screens (web + native)
+ */
+export function OtpHelpLine({ onResend, onUpdateEmail, resending = false, cooldown = 0, style }) {
+  const resendDisabled = resending || cooldown > 0;
+  const resendLabel = resending ? "Sending..." : cooldown > 0 ? `Resend it (${cooldown}s)` : "Resend it";
+
+  return (
+    <Text style={[helpLineStyles.line, style]}>
+      Didn't get the code?{" "}
+      <Text
+        onPress={resendDisabled ? undefined : onResend}
+        style={[helpLineStyles.link, resendDisabled && helpLineStyles.linkDisabled]}
+        accessibilityRole="link"
+      >
+        {resendLabel}
+      </Text>{" "}
+      or{" "}
+      <Text onPress={onUpdateEmail} style={helpLineStyles.link} accessibilityRole="link">
+        update your email address
+      </Text>
+      .
+    </Text>
+  );
+}
+
+const helpLineStyles = StyleSheet.create({
+  line: { ...typography.caption, color: colors.textMuted, textAlign: "center", marginTop: spacing.md },
+  link: { ...typography.caption, color: colors.green700, fontWeight: "700", textDecorationLine: "underline" },
+  linkDisabled: { color: colors.textMuted, textDecorationLine: "none" },
+});

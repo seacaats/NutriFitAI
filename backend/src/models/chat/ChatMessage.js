@@ -1,55 +1,66 @@
-const db = require('../../../config/mongo');
-const { ChatMessageDoc } = require('../schemas');
+const { mongoose, opts } = require('../../../config/mongo');
+const { withId } = require('../shared');
 
-const { opts } = db;
+const { Schema } = mongoose;
 
-function shape(doc) {
-  if (!doc) return null;
-  const { _id, ...rest } = doc;
-  return { id: String(_id), ...rest };
-}
-
-// Messages are their own collection since conversations are unbounded,
-// and embedding would enforce the 16 MB document ceiling.
-// Rentention is a 180-day TTL index on createdAt (for now), since 
-// contextBuilder replays only AI_HISTORY_TURNS to the model
-const ChatMessage = {
-  /**
-   * @param {{ conversationId: string, role: 'user'|'assistant', content: string, provider?: string|null }} input
-   */
-  async create(input, client = db) {
-    const [doc] = await ChatMessageDoc.create(
-      [
-        {
-          conversationId: input.conversationId,
-          role: input.role,
-          content: input.content,
-          provider: input.provider ?? null,
-          createdAt: new Date(),
-        },
-      ],
-      opts(client),
-    );
-    return shape(doc.toObject());
+// Own collection since conversations are unbounded, and embedding
+// would run into the 16 MB document ceiling
+const chatMessageSchema = new Schema(
+  {
+    conversationId: {
+      type: Schema.Types.ObjectId,
+      ref: 'ChatConversation',
+      required: true,
+    },
+    role: { type: String, enum: ['user', 'assistant'], required: true },
+    content: { type: String, required: true },
+    provider: { type: String, maxlength: 30, default: null },
+    createdAt: { type: Date, default: () => new Date() },
   },
+  { versionKey: false, collection: 'chat_messages' },
+);
 
-  
-  // Oldest first (render order). Limited because the thread is unbounded but
-  // chatProvider only replays recent turns. Sorted DESCENDING so limit grabs
-  // the newest N (not the oldest), then .reverse()'d in memory to restore
-  // oldest-first display order.
-  async listByConversation(input, client = db) {
-    const rows = await ChatMessageDoc.find(
-      { conversationId: input.conversationId },
-      'role content provider createdAt',
-      opts(client),
-    )
-      .sort({ createdAt: -1 })
-      .limit(input.limit || 100)
-      .lean();
+// Indexes are created by migrations 001, not declared here
 
-    return rows.reverse().map(shape);
-  },
+chatMessageSchema.statics.append = async function append(input, client) {
+  const [doc] = await this.create(
+    [
+      {
+        conversationId: input.conversationId,
+        role: input.role,
+        content: input.content,
+        provider: input.provider ?? null,
+        createdAt: new Date(),
+      },
+    ],
+    opts(client),
+  );
+  return withId(doc.toObject());
 };
 
-module.exports = ChatMessage;
+// Sorted newest-first so limit keeps the latest N, then reversed
+// back to oldest-first for display
+chatMessageSchema.statics.listByConversation = async function listByConversation(input, client) {
+  const rows = await this.find(
+    { conversationId: input.conversationId },
+    'role content provider createdAt',
+    opts(client),
+  )
+    .sort({ createdAt: -1 })
+    .limit(input.limit || 100)
+    .lean();
+  return rows.reverse().map(withId);
+};
+
+// Rewrites a user message that never got a reply with the next one sent,
+// so a failed turn and its retry (or a rephrase) don't stack up
+chatMessageSchema.statics.overwrite = async function overwrite(id, content, client) {
+  const doc = await this.findOneAndUpdate(
+    { _id: id, role: 'user' },
+    { $set: { content, createdAt: new Date() } },
+    { new: true, ...opts(client) },
+  ).lean();
+  return doc ? withId(doc) : null;
+};
+
+module.exports = mongoose.model('ChatMessage', chatMessageSchema);

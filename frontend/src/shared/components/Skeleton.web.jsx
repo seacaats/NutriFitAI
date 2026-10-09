@@ -1,5 +1,6 @@
+import { useTrackSkeleton } from "@/shared/state/skeletonTracker";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { getScreenTones, radii } from "@/shared/theme/nutrifit";
+import { getScreenTones, radii } from "@/shared/theme/nutrifitai";
 
 /**
  * Web counterpart of Skeleton.jsx -- same props/shape, but the pulse is a
@@ -9,6 +10,7 @@ import { getScreenTones, radii } from "@/shared/theme/nutrifit";
 export default function Skeleton({ width = "100%", height = 16, borderRadius = radii.sm, style }) {
   const { darkMode } = useTheme();
   const tone = getScreenTones(darkMode);
+  useTrackSkeleton();
 
   return (
     <div

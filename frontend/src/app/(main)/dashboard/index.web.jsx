@@ -1,182 +1,190 @@
+import { DASH, MACRO_COLORS, MacroRow, pct, PlannedWorkouts } from "@/features/dashboard/components/DashboardWidgets";
+import OnboardingPrompt from "@/features/onboarding/components/OnboardingPrompt";
+import { useDashboard } from "@/features/progress/hooks/useProgress";
+import { formatMl } from "@/features/water/components/WaterCards";
+import { useWater } from "@/features/water/hooks/useWater";
 import { useWorkoutSessions } from "@/features/workouts/hooks/useWorkoutSessions";
+import Skeleton from "@/shared/components/Skeleton";
 import AreaChartMini from "@/shared/components/charts/AreaChartMini";
 import DonutChart from "@/shared/components/charts/DonutChart";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
+import PlanButton from "@/shared/components/ui/PlanButton";
+import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { chipTints, colors, getScreenPalette, getScreenTones, radii, screenTones, shellColors } from "@/shared/theme/nutrifit";
+import { chipTints, colors, getChipTint, getScreenPalette, getScreenTones, radii, screenTones, shellColors } from "@/shared/theme/nutrifitai";
 import { dashboardStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
+// Today at a glance, all real data: /progress/today (useDashboard) for food,
+// steps, the week, weight and streak; useWater and useWorkoutSessions for
+// water and the weekly workout count. There is no calorie goal in the app,
+// so calories show the amount eaten and the macro split, not a % of target
 
-const CALORIE_DATA = [
-  { label: "Mon", value: 1550 },
-  { label: "Tue", value: 1720 },
-  { label: "Wed", value: 1600 },
-  { label: "Thu", value: 1710 },
-  { label: "Fri", value: 1450 },
-  { label: "Sat", value: 1900 },
-  { label: "Sun", value: 1550 },
-];
 
-const WEIGHT_DATA = [
-  { label: "W1", value: 72.5 },
-  { label: "W2", value: 72 },
-  { label: "W3", value: 71.2 },
-  { label: "W4", value: 70.8 },
-  { label: "W5", value: 70 },
-];
+const MEAL_LABELS = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", snack: "Snack" };
+const MEAL_ICONS = { breakfast: "sunny-outline", lunch: "restaurant-outline", dinner: "moon-outline", snack: "cafe-outline" };
 
-const TARGETS = { calories: 2200, waterL: 2.5, steps: 10000 };
-const TOTALS = { calories: 1850, steps: 7842 };
-const pct = (value, target) => Math.round((value / target) * 100);
-
-const MEALS = [
-  { title: "Breakfast", calories: "420 kcal" },
-  { title: "Lunch", calories: "620 kcal" },
-  { title: "Dinner", calories: "560 kcal" },
-  { title: "Snack", calories: "250 kcal" },
-];
+// A y-axis top a little above the highest point, in steps of `step`
+const ceilTo = (n, step) => Math.max(step, Math.ceil(n / step) * step);
 
 export default function DashboardScreen() {
+  const dash = useDashboard();
+  const v = dash.view;
   const { summary: workoutSummary } = useWorkoutSessions();
+  // Real water log; the + button logs one 250 ml glass
+  const water = useWater();
+  const router = useRouter();
 
   const { width } = useWindowDimensions();
   const narrow = width < 980;
   const phone = width < 620;
-  const { darkMode } = useTheme();
-  const [water, setWater] = useState(1.8);
-  const [workoutStarted, setWorkoutStarted] = useState(false);
+  const { darkMode, shell: c } = useTheme();
 
   const { card, textColor, mutedText } = getScreenPalette(darkMode);
   const trackBg = { backgroundColor: card.borderColor }; // progress bar
+  const statCard = [styles.card, styles.statCard, narrow && styles.statCardNarrow, phone && styles.fullWidth, card];
 
-  const addWater = () => setWater((cur) => Math.min(Number((cur + 0.25).toFixed(2)), 2.5));
-
-  const startWorkout = () => {
-    setWorkoutStarted(true);
-    setTimeout(() => setWorkoutStarted(false), 2500);
-  };
+  const stepGoal = v?.goals.dailySteps ?? 0;
+  const calTop = ceilTo(Math.max(0, ...(v?.caloriesWeek.map((d) => d.value) || [0])), 500);
+  const weights = v?.weightPoints.map((p) => p.value) || [];
 
   return (
     <DashboardLayout>
+      <Text style={[styles.pageTitle, { color: c.sidebarText }]}>Dashboard</Text>
+      <ScreenError message={dash.error} />
+      {/* Onboarding: first visit goes there, then a banner until it's filled in */}
+      <OnboardingPrompt darkMode={darkMode} />
+
       {/* Stats */}
       <View style={[styles.statsRow, narrow && styles.wrapRow]}>
-        {/* Daily Calories */}
-        <View style={[styles.card, styles.statCard, narrow && styles.statCardNarrow, phone && styles.fullWidth, card]}>
+        {/* Calories eaten today and the macros behind them */}
+        <Pressable onPress={() => router.push("/food-scanner")} style={statCard}>
           <View style={styles.rowBetween}>
-            <Text style={[styles.cardLabel, textColor]}>Daily Calories</Text>
-            <Text style={styles.pctGreen}>{pct(TOTALS.calories, TARGETS.calories)}%</Text>
+            <Text style={[styles.cardLabel, textColor]}>Today&apos;s Calories</Text>
+            <Text style={styles.pctGreen}>{v ? `${v.mealsLogged}/4 meals` : DASH}</Text>
           </View>
           <View style={styles.mt2}>
             <Text style={[styles.bigNum, textColor]}>
-              {TOTALS.calories}
-              <Text style={[styles.kcalSuffix, mutedText]}> /{TARGETS.calories} kcal</Text>
+              {v ? v.nutrition.caloriesKcal.toLocaleString() : DASH}
+              <Text style={[styles.kcalSuffix, mutedText]}>{v?.goalKcal ? ` / ${v.goalKcal.toLocaleString()} kcal` : " kcal"}</Text>
             </Text>
           </View>
-          <View style={[styles.progressTrack, trackBg]}>
-            <View style={[styles.progressFill, { width: `${pct(TOTALS.calories, TARGETS.calories)}%`, backgroundColor: colors.calorieProgressFill }]} />
-          </View>
-          <View style={styles.macroRow}>
-            <Macro name="Protein" value="79/120g" dark={darkMode} />
-            <Macro name="Carbs" value="165/250g" dark={darkMode} />
-            <Macro name="Fat" value="45/70g" dark={darkMode} />
-          </View>
-        </View>
+          <MacroRow macros={v?.macros} darkMode={darkMode} small />
+        </Pressable>
 
-        {/* Hydration */}
-        <View style={[styles.card, styles.statCard, narrow && styles.statCardNarrow, phone && styles.fullWidth, card]}>
+        {/* Hydration: tap the card for the Water page, "1 glass" logs one */}
+        <Pressable onPress={() => router.push("/water")} style={statCard}>
           <View style={styles.rowGap}>
             <Ionicons name="water" size={20} color={chipTints.blue.icon} />
             <Text style={[styles.cardLabel, textColor]}>Hydration</Text>
           </View>
+          {/* Placeholders until the water log arrives, like the phone's card */}
           <View style={styles.mt4}>
-            <Text style={[styles.midNum, textColor]}>
-              {water}
-              <Text style={[styles.lSuffix, mutedText]}> / 2.5 L</Text>
+            {water.loading ? <Skeleton width={130} height={28} /> : (
+              <Text style={[styles.midNum, textColor]}>
+                {formatMl(water.totalMl)}
+                <Text style={[styles.lSuffix, mutedText]}> / {formatMl(water.goalMl)}</Text>
+              </Text>
+            )}
+          </View>
+          {water.loading ? <Skeleton width={190} height={12} style={styles.waterLineSkeleton} /> : (
+            <Text style={[styles.smallMuted, mutedText]}>
+              {Math.round(water.progress * 100)}% of daily goal · {Number(water.glasses.toFixed(1))} of {water.goalGlasses} glasses
             </Text>
-          </View>
-          <Text style={[styles.smallMuted, mutedText]}>{Math.round((water / 2.5) * 100)}% of daily goal</Text>
+          )}
           <View style={[styles.progressTrack, trackBg]}>
-            <View style={[styles.progressFill, { width: `${(water / 2.5) * 100}%`, backgroundColor: "#155dfc" }]} />
+            <View style={[styles.progressFill, { width: `${water.progress * 100}%`, backgroundColor: "#155dfc" }]} />
           </View>
-          <Pressable onPress={addWater} disabled={water >= 2.5} style={[styles.addWaterBtn, { borderColor: card.borderColor, opacity: water >= 2.5 ? 0.4 : 1 }]}>
-            <Ionicons name="add" size={15} color={darkMode ? colors.white : screenTones.light.text} />
-          </Pressable>
-        </View>
+          {/* Labelled, same as the phone's card */}
+          <View style={styles.waterAction}>
+            <PlanButton
+              compact
+              label="1 glass"
+              loading={water.saving}
+              disabled={water.loading}
+              onPress={() => water.addWater()}
+              darkMode={darkMode}
+            />
+          </View>
+        </Pressable>
 
-        {/* Steps */}
-        <View style={[styles.card, styles.statCard, narrow && styles.statCardNarrow, phone && styles.fullWidth, card]}>
+        {/* Steps against the daily goal */}
+        <Pressable onPress={() => router.push("/steps")} style={statCard}>
           <View style={styles.rowGap}>
             <Ionicons name="footsteps" size={21} color={colors.green600} />
             <Text style={[styles.cardLabel, textColor]}>Steps</Text>
           </View>
           <View style={styles.mt5}>
             <Text style={[styles.midNum, textColor]}>
-              {TOTALS.steps.toLocaleString()}
-              <Text style={[styles.lSuffix, mutedText]}> / {TARGETS.steps.toLocaleString()}</Text>
-              </Text>
+              {v ? v.steps.toLocaleString() : DASH}
+              <Text style={[styles.lSuffix, mutedText]}> / {stepGoal.toLocaleString()}</Text>
+            </Text>
           </View>
-          <Text style={[styles.smallMuted, mutedText]}>{pct(TOTALS.steps, TARGETS.steps)}% of daily goal</Text>
+          <Text style={[styles.smallMuted, mutedText]}>{v ? `${pct(v.steps, stepGoal)}% of daily goal` : DASH}</Text>
           <View style={[styles.progressTrack, trackBg]}>
-            <View style={[styles.progressFill, { width: `${pct(TOTALS.steps, TARGETS.steps)}%`, backgroundColor: shellColors.primary }]} />
+            <View style={[styles.progressFill, { width: `${v ? pct(v.steps, stepGoal) : 0}%`, backgroundColor: shellColors.primary }]} />
           </View>
-        </View>
+        </Pressable>
+
+        {/* Streak: the same count as the Progress tile and the streak notifications */}
+        <Pressable onPress={() => router.push("/progress")} style={statCard}>
+          <View style={styles.rowGap}>
+            <Ionicons name="trophy" size={20} color={chipTints.orange.icon} />
+            <Text style={[styles.cardLabel, textColor]}>Streak</Text>
+          </View>
+          <View style={styles.mt5}>
+            <Text style={[styles.midNum, textColor]}>
+              {v ? v.streak.days : DASH}
+              <Text style={[styles.lSuffix, mutedText]}> {v?.streak.days === 1 ? "day" : "days"}</Text>
+            </Text>
+          </View>
+          <Text style={[styles.smallMuted, mutedText]}>
+            {!v ? DASH : v.streak.loggedToday ? "Logged today" : v.streak.days ? "Log today to keep it" : "Log anything to start one"}
+          </Text>
+        </Pressable>
       </View>
 
-      {/* Today's Plan */}
       <View style={[styles.lowerRow, narrow && styles.stackRow]}>
+        {/* Today's Plan: what's been eaten, and the next workout */}
         <View style={[styles.card, card, styles.flexHalf]}>
           <View style={styles.rowBetween}>
-            <Text style={[styles.sectionTitle, textColor]}>Todays Plan</Text>
-            <Pressable>
+            <Text style={[styles.sectionTitle, textColor]}>Today&apos;s Plan</Text>
+            <Pressable onPress={() => router.push("/workouts")}>
               <Text style={styles.viewAll}>View All</Text>
             </Pressable>
           </View>
 
           <Text style={[styles.subheading, textColor]}>Meals</Text>
           <View style={[styles.mealsRow, phone && styles.wrapRow]}>
-            {MEALS.map((m) => (
-              <View key={m.title} style={[styles.mealCard, phone && styles.mealCardPhone, { borderColor: card.borderColor }]}>
-                <View style={[styles.mealImgPlaceholder, trackBg]} />
-                <View style={styles.mealInfo}>
-                  <Text style={[styles.mealTitle, textColor]}>{m.title}</Text>
-                  <Text style={styles.mealCalories}>{m.calories}</Text>
+            {(v?.meals || Object.keys(MEAL_LABELS).map((t) => ({ mealType: t, count: 0 }))).map((m) => (
+              <Pressable
+                key={m.mealType}
+                onPress={() => router.push("/food-scanner")}
+                style={[styles.mealCard, phone && styles.mealCardPhone, { borderColor: card.borderColor }]}
+              >
+                <View style={[styles.mealIconBox, trackBg]}>
+                  <Ionicons name={MEAL_ICONS[m.mealType]} size={22} color={m.count ? shellColors.primary : colors.textMuted} />
                 </View>
-              </View>
+                <View style={styles.mealInfo}>
+                  <Text style={[styles.mealTitle, textColor]}>{MEAL_LABELS[m.mealType]}</Text>
+                  {/* Placeholder until today's meals arrive, not a premature "Not logged" */}
+                  {v ? (
+                    <Text style={styles.mealCalories}>{m.count ? `${m.caloriesKcal} kcal` : "Not logged"}</Text>
+                  ) : (
+                    <Skeleton width="60%" height={9} style={styles.mealSkeleton} />
+                  )}
+                </View>
+              </Pressable>
             ))}
           </View>
 
           <Text style={[styles.subheading, textColor, { marginTop: 12 }]}>Workout</Text>
-          <View style={[styles.workoutRow, phone && styles.workoutRowPhone, { borderColor: card.borderColor }]}>
-            <View style={[styles.workoutIconBox, trackBg]}>
-              <Ionicons name="barbell" size={22} color={colors.textMuted} />
-            </View>
-            <View style={styles.flex1}>
-              {/* Was "Upper Body Strength" / "35 min • Intermediate", hardcoded. */}
-              <Text style={[styles.workoutTitle, textColor]}>
-                {workoutSummary
-                  ? workoutSummary.target
-                    ? `${workoutSummary.completed}/${workoutSummary.target} workouts this week`
-                    : `${workoutSummary.completed} workouts this week`
-                  : "This week"}
-              </Text>
-              <Text style={styles.workoutMeta}>
-                {workoutSummary ? `${workoutSummary.totalMinutes} min logged` : "\u2014"}
-              </Text>
-              <Text style={styles.workoutDesc}>Build strength and tone your upper body with this workout</Text>
-            </View>
-            <Pressable onPress={startWorkout} style={styles.playBtn}>
-              <Ionicons name="play" size={14} color={colors.white} />
-            </Pressable>
+          {/* The next few planned sessions, missed first, then the week's count */}
+          <View style={styles.mt2}>
+            <PlannedWorkouts view={v} summary={workoutSummary} darkMode={darkMode} onOpen={() => router.push("/workouts?tab=upcoming")} />
           </View>
-
-          {workoutStarted && (
-            <View style={styles.workoutStartedBanner}>
-              <Text style={styles.workoutStartedText}>Workout started! 💪</Text>
-            </View>
-          )}
         </View>
 
         {/* Insights */}
@@ -184,24 +192,24 @@ export default function DashboardScreen() {
           <View style={[styles.card, card]}>
             <View style={styles.rowBetween}>
               <Text style={[styles.sectionTitle, textColor]}>Insights</Text>
-              <Text style={styles.thisWeek}>This Week</Text>
+              <Text style={styles.thisWeek}>Last 7 days</Text>
             </View>
 
             <View style={[styles.chartBox, { borderColor: darkMode ? screenTones.dark.border : "#f3f4f6" }]}>
               <View style={styles.rowBetween}>
                 <Text style={[styles.chartLabel, textColor]}>Calories Trend</Text>
-                <Text style={styles.chartAvg}>Average: 1718 kcal</Text>
+                <Text style={styles.chartAvg}>{v?.caloriesAverage ? `Average: ${v.caloriesAverage} kcal` : "No meals logged"}</Text>
               </View>
               <View style={{ marginTop: 4 }}>
                 <AreaChartMini
-                  data={CALORIE_DATA}
+                  data={v?.caloriesWeek || []}
                   height={145}
-                  stroke={colors.stepsChartStroke}
-                  fill={colors.stepsChartFill}
+                  stroke={chipTints.orange.icon}
+                  fill={getChipTint("orange", darkMode).backgroundColor}
                   yMin={0}
-                  yMax={2400}
-                  yTicks={[0, 800, 1600, 2400]}
-                  yTickFormat={(v) => (v === 2400 ? "2.4k" : v === 1600 ? "1.6k" : v === 800 ? "800" : "0")}
+                  yMax={calTop}
+                  yTicks={[0, calTop / 3, (calTop * 2) / 3, calTop].map(Math.round)}
+                  yTickFormat={(t) => (t >= 1000 ? `${Math.round(t / 100) / 10}k` : String(t))}
                   name="Calories"
                   unit="kcal"
                 />
@@ -210,7 +218,7 @@ export default function DashboardScreen() {
           </View>
 
           <View style={[styles.insightCardsRow, phone && styles.stackRow]}>
-            {/* Macronutrient Distribution */}
+            {/* Today's macro split, by calories */}
             <View style={[styles.card, card, styles.flexHalf]}>
               <Text style={[styles.chartLabel, textColor]}>Macronutrient Distribution</Text>
               <View style={styles.donutWrap}>
@@ -218,51 +226,54 @@ export default function DashboardScreen() {
                   size={96}
                   strokeWidth={15}
                   centerBg={getScreenTones(darkMode).card}
-                  segments={[
-                    { value: 150, color: shellColors.primary },
-                    { value: 95, color: colors.blue400 },
-                    { value: 115, color: chipTints.orange.icon },
-                  ]}
+                  segments={(v?.macros || []).map((m) => ({ value: m.percent, color: MACRO_COLORS[m.key] }))}
                 >
                   <Text style={[styles.donutCenterTitle, textColor]}>Today</Text>
-                  <Text style={styles.donutCenterSub}>1850 kcal</Text>
+                  <Text style={styles.donutCenterSub}>{v ? `${v.nutrition.caloriesKcal} kcal` : DASH}</Text>
                 </DonutChart>
               </View>
               <View style={styles.legend}>
-                <LegendRow color={shellColors.primary} label="Protein" value="32%" textColor={textColor} />
-                <LegendRow color={colors.blue400} label="Carbs" value="38%" textColor={textColor} />
-                <LegendRow color={chipTints.orange.icon} label="Fat" value="30%" textColor={textColor} />
+                {(v?.macros || []).map((m) => (
+                  <LegendRow key={m.key} color={MACRO_COLORS[m.key]} label={m.label} value={v.hasMacros ? `${m.percent}%` : DASH} textColor={textColor} />
+                ))}
               </View>
             </View>
 
-            {/* Weight Progress */}
-            <View style={[styles.card, card, styles.flexHalf]}>
+            {/* Weight over the last 30 days */}
+            <Pressable onPress={() => router.push("/progress")} style={[styles.card, card, styles.flexHalf]}>
               <Text style={[styles.chartLabel, textColor]}>Weight Progress</Text>
               <View style={styles.mt3}>
-                <Text style={[styles.weightNum, textColor]}>70 kg</Text>
-                <Text style={styles.weightDelta}> ▼ 2.5 kg</Text>
+                <Text style={[styles.weightNum, textColor]}>
+                  {v?.weight.currentKg != null ? `${v.weight.currentKg} kg` : "No weight logged"}
+                </Text>
+                {v?.weight.changeKg != null && (
+                  <Text style={[styles.weightDelta, v.weight.changeKg > 0 && { color: chipTints.orange.icon }]}>
+                    {" "}{v.weight.changeKg > 0 ? "\u25B2" : v.weight.changeKg < 0 ? "\u25BC" : ""} {Math.abs(v.weight.changeKg)} kg
+                  </Text>
+                )}
               </View>
-              <Text style={styles.weightSince}>Since last month</Text>
-              <View style={{ marginTop: 16 }}>
-                <AreaChartMini data={WEIGHT_DATA} height={64} stroke={shellColors.primary} fill={shellColors.light.activeNavBg} yMin={68} yMax={74} showXLabels dotRadius={2} name="Weight" unit="kg" />
-              </View>
-            </View>
+              <Text style={styles.weightSince}>Last 30 days</Text>
+              {weights.length > 1 && (
+                <View style={{ marginTop: 16 }}>
+                  <AreaChartMini
+                    data={v.weightPoints}
+                    height={64}
+                    stroke={shellColors.primary}
+                    fill={shellColors.light.activeNavBg}
+                    yMin={Math.floor(Math.min(...weights) - 1)}
+                    yMax={Math.ceil(Math.max(...weights) + 1)}
+                    showXLabels
+                    dotRadius={2}
+                    name="Weight"
+                    unit="kg"
+                  />
+                </View>
+              )}
+            </Pressable>
           </View>
         </View>
       </View>
     </DashboardLayout>
-  );
-}
-
-function Macro({ name, value, dark }) {
-  return (
-    <View style={[styles.macroBox, { borderColor: getScreenTones(dark).border }]}>
-      <Text style={[styles.macroName, { color: dark ? colors.white : screenTones.light.text }]}>{name}</Text>
-      <Text style={styles.macroValue}>{value}</Text>
-      <View style={[styles.macroTrack, { backgroundColor: getScreenTones(dark).border }]}>
-        <View style={styles.macroFill} />
-      </View>
-    </View>
   );
 }
 
@@ -279,6 +290,8 @@ function LegendRow({ color, label, value, textColor }) {
 }
 
 const styles = StyleSheet.create({
+  pageTitle: { fontSize: 24, fontWeight: "800", marginBottom: 16 },
+  errorText: { fontSize: 12, fontWeight: "600", color: "#dc2626", marginBottom: 12 },
   ...dashboardStyles,
 
   card: { borderRadius: radii.sm, borderWidth: 1, padding: 12 },
@@ -299,10 +312,6 @@ const styles = StyleSheet.create({
   pctGreen: { fontSize: 12, fontWeight: "700", color: shellColors.primary },
   bigNum: { fontSize: 20, fontWeight: "700" },
   midNum: { fontSize: 24, fontWeight: "700" },
-  // Referenced by the Daily Calories / Hydration / Steps cards below but
-  // never defined -- styles.kcalSuffix and styles.lSuffix silently resolved
-  // to undefined, so those unit suffixes rendered unstyled. Native already
-  // has an equivalent kcalSuffix; matched its sizing here.
   kcalSuffix: { fontSize: 13, fontWeight: "500" },
   lSuffix: { fontSize: 13, fontWeight: "500" },
   smallMuted: { fontSize: 12, fontWeight: "600", marginTop: 4 },
@@ -310,14 +319,9 @@ const styles = StyleSheet.create({
   progressTrack: { marginTop: 8, height: 8, borderRadius: 4, overflow: "hidden" },
 
   statsRow: { flexDirection: "row", gap: 12 },
-  macroRow: { flexDirection: "row", gap: 4, marginTop: 16 },
-  macroBox: { flex: 1, borderRadius: 6, borderWidth: 1, padding: 6 },
-  macroName: { fontSize: 10, fontWeight: "700" },
-  macroValue: { fontSize: 8, color: colors.textMuted },
-  macroTrack: { marginTop: 4, height: 4, borderRadius: 2, overflow: "hidden" },
-  macroFill: { width: "70%", height: 4, borderRadius: 2, backgroundColor: "#00c950" },
 
-  addWaterBtn: { marginLeft: "auto", marginTop: 8, width: 28, height: 28, borderRadius: 14, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  waterAction: { flexDirection: "row", justifyContent: "flex-end", marginTop: 10 },
+  waterLineSkeleton: { marginTop: 6 },
 
   lowerRow: { flexDirection: "row", gap: 12, marginTop: 12 },
   sectionTitle: { fontSize: 22, fontWeight: "700" },
@@ -327,21 +331,13 @@ const styles = StyleSheet.create({
   mealsRow: { flexDirection: "row", gap: 8, marginTop: 8 },
   mealCard: { flex: 1, borderRadius: 6, borderWidth: 1, overflow: "hidden" },
   mealCardPhone: { minWidth: "47%" },
-  mealImgPlaceholder: { height: 64 },
+  mealIconBox: { height: 64, alignItems: "center", justifyContent: "center" },
   mealInfo: { padding: 4 },
   mealTitle: { fontSize: 10, fontWeight: "700" },
   mealCalories: { fontSize: 8, color: colors.textMuted },
+  mealSkeleton: { marginTop: 2 },
 
-  workoutRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 8, borderRadius: radii.sm, borderWidth: 1, padding: 8 },
-  workoutRowPhone: { flexWrap: "wrap" },
-  workoutIconBox: { width: 80, height: 80, borderRadius: 6, alignItems: "center", justifyContent: "center" },
-  workoutTitle: { fontSize: 15, fontWeight: "700" },
-  workoutMeta: { fontSize: 12, color: colors.textMuted },
-  workoutDesc: { fontSize: 12, color: colors.textMuted, marginTop: 8 },
-  playBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.green600, alignItems: "center", justifyContent: "center" },
 
-  workoutStartedBanner: { marginTop: 8, borderRadius: 6, backgroundColor: shellColors.light.activeNavBg, padding: 8, alignItems: "center" },
-  workoutStartedText: { fontSize: 12, fontWeight: "600", color: shellColors.primary },
 
   chartBox: { marginTop: 12, borderRadius: 6, borderWidth: 1, padding: 8 },
   chartLabel: { fontSize: 10, fontWeight: "600" },

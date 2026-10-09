@@ -46,8 +46,25 @@ function userScanPrefix(userId) {
   return `scans/${userId}/`;
 }
 
+// Magic-number check for accepted formats (.jpg, .png, .webp). Here beside
+// EXT_BY_TYPE since it's about file types, not avatars: the avatar upload
+// and the food scanner both use it
+function looksLikeImage(buffer, ext) {
+  if (buffer.length < 12) return false;
+  if (ext === 'jpg') return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  if (ext === 'png') {
+    return buffer.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'));
+  }
+  if (ext === 'webp') {
+    return buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      buffer.subarray(8, 12).toString('ascii') === 'WEBP';
+  }
+  return false;
+}
+
 module.exports = {
   EXT_BY_TYPE,
+  looksLikeImage,
   assertSafeKey,
   extensionFor,
   avatarKey,

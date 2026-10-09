@@ -1,21 +1,64 @@
+import { useOtpInput } from "@/features/auth/hooks/useOtpInput";
+import { useResendCooldown } from "@/features/auth/hooks/useResendCooldown";
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
 import {
-  ACTIVITY_LEVELS,
+  ACTIVITY_OPTIONS,
   activityLabelToValue,
-  genderLabelToValue, GENDERS, goalLabelToValue, GOALS,
+  CUSTOM_OPTION_MAX,
+  DIET_PREFERENCES,
+  DIET_PREFERENCES_MAX,
+  GOAL_OPTIONS,
+  goalLabelToValue,
+  HEALTH_CONDITIONS,
+  NO_DIET_PREFERENCE,
+  NO_HEALTH_CONDITIONS,
+  OTHER_OPTION,
+  SEXES,
+  sexLabelToValue,
 } from "@/shared/constants/profileOptions";
-import { isValidEmail, validateOptionalNumber, validatePassword } from "@/shared/utils/authValidators";
-import { useRouter } from "expo-router";
+import { useKeepOnResume } from "@/shared/hooks/useLandingOnResume";
+import {
+  AGE_MAX,
+  AGE_MIN,
+  isValidEmail,
+  validateName,
+  validateNumber,
+  validateOtp,
+  validatePassword,
+} from "@/shared/utils/authValidators";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 
-export { ACTIVITY_LEVELS, GENDERS, GOALS };
+export { ACTIVITY_OPTIONS, DIET_PREFERENCES, GOAL_OPTIONS, HEALTH_CONDITIONS, SEXES };
+
+// Mirrors registerSchema on the backend
+const HEALTH_CONDITIONS_MAX = 2000;
+
+function firstParam(value) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+/** Resolves a single-select dropdown to what gets sent: the label, or the typed text for "Other" */
+function resolveChoice(choice, otherText) {
+  if (!choice) return "";
+  return choice === OTHER_OPTION ? otherText.trim() : choice;
+}
 
 export function useRegisterForm() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+
+  // Arrives prefilled when Google sign-in found no verified account for this
+  // address (see useLoginForm's registration_required handling)
+  const [email, setEmail] = useState(() => firstParam(params.email) || "");
+  const [notice, setNotice] = useState(() =>
+    firstParam(params.from) === "google"
+      ? "We couldn't find a verified account for that Google email. Create one below to continue."
+      : "",
+  );
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -24,82 +67,128 @@ export function useRegisterForm() {
   const [age, setAge] = useState("");
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
-  const [gender, setGender] = useState("");
+  const [sex, setSex] = useState("");
 
-  // nutrition/health + goal + consent
+  // Step 2: dropdowns. Each stores the display label; "Other" pairs with a text field
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [dietPreference, setDietPreference] = useState("");
-  const [healthConditions, setHealthConditions] = useState("");
-  const [goal, setGoal] = useState(""); // stores the display label, matching the existing screen
-  const [goalPickerOpen, setGoalPickerOpen] = useState(false);
-  const [activity, setActivity] = useState(""); // display label, mirrors goal
-  const [activityPickerOpen, setActivityPickerOpen] = useState(false);
+  const [openPicker, setOpenPicker] = useState(null); // "diet" | "health" | "activity" | "goal" | null
+  const [dietPreference, setDietPreference] = useState([]);
+  const [dietOther, setDietOther] = useState("");
+  const [healthConditions, setHealthConditions] = useState([]);
+  const [healthOther, setHealthOther] = useState("");
+  const [activity, setActivity] = useState("");
+  const [activityOther, setActivityOther] = useState("");
+  const [goal, setGoal] = useState("");
+  const [goalOther, setGoalOther] = useState("");
   const [agreeTerms, setAgreeTerms] = useState(false);
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Something typed or picked: coming back to the app keeps it
+  useKeepOnResume(Boolean(
+    email || firstName || lastName || password || confirmPassword || age || height || weight || sex
+      || dietPreference.length || dietOther || healthConditions.length || healthOther
+      || activity || activityOther || goal || goalOther || agreeTerms,
+  ));
 
   const toggleShowPassword = () => setShowPassword((v) => !v);
   const toggleShowConfirmPassword = () => setShowConfirmPassword((v) => !v);
-  const toggleGoalPicker = () => setGoalPickerOpen((v) => !v);
-  const toggleActivityPicker = () => setActivityPickerOpen((v) => !v);
   const toggleAgreeTerms = () => setAgreeTerms((v) => !v);
-  const selectGoal = (label) => {
-    setGoal(label);
-    setGoalPickerOpen(false);
-  };
-  const selectActivity = (label) => {
-    setActivity(label);
-    setActivityPickerOpen(false);
-  };
+  const dismissError = () => setError("");
+  const dismissNotice = () => setNotice("");
 
-  /** Mirrors the account-basics half of registerSchema */
+  // Sex is optional, so tapping the active pill clears it
+  const selectSex = (label) => setSex((current) => (current === label ? "" : label));
+
+  const togglePicker = (key) => setOpenPicker((current) => (current === key ? null : key));
+
+  function pickSingle(setter, key) {
+    return (label) => {
+      setter(label);
+      setOpenPicker((current) => (current === key ? null : current));
+    };
+  }
+
+  // Multi-select toggle where `exclusive` ("None", "No Preference") stands alone
+  function multiToggle(setter, exclusive) {
+    return (label) => setter((current) => {
+      if (label === exclusive) return current.includes(label) ? [] : [label];
+      const rest = current.filter((c) => c !== exclusive);
+      return rest.includes(label) ? rest.filter((c) => c !== label) : [...rest, label];
+    });
+  }
+
+  // Health conditions and diet are both multi-select, comma-joined on submit
+  const toggleHealthCondition = multiToggle(setHealthConditions, NO_HEALTH_CONDITIONS);
+  const toggleDietPreference = multiToggle(setDietPreference, NO_DIET_PREFERENCE);
+
+  function resolveMulti(choices, other) {
+    return choices
+      .map((c) => (c === OTHER_OPTION ? other.trim() : c))
+      .filter(Boolean)
+      .join(", ");
+  }
+  const resolvedHealthConditions = () => resolveMulti(healthConditions, healthOther);
+  const resolvedDietPreference = () => resolveMulti(dietPreference, dietOther);
+
+  /** Step 1. Bounds mirror registerSchema in the backend's authValidators.js */
   function validateAccount() {
-
     if (!firstName.trim() && !lastName.trim() && !email.trim() && !password && !confirmPassword) {
       return "Please enter your details.";
     }
 
-    // Bounds mirror registerSchema in the backend's authValidators.js
-    if (!firstName.trim()) return "Please enter your first name.";
-    if (firstName.trim().length > 75) return "First name must be 75 characters or fewer.";
+    const firstNameError = validateName(firstName, { label: "First name", required: true });
+    if (firstNameError) return firstNameError;
     // Deliberately NOT required: a mononym is a real name
-    if (lastName.trim().length > 75) return "Last name must be 75 characters or fewer.";
+    const lastNameError = validateName(lastName, { label: "Last name" });
+    if (lastNameError) return lastNameError;
 
     if (!email.trim()) return "Please enter your email.";
-    if (!isValidEmail(email)) return "Please enter a valid email address.";
-    if (email.trim().length > 255) return "Email must be 255 characters or fewer.";
+    if (!isValidEmail(email) || email.trim().length > 255) return "Please enter a valid email address.";
 
-    // Checked before validatePassword() specifically so an empty password
-    // reads as "please enter your password" rather than always surfacing
-    // "Password must be at least 8 characters" -- which was misleading for
-    // a field the user hadn't typed into at all
-    if (!password) return "Please enter your password.";
     const passwordError = validatePassword(password);
     if (passwordError) return passwordError;
 
     if (!confirmPassword) return "Please confirm your password.";
-    if (password !== confirmPassword) return "Passwords do not match.";
+    if (password !== confirmPassword) return "Passwords don't match.";
 
-    const ageError = validateOptionalNumber(age, { label: "Age", min: 10, max: 120, integer: true });
-    if (ageError) return ageError;
-
-    const heightError = validateOptionalNumber(height, { label: "Height", min: 1, max: 300 });
-    if (heightError) return heightError;
-
-    const weightError = validateOptionalNumber(weight, { label: "Weight", min: 1, max: 500 });
-    if (weightError) return weightError;
-
-    if (gender && !genderLabelToValue(gender)) return "Please choose a valid gender option.";
     return "";
   }
 
-  /** Mirrors registerSchema's dietPreference/healthConditions widths */
+  /** Step 2 (About You). Every field but sex is required, same as registerSchema; "Other" requires its text */
   function validateDetails() {
-    if (goal && !goalLabelToValue(goal)) return "Please choose a valid fitness goal.";
-    if (activity && !activityLabelToValue(activity)) return "Please choose a valid activity level.";
-    if (dietPreference.trim().length > 30) return "Diet preference must be 30 characters or fewer.";
-    if (healthConditions.trim().length > 2000) return "Health conditions must be 2000 characters or fewer.";
+    const ageError = validateNumber(age, { label: "Age", min: AGE_MIN, max: AGE_MAX, integer: true, required: true });
+    if (ageError) return ageError;
+
+    const heightError = validateNumber(height, { label: "Height", min: 1, max: 300, required: true });
+    if (heightError) return heightError;
+
+    const weightError = validateNumber(weight, { label: "Weight", min: 1, max: 500, required: true });
+    if (weightError) return weightError;
+
+    if (sex && !sexLabelToValue(sex)) return "Please choose a valid option for sex.";
+
+    if (!goal) return "Please choose your fitness goal.";
+    if (!activity) return "Please choose your activity level.";
+    if (!dietPreference.length) return "Please choose your diet preference.";
+    if (!healthConditions.length) return "Please choose your health conditions, or None.";
+    const otherChecks = [
+      [activity, activityOther, "activity level"],
+      [goal, goalOther, "fitness goal"],
+    ];
+    for (const [choice, text, label] of otherChecks) {
+      if (choice !== OTHER_OPTION) continue;
+      if (!text.trim()) return `Please describe your ${label}.`;
+      if (text.trim().length > CUSTOM_OPTION_MAX) return `Your ${label} is too long.`;
+    }
+    if (dietPreference.includes(OTHER_OPTION) && !dietOther.trim()) {
+      return "Please describe your diet preference.";
+    }
+    if (resolvedDietPreference().length > DIET_PREFERENCES_MAX) return "Diet preferences are too long.";
+    if (healthConditions.includes(OTHER_OPTION) && !healthOther.trim()) {
+      return "Please describe your health condition.";
+    }
+    if (resolvedHealthConditions().length > HEALTH_CONDITIONS_MAX) return "Health conditions are too long.";
     if (!agreeTerms) return "Please accept the Terms of Service and Privacy Policy.";
     return "";
   }
@@ -118,6 +207,7 @@ export function useRegisterForm() {
   /** Back to step 1. Nothing already entered is lost. */
   function backToAccount() {
     setDetailsOpen(false);
+    setOpenPicker(null);
     setError("");
   }
 
@@ -133,26 +223,37 @@ export function useRegisterForm() {
     setError("");
     setLoading(true);
 
+    const normalizedEmail = email.trim().toLowerCase();
+    const activityValue = resolveChoice(activity, activityOther);
+    const goalValue = resolveChoice(goal, goalOther);
+
     try {
+      // The server answers identically whether the email is new, pending
+      // verification (a fresh code is sent), or already verified -- so this
+      // screen never learns, or reveals, which one it was
       await apiClient.post("/auth/register", {
         firstName: firstName.trim(),
         // Omitted rather than sent empty, so the server stores null instead of
         // an empty string for someone with one name
         lastName: lastName.trim() || undefined,
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         password,
-        age: age ? Number(age) : undefined,
-        heightCm: height ? Number(height) : undefined,
-        weightKg: weight ? Number(weight) : undefined,
-        gender: gender ? genderLabelToValue(gender) : undefined,
-        goal: goal ? goalLabelToValue(goal) : undefined,
-        activityLevel: activity ? activityLabelToValue(activity) : undefined,
-        dietPreference: dietPreference.trim() || undefined,
-        healthConditions: healthConditions.trim() || undefined,
+        age: Number(age),
+        heightCm: Number(height),
+        weightKg: Number(weight),
+        sex: sex ? sexLabelToValue(sex) : undefined,
+        goal: goalLabelToValue(goalValue),
+        activityLevel: activityLabelToValue(activityValue),
+        dietPreference: resolvedDietPreference(),
+        healthConditions: resolvedHealthConditions(),
         termsAccepted: agreeTerms,
       });
 
-      router.push({ pathname: "/verify-registration", params: { email: email.trim().toLowerCase() } });
+      // Back from the code screen ("update your email address") should land on
+      // step 1, where the email field is. Everything typed is kept
+      setDetailsOpen(false);
+      setOpenPicker(null);
+      router.push({ pathname: "/verify-registration", params: { email: normalizedEmail } });
     } catch (err) {
       const message = err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.";
       setError(message);
@@ -161,21 +262,28 @@ export function useRegisterForm() {
     }
   }
 
+  // Mirrors useLoginForm.goToRegister: go back if we came from login
   function goToLogin() {
-    router.replace("/login");
+    if (firstParam(params.from) === "login" && router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.push({ pathname: "/login", params: { from: "register" } });
   }
 
   function goToTerms() {
     router.push("/terms");
   }
 
+  // Where Back goes when there's no history, e.g. sent here by Google sign-in
+  const backTo = ["google", "login"].includes(firstParam(params.from)) ? "/login" : "/";
+
   return {
+    backTo,
     firstName,
     setFirstName,
     lastName,
     setLastName,
-    /** Read-only, for greetings and summaries */
-    fullName: [firstName.trim(), lastName.trim()].filter(Boolean).join(" "),
     email,
     setEmail,
     password,
@@ -192,31 +300,152 @@ export function useRegisterForm() {
     setHeight,
     weight,
     setWeight,
-    gender,
-    setGender,
+    sex,
+    selectSex,
 
     detailsOpen,
     continueToDetails,
     backToAccount,
+    openPicker,
+    togglePicker,
     dietPreference,
-    setDietPreference,
+    toggleDietPreference,
+    dietOther,
+    setDietOther,
     healthConditions,
-    setHealthConditions,
-    goal,
-    goalPickerOpen,
-    toggleGoalPicker,
-    selectGoal,
+    toggleHealthCondition,
+    healthOther,
+    setHealthOther,
     activity,
-    activityPickerOpen,
-    toggleActivityPicker,
-    selectActivity,
+    selectActivity: pickSingle(setActivity, "activity"),
+    activityOther,
+    setActivityOther,
+    goal,
+    selectGoal: pickSingle(setGoal, "goal"),
+    goalOther,
+    setGoalOther,
     agreeTerms,
     toggleAgreeTerms,
 
+    notice,
+    dismissNotice,
     error,
+    dismissError,
     loading,
     handleCreateAccount,
     goToLogin,
     goToTerms,
+  };
+}
+
+/** Registration OTP screen state, shared by the web and native screens */
+export function useVerifyRegistration() {
+  const router = useRouter();
+  const { email } = useLocalSearchParams();
+  const otp = useOtpInput(4);
+  const resend = useResendCooldown();
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  async function handleVerify() {
+    // Reached directly or after a reload, this screen can render without the
+    // email it needs to verify against
+    if (!email) {
+      setSuccess("");
+      setError("We don't know which account to verify. Please register again.");
+      return;
+    }
+
+    const otpError = validateOtp(otp.codeValue, otp.length);
+    if (otpError) {
+      setSuccess("");
+      setError(otpError);
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setLoading(true);
+
+    try {
+      const payload = await apiClient.post(
+        "/auth/verify-registration",
+        { email: email.toLowerCase(), code: otp.codeValue },
+        { full: true },
+      );
+
+      setSuccess(payload?.message || "Email verified successfully!");
+      setTimeout(() => router.replace("/login"), 1200);
+    } catch (err) {
+      const message =
+        err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.";
+      setError(message);
+      // A wrong or expired code leaves stale digits in the boxes otherwise
+      otp.reset();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResend() {
+    if (!resend.canResend || resending) return;
+    if (!email) {
+      setSuccess("");
+      setError("We don't know which email to send the code to. Please register again.");
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setResending(true);
+
+    try {
+      const payload = await apiClient.post(
+        "/auth/resend-registration-otp",
+        { email: email.toLowerCase() },
+        { full: true },
+      );
+      // The server answers generically on purpose, so show its wording
+      // rather than implying the account exists
+      setSuccess(payload?.message || "If an account exists for this email, a new code has been sent.");
+      resend.start();
+      otp.reset();
+    } catch (err) {
+      const message =
+        err instanceof ApiClientError ? err.message : "Couldn't resend the code. Try again.";
+      setError(message);
+    } finally {
+      setResending(false);
+    }
+  }
+
+  /**
+   * Back to the register form. Going back (rather than replacing) keeps
+   * everything already typed; resubmitting with a corrected email starts a
+   * fresh verification for that address
+   */
+  function updateEmail() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace({ pathname: "/register", params: { email: email || "" } });
+  }
+
+  return {
+    email,
+    otp,
+    error,
+    dismissError: () => setError(""),
+    success,
+    dismissSuccess: () => setSuccess(""),
+    loading,
+    resending,
+    cooldown: resend.remaining,
+    handleVerify,
+    handleResend,
+    updateEmail,
   };
 }

@@ -1,7 +1,7 @@
 {
   "name": "nutrifitai",
   "version": "1.0.0",
-  "description": "Backend API for NutriFit AI (MongoDB Atlas-backed)",
+  "description": "Backend API for NutriFitAI (MongoDB Atlas-backed)",
   "main": "src/server.js",
   "type": "commonjs",
   "scripts": {
@@ -9,6 +9,8 @@
     "dev": "nodemon src/server.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1146.0",
+    "@aws-sdk/s3-request-presigner": "^3.1146.0",
     "bcrypt": "^5.1.1",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",

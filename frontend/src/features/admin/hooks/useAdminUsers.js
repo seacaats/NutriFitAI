@@ -14,6 +14,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /** Long enough that typing a name is one request, short enough to feel live. */
 const SEARCH_DEBOUNCE_MS = 300;
 
+// Account actions want the whole envelope, for the server's message
+const options = { auth: true, full: true };
+
 export function useAdminUsers({ endpoint = "/admin/users", role = null, limit = 25 } = {}) {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState(role);
@@ -61,7 +64,7 @@ export function useAdminUsers({ endpoint = "/admin/users", role = null, limit = 
       setError(
         err instanceof ApiClientError
           ? err.message
-          : "Something went wrong loading this list.",
+          : "Couldn't load this list.",
       );
     } finally {
       if (id === requestId.current) setLoading(false);
@@ -121,6 +124,50 @@ export function useAdminUsers({ endpoint = "/admin/users", role = null, limit = 
     [load],
   );
 
+  // Every other account action. Same { ok, message } contract as changeRole,
+  // and every one takes the reason the audit entry records
+  const runAction = useCallback(
+    async (request, fallback) => {
+      try {
+        const payload = await request();
+        await load();
+        return { ok: true, message: payload.message || "Done" };
+      } catch (err) {
+        return { ok: false, message: err instanceof ApiClientError ? err.message : fallback };
+      }
+    },
+    [load],
+  );
+
+  const updateName = useCallback(
+    (userId, names, reason) =>
+      runAction(() => apiClient.patch(`/admin/users/${userId}/profile`, { ...names, reason }, options), "Couldn't update that name."),
+    [runAction],
+  );
+  const suspend = useCallback(
+    (userId, reason) => runAction(() => apiClient.post(`/admin/users/${userId}/suspend`, { reason }, options), "Couldn't suspend that account."),
+    [runAction],
+  );
+  const reinstate = useCallback(
+    (userId, reason) => runAction(() => apiClient.post(`/admin/users/${userId}/reinstate`, { reason }, options), "Couldn't reinstate that account."),
+    [runAction],
+  );
+  const forcePasswordReset = useCallback(
+    (userId, reason) =>
+      runAction(() => apiClient.post(`/admin/users/${userId}/password-reset`, { reason }, options), "Couldn't require a password reset."),
+    [runAction],
+  );
+  const cancelPasswordReset = useCallback(
+    (userId, reason) =>
+      runAction(() => apiClient.post(`/admin/users/${userId}/password-reset/cancel`, { reason }, options), "Couldn't cancel the password reset."),
+    [runAction],
+  );
+  const deleteUser = useCallback(
+    (userId, reason) =>
+      runAction(() => apiClient.delete(`/admin/users/${userId}`, { ...options, body: { reason } }), "Couldn't delete that account."),
+    [runAction],
+  );
+
   return {
     rows,
     counts,
@@ -135,5 +182,11 @@ export function useAdminUsers({ endpoint = "/admin/users", role = null, limit = 
     setPage,
     refresh: load,
     changeRole,
+    updateName,
+    suspend,
+    reinstate,
+    forcePasswordReset,
+    cancelPasswordReset,
+    deleteUser,
   };
 }

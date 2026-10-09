@@ -1,5 +1,8 @@
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth } from "@/shared/context/AuthContext";
+import { usePullRefresh } from "@/shared/context/PullRefreshContext";
+import { forgetRemembered, getRemembered, setRemembered } from "@/shared/utils/rememberedState";
+import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
@@ -19,30 +22,71 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * chat_messages is an unbounded, referenced collection, not capped at any message count. 
  * The result looked like a "2-message" cap: each mount started a *new* conversation, 
  * and most mounts only see one exchange (one user + one assistant message) before the user
- * navigates away. The fix is below — the active id is mirrored to storage and
- * rehydrated on mount, so a thread keeps growing across reloads instead of
- * forking a fresh one every time
+ * navigates away. The fix is below — the active id is remembered per account
+ * (rememberedState.js) and resumed on mount, so a thread keeps growing across
+ * reloads instead of forking a fresh one every time. After RESUME_MS without
+ * use the coach opens on a fresh chat instead; the old one stays in history
  */
 
-// A function rather than a shared constant object: this fixture is re-used
-// as the starting point of a fresh chat (reset(), and the initial mount)
-// every time, so it needs a fresh "sent just now" timestamp on each of those
-// occasions instead of freezing at whatever time the module first loaded
-const makeGreeting = () => ({
-  id: "greeting",
-  role: "assistant",
-  content: "Hi! I'm your NutriFit coach. Ask me about your steps, meals, workouts, or how you're tracking against your goals.",
-  pending: false,
-  createdAt: new Date().toISOString(),
-});
+// Mirrors MAX_CONVERSATIONS in coachController.js: a user keeps at most
+// this many conversations, and must delete one to start another
+export const MAX_CONVERSATIONS = 10;
 
-const LAST_CONVERSATION_KEY = "nutrifit.coach.lastConversationId";
+// Mirrors MAX_MESSAGE_LENGTH in coachValidators.js. The field stops there;
+// the counter shows from COUNTER_FROM so it doesn't sit on screen all the time
+export const MAX_MESSAGE_LENGTH = 2000;
+export const COUNTER_FROM = 1800;
+
+const LAST_CONVERSATION = "coach-thread";
+// Resumed within a day of last use, a new chat after that
+const RESUME_MS = 24 * 60 * 60 * 1000;
+
+// Shortest time the loading placeholder stays up when an existing thread
+// loads, so a fast response still shows it instead of flashing past
+const MIN_THREAD_LOAD_MS = 450;
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let localId = 0;
 const nextId = () => `local-${++localId}`;
 
-export function useCoachChat() {
-  const [messages, setMessages] = useState(() => [makeGreeting()]);
+// Message timestamp in the device's own timezone:
+//   today       "3:42 PM"
+//   yesterday   "Yesterday, 3:42 PM"
+//   older       "Sep 21, 3:42 PM", plus the year only when it isn't this year
+export function formatMessageTime(createdAt) {
+  if (!createdAt) return "";
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const now = new Date();
+  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOfDay(now) - startOfDay(date)) / 86400000);
+
+  if (days <= 0) return time;
+  if (days === 1) return `Yesterday, ${time}`;
+
+  const day = date.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+  });
+  return `${day}, ${time}`;
+}
+
+/**
+ * `about` is { scanId } or { mealId } when the screen was opened from the
+ * food scanner's "Ask AI Coach" (/ai-coach?scan= or ?meal=), else null.
+ * That always starts a fresh thread about it instead of resuming the last
+ * one; the server attaches the ref on the first message and reads the scan
+ * or meal itself on every turn after
+ */
+export function useCoachChat(about = null) {
+  const userId = useAuth().user?.id;
+  const aboutKey = about?.scanId ? `scan:${about.scanId}` : about?.mealId ? `meal:${about.mealId}` : "";
+
+  // Empty until the user writes; the screen shows a welcome in its place
+  const [messages, setMessages] = useState([]);
   const [conversationId, setConversationId] = useState(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -55,6 +99,9 @@ export function useCoachChat() {
   // resume, so a screen can hold off rendering the greeting for a beat rather
   // than flashing it before the real history swaps in
   const [resuming, setResuming] = useState(true);
+  // The scan or meal the open thread is about, for the pinned chip:
+  // { kind, id, label, caloriesKcal, date, mealType? } or null
+  const [subject, setSubject] = useState(null);
 
   // Lets an unmounting screen cancel in-flight generation rather than leaving
   // the request burning provider quota for an answer nobody will read
@@ -76,37 +123,62 @@ export function useCoachChat() {
   const applyConversation = useCallback(async (id) => {
     const data = await apiClient.get(`/coach/conversations/${id}`, { auth: true });
     setConversationId(data.id);
-    setMessages(data.messages.length ? data.messages : [makeGreeting()]);
-    await AsyncStorage.setItem(LAST_CONVERSATION_KEY, data.id);
+    // A last user message with no reply failed earlier; the next send
+    // replaces it (the server overwrites it too)
+    const rows = data.messages || [];
+    const last = rows[rows.length - 1];
+    setMessages(last?.role === "user" ? [...rows.slice(0, -1), { ...last, failed: true }] : rows);
+    setSubject(data.subject || null);
+    await setRemembered(LAST_CONVERSATION, userId, data.id);
     return data;
-  }, []);
+  }, [userId]);
 
   // On mount: populate the history list, and resume whichever thread was last
-  // active rather than always starting blank
+  // active rather than always starting blank. Opened about a scan or meal,
+  // it starts fresh instead and only loads the chip
   useEffect(() => {
     let cancelled = false;
 
     refreshHistory();
 
+    if (aboutKey) {
+      setMessages([]);
+      setConversationId(null);
+      (async () => {
+        const [kind, id] = aboutKey.split(":");
+        try {
+          const data = await apiClient.get(`/coach/subject?${kind}Id=${id}`, { auth: true });
+          if (cancelled) return;
+          setSubject(data);
+        } catch {
+          // Deleted, or not this user's: fall back to an ordinary new chat
+          if (!cancelled) setError("That meal is no longer available, so this is a regular chat.");
+        } finally {
+          if (!cancelled) setResuming(false);
+        }
+      })();
+      return () => { cancelled = true; };
+    }
+
     (async () => {
-      const storedId = await AsyncStorage.getItem(LAST_CONVERSATION_KEY);
+      const storedId = await getRemembered(LAST_CONVERSATION, userId, RESUME_MS);
       if (!storedId || cancelled) {
         if (!cancelled) setResuming(false);
         return;
       }
       try {
-        await applyConversation(storedId);
+        await Promise.all([applyConversation(storedId), wait(MIN_THREAD_LOAD_MS)]);
       } catch {
         // Thread is gone (deleted, or aged out past the 180-day TTL) — drop
         // the stale pointer and fall back to a fresh greeting
-        await AsyncStorage.removeItem(LAST_CONVERSATION_KEY);
+        await forgetRemembered(LAST_CONVERSATION, userId);
       } finally {
         if (!cancelled) setResuming(false);
       }
     })();
 
     return () => { cancelled = true; };
-  }, []);
+  }, [aboutKey, userId]);
 
   const send = useCallback(async (raw) => {
     const message = String(raw || "").trim();
@@ -117,15 +189,19 @@ export function useCoachChat() {
 
     const userMessage = { id: nextId(), role: "user", content: message, createdAt: new Date().toISOString() };
     const placeholder = { id: nextId(), role: "assistant", content: "", pending: true };
-    setMessages((current) => [...current, userMessage, placeholder]);
+    // A message that got no reply is overwritten by the next one, not stacked
+    setMessages((current) => [...current.filter((m) => !m.failed), userMessage, placeholder]);
 
     const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
     abortRef.current = controller;
 
     try {
+      // A new thread about a scan or meal carries its id; after that the
+      // conversation itself remembers it
+      const ref = !conversationId && subject && !subject.missing ? { [`${subject.kind}Id`]: subject.id } : {};
       const data = await apiClient.post(
         "/coach/chat",
-        { message, ...(conversationId ? { conversationId } : {}) },
+        { message, ...(conversationId ? { conversationId } : ref) },
         { auth: true },
       );
 
@@ -137,14 +213,29 @@ export function useCoachChat() {
             : m,
         ),
       );
-      // Keep resuming this same thread on the next mount/reload
-      await AsyncStorage.setItem(LAST_CONVERSATION_KEY, data.conversationId);
+      // Keep resuming this same thread on the next mount/reload. A thread
+      // opened about a scan or meal isn't, the coach reopens on the usual one
+      if (!aboutKey) await setRemembered(LAST_CONVERSATION, userId, data.conversationId);
       // New/updated thread moves to the top of the list, same as the
       // server's own updatedAt-desc order
       refreshHistory();
     } catch (err) {
-      // Drop the placeholder rather than leaving an empty bubble spinning.
-      setMessages((current) => current.filter((m) => m.id !== placeholder.id));
+      // Drop the placeholder rather than leaving an empty bubble spinning. At
+      // the conversation limit nothing was saved, so the message goes too
+      const limited = err instanceof ApiClientError && err.code === "CONVERSATION_LIMIT";
+      setMessages((current) => current
+        .filter((m) => m.id !== placeholder.id && !(limited && m.id === userMessage.id))
+        // Marked so the next send or retry replaces it instead of adding another
+        .map((m) => (m.id === userMessage.id ? { ...m, failed: true } : m)));
+
+      // The server saved the message to a thread even though the reply failed.
+      // Adopt it, so the next send continues there instead of starting a new one
+      const failedIn = err instanceof ApiClientError ? err.details?.conversationId : null;
+      if (failedIn) {
+        setConversationId(failedIn);
+        if (!aboutKey) await setRemembered(LAST_CONVERSATION, userId, failedIn);
+        refreshHistory();
+      }
 
       setError(
         err instanceof ApiClientError && err.code === "AI_UNAVAILABLE"
@@ -155,21 +246,22 @@ export function useCoachChat() {
       abortRef.current = null;
       setSending(false);
     }
-  }, [conversationId, sending, refreshHistory]);
+  }, [conversationId, sending, refreshHistory, subject, aboutKey, userId]);
 
   /** Starts a fresh thread; the old one stays in history on the server */
   const reset = useCallback(() => {
     abortRef.current?.abort();
-    setMessages([makeGreeting()]);
+    setMessages([]);
     setConversationId(null);
+    setSubject(null);
     setError("");
-    AsyncStorage.removeItem(LAST_CONVERSATION_KEY);
-  }, []);
+    forgetRemembered(LAST_CONVERSATION, userId);
+  }, [userId]);
 
   /** Re-sends the last user turn after a failure, without retyping it */
   const retry = useCallback(() => {
-    const lastUser = [...messages].reverse().find((m) => m.role === "user");
-    if (lastUser) send(lastUser.content);
+    const failed = [...messages].reverse().find((m) => m.role === "user" && m.failed);
+    if (failed) send(failed.content);
   }, [messages, send]);
 
   /** Swaps in a past thread picked from the history list */
@@ -179,7 +271,7 @@ export function useCoachChat() {
     setSwitching(true);
     setError("");
     try {
-      await applyConversation(id);
+      await Promise.all([applyConversation(id), wait(MIN_THREAD_LOAD_MS)]);
     } catch (err) {
       setError(err?.message || "Couldn't load that conversation.");
     } finally {
@@ -187,8 +279,61 @@ export function useCoachChat() {
     }
   }, [conversationId, switching, applyConversation]);
 
+  // Both throw with the server's message, for the confirm dialog to show.
+  // Removing the open conversation also clears the screen
+  const deleteConversation = useCallback(async (id) => {
+    await apiClient.delete(`/coach/conversations/${id}`, { auth: true });
+    if (id === conversationId) reset();
+    await refreshHistory();
+  }, [conversationId, reset, refreshHistory]);
+
+  const deleteAllConversations = useCallback(async () => {
+    await apiClient.delete("/coach/conversations", { auth: true });
+    reset();
+    await refreshHistory();
+  }, [reset, refreshHistory]);
+
+  // Pull-to-refresh: the history list, and the open thread unless a reply is
+  // still coming in
+  const reload = useCallback(async () => {
+    const thread = conversationId && !sending ? applyConversation(conversationId).catch(() => {}) : null;
+    await Promise.all([refreshHistory(), thread]);
+  }, [conversationId, sending, applyConversation, refreshHistory]);
+  usePullRefresh(reload);
+
+  // A new conversation can't be started at the limit (continuing one can)
+  const atLimit = !conversationId && conversations.length >= MAX_CONVERSATIONS;
+
   return {
-    messages, sending, error, conversationId, send, reset, retry,
+    messages, sending, error, conversationId, send, reset, retry, subject,
     conversations, historyLoading, switching, resuming, loadConversation, refreshHistory,
+    deleteConversation, deleteAllConversations, atLimit,
   };
+}
+
+// The AI Coach screen's state, shared by web and phone: the chat (about a
+// scan or meal when opened from the food scanner), the draft, and sending
+export function useCoach() {
+  const scrollRef = useRef(null);
+
+  // "Ask AI Coach" from the food scanner: /ai-coach?scan=<id> or ?meal=<id>
+  const { scan, meal } = useLocalSearchParams();
+  const about = scan ? { scanId: String(scan) } : meal ? { mealId: String(meal) } : null;
+
+  const [message, setMessage] = useState("");
+  const chat = useCoachChat(about);
+  // Any conversation load, the one resumed on open or one picked from history
+  const loadingThread = chat.resuming || chat.switching;
+  // Empty chat: a welcome in the middle instead of a first message
+  const empty = chat.messages.length === 0 && !loadingThread;
+
+  const sendMessage = (preset) => {
+    const text = (typeof preset === "string" ? preset : message).trim();
+    if (!text || chat.sending || chat.atLimit) return;
+    chat.send(text);
+    setMessage("");
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+  };
+
+  return { ...chat, scrollRef, message, setMessage, loadingThread, empty, sendMessage };
 }

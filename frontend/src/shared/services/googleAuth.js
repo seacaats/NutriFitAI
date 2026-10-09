@@ -3,35 +3,21 @@ import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 
-// The cross-window transport lives in utils/authChannel.js; re-exported here so
-// existing imports from "@/lib/googleAuth" keep working.
-export {
-    GOOGLE_AUTH_ACK_TYPE,
-    GOOGLE_AUTH_CHANNEL,
-    GOOGLE_AUTH_MESSAGE_TYPE,
-    listenForGoogleResult,
-    publishGoogleResult,
-    resetGoogleAuthChannel
-} from "@/shared/utils/authChannel";
-
 const CALLBACK_PATH = "google-auth";
 
 /**
  * Error codes that can reach the login screen, from either the backend's
  * `?error=...` redirect param or the popup's own failure paths.
  */
-export const GOOGLE_ERROR_MESSAGES = {
+const GOOGLE_ERROR_MESSAGES = {
   // Sent by controllers/authController.js googleAuthCallback
   google_auth_failed: "Google couldn't complete the sign-in. Please try again.",
   google_email_unverified: "Your Google account's email address isn't verified.",
-  // The ACCOUNT (not the Google address) hasn't completed email verification.
-  // Handled by routing to the OTP screen rather than shown as a dead end --
-  // see the email_not_verified branch in useLoginForm.js. The text is the
-  // fallback for any path that surfaces it without routing.
-  email_not_verified:
-    "Please verify your email before signing in. We'll take you to the verification screen.",
-  account_not_found:
-    "Your account isn't recorded in our database. Please register first.",
+  // No verified account for this Google email (unregistered OR registered but
+  // unverified -- deliberately indistinguishable). useLoginForm routes this to
+  // the register screen; the text is only a fallback
+  registration_required:
+    "We couldn't find a verified account for that Google email. Please register first.",
   // Raised by the popup callback screen itself
   missing_exchange_token: "Google didn't return a sign-in token. Please try again.",
   exchange_failed: "We couldn't finish signing you in. Please try again.",
@@ -62,7 +48,7 @@ export function googleErrorMessage(code, serverMessage) {
  *   opener's origin for postMessage to be accepted)
  * - native: a deep link back into the app, e.g. myapp://google-auth
  */
-export function getGoogleRedirectUri() {
+function getGoogleRedirectUri() {
   if (Platform.OS === "web") return `${window.location.origin}/${CALLBACK_PATH}`;
   return Linking.createURL(CALLBACK_PATH);
 }
@@ -78,6 +64,11 @@ export function exchangeGoogleToken(exchangeToken) {
   return apiClient.post("/auth/google/exchange", { exchangeToken });
 }
 
+// True while the phone's Google sign-in is open (the browser backgrounds the
+// app), so returning from it isn't treated as reopening the app
+let googleSignInOpen = false;
+export const isGoogleSignInOpen = () => googleSignInOpen;
+
 /**
  * Native Google sign-in. Opens the backend OAuth flow in an in-app browser
  * session and waits for the redirect back into the app.
@@ -86,6 +77,16 @@ export function exchangeGoogleToken(exchangeToken) {
  * (Web uses the popup flow in useLoginForm instead.)
  */
 export async function signInWithGoogle() {
+  googleSignInOpen = true;
+  try {
+    return await runGoogleSignIn();
+  } finally {
+    // A beat later: the app's resume event can land after this settles
+    setTimeout(() => { googleSignInOpen = false; }, 1500);
+  }
+}
+
+async function runGoogleSignIn() {
   const redirectUri = getGoogleRedirectUri();
   const result = await WebBrowser.openAuthSessionAsync(buildGoogleAuthUrl(redirectUri), redirectUri);
 
@@ -98,6 +99,12 @@ export async function signInWithGoogle() {
 
   const { queryParams } = Linking.parse(result.url);
 
+  if (queryParams?.error === "registration_required") {
+    throw new ApiClientError(googleErrorMessage("registration_required"), {
+      code: "REGISTRATION_REQUIRED",
+      details: { email: queryParams.email || "" },
+    });
+  }
   if (queryParams?.error) {
     throw new ApiClientError(googleErrorMessage(queryParams.error), { code: "GOOGLE_AUTH_FAILED" });
   }

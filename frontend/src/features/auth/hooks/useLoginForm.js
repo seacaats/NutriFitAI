@@ -1,6 +1,11 @@
-import { ApiClientError, apiClient } from "@/shared/api/apiClient";
+import { apiClient, ApiClientError } from "@/shared/api/apiClient";
 import { useAuth } from "@/shared/context/AuthContext";
-import { buildGoogleAuthUrl, googleErrorMessage, signInWithGoogle } from "@/shared/services/googleAuth";
+import { useKeepOnResume } from "@/shared/hooks/useLandingOnResume";
+import {
+  buildGoogleAuthUrl,
+  googleErrorMessage,
+  signInWithGoogle,
+} from "@/shared/services/googleAuth";
 import { listenForGoogleResult, resetGoogleAuthChannel } from "@/shared/utils/authChannel";
 import { setAccessToken } from "@/shared/utils/authStorage";
 import { isValidEmail } from "@/shared/utils/authValidators";
@@ -35,6 +40,10 @@ export function useLoginForm() {
   // stale pre-login session
   const { refresh } = useAuth();
 
+  // `from`: "register" when the user came here from the register screen.
+  // (`next`, the page to return to, is read by the (auth) layout)
+  const cameFromRegister = (Array.isArray(params.from) ? params.from[0] : params.from) === "register";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -54,10 +63,27 @@ export function useLoginForm() {
   // True only when the popup's state became unobservable, so the screen can
   // ask the user rather than leaving the button spinning
   const [googleNeedsAttention, setGoogleNeedsAttention] = useState(false);
+  // Something typed: coming back to the app keeps it
+  useKeepOnResume(Boolean(email || password));
   const settledRef = useRef(false);
 
   const toggleShowPassword = () => setShowPassword((v) => !v);
   const toggleRememberMe = () => setRememberMe((v) => !v);
+
+  /**
+   * Google found no verified account for this address (not registered, or
+   * registered but never verified -- the server doesn't say which). Either way
+   * the way forward is the register screen, prefilled with the Google email.
+   * Re-registering an unverified address simply sends it a fresh code.
+   * (The redirect-param effect below inlines the same navigation so its
+   * dependency list stays honest)
+   */
+  function goToRegisterFromGoogle(googleEmail) {
+    router.replace({
+      pathname: "/register",
+      params: { email: (googleEmail || "").trim().toLowerCase(), from: "google" },
+    });
+  }
 
   // The full-page (non-popup) Google redirect hands failures back as route
   // params — surface them instead of dropping the user on a blank login form
@@ -66,33 +92,19 @@ export function useLoginForm() {
     if (!code) return;
     const serverMessage = Array.isArray(params.googleMessage) ? params.googleMessage[0] : params.googleMessage;
 
-    /**
-     * Unverified account: route, don't just report
-     *
-     * Mirrors the EMAIL_NOT_VERIFIED branch of the password submit below, so
-     * an unverified user ends up on the same OTP screen whichever way they
-     * tried to sign in. Showing the message alone would leave them on the
-     * login form with no way forward -- the account exists and the password
-     * may be right, so every retry fails identically
-     *
-     * The email comes back on the redirect precisely so the field can be
-     * prefilled here, the same as the password path passes it
-     */
-    if (code === "email_not_verified") {
-      const unverifiedEmail = Array.isArray(params.googleEmail) ? params.googleEmail[0] : params.googleEmail;
-      Alert.alert(
-        "Email not verified",
-        "Please verify your email before signing in. We'll take you to the verification screen.",
-      );
-      router.push({
-        pathname: "/verify-registration",
-        params: { email: (unverifiedEmail || email || "").trim().toLowerCase() },
+    if (code === "registration_required") {
+      const googleEmail = Array.isArray(params.googleEmail) ? params.googleEmail[0] : params.googleEmail;
+      router.replace({
+        pathname: "/register",
+        params: { email: (googleEmail || "").trim().toLowerCase(), from: "google" },
       });
       return;
     }
 
     setError(googleErrorMessage(code, serverMessage || undefined));
-  }, [params.googleError, params.googleMessage, params.googleEmail, router, email]);
+    // Shown once, then dropped from the address so Back/reload/logout can't replay it
+    router.setParams({ googleError: undefined, googleMessage: undefined, googleEmail: undefined });
+  }, [params.googleError, params.googleMessage, params.googleEmail, router]);
 
   // Tear down timers/listeners if the user navigates away mid sign-in
   useEffect(() => cleanupGoogleListener, []);
@@ -100,22 +112,18 @@ export function useLoginForm() {
   async function handleLogin() {
     if (!email.trim() && !password) {
       setError("Please enter your email and password.");
-      Alert.alert("Missing information", "Please enter your email and password.");
       return;
     }
     if (!email.trim()) {
       setError("Please enter your email address.");
-      Alert.alert("Missing information", "Please enter your email address.");
       return;
     }
     if (!isValidEmail(email)) {
       setError("Please enter a valid email address.");
-      Alert.alert("Invalid email", "Please enter a valid email address.");
       return;
     }
     if (!password) {
       setError("Please enter your password.");
-      Alert.alert("Missing information", "Please enter your password.");
       return;
     }
 
@@ -147,20 +155,14 @@ export function useLoginForm() {
 
       // Re-fetch /auth/me now that a new token is stored, so AuthContext
       // (and anything reading useAuth(), like DashboardLayout) reflects the
-      // freshly logged-in user before we navigate in
+      // freshly logged-in user
+      // Signed in now: the (auth) layout sees it and takes them in (to `next`
+      // or their home). Navigating here too replaced the onboarding the
+      // dashboard had just opened
       await refresh();
-
-      router.replace("/dashboard");
     } catch (err) {
-      if (err instanceof ApiClientError && err.code === "EMAIL_NOT_VERIFIED") {
-        Alert.alert(
-          "Email not verified",
-          "Please verify your email before logging in. We'll take you to the verification screen.",
-        );
-        router.push({ pathname: "/verify-registration", params: { email: email.trim().toLowerCase() } });
-        return;
-      }
-
+      // Unknown, unverified, and wrong-password all come back as the same
+      // "Invalid email or password" from the server, by design
       const message = err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.";
       setError(message);
       Alert.alert("Login failed", message);
@@ -214,10 +216,16 @@ export function useLoginForm() {
       try {
         const data = await signInWithGoogle();
         await setAccessToken(data.accessToken);
+        // Signed in now: the (auth) layout sees it and takes them in (to `next`
+        // or their home). Navigating here too replaced the onboarding the
+        // dashboard had just opened
         await refresh();
-        router.replace("/dashboard");
       } catch (err) {
         if (err instanceof ApiClientError && err.code === "GOOGLE_CANCELLED") return;
+        if (err instanceof ApiClientError && err.code === "REGISTRATION_REQUIRED") {
+          goToRegisterFromGoogle(err.details?.email);
+          return;
+        }
         const message = err instanceof ApiClientError ? err.message : "Google sign-in failed. Please try again.";
         setError(message);
         Alert.alert("Google sign-in failed", message);
@@ -274,18 +282,9 @@ export function useLoginForm() {
       setGoogleLoading(false);
 
       if (!data.success) {
-        // Popup path, same rule as the full-page redirect above: an
-        // unverified account is routed to the OTP screen, not left staring
-        // at an error it cannot act on
-        if (data.error === "email_not_verified") {
-          Alert.alert(
-            "Email not verified",
-            "Please verify your email before signing in. We'll take you to the verification screen.",
-          );
-          router.push({
-            pathname: "/verify-registration",
-            params: { email: (data.email || email || "").trim().toLowerCase() },
-          });
+        // Popup path, same rule as the full-page redirect above
+        if (data.error === "registration_required") {
+          goToRegisterFromGoogle(data.email);
           return;
         }
 
@@ -311,9 +310,10 @@ export function useLoginForm() {
         return;
       }
 
+      // Signed in now: the (auth) layout sees it and takes them in (to `next`
+      // or their home). Navigating here too replaced the onboarding the
+      // dashboard had just opened
       await refresh();
-
-      router.replace("/dashboard");
     }
 
     // listenForGoogleResult acks on our behalf over every transport, so the
@@ -423,9 +423,17 @@ export function useLoginForm() {
     router.push("/forgot-password");
   }
 
+  // Back to the register screen if that's where they came from, so switching
+  // between the two doesn't keep stacking screens on the history
   function goToRegister() {
-    router.push("/register");
+    if (cameFromRegister && router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.push({ pathname: "/register", params: { from: "login" } });
   }
+
+  const dismissError = () => setError("");
 
   return {
     email,
@@ -440,6 +448,7 @@ export function useLoginForm() {
     googleLoading,
     googleNeedsAttention,
     error,
+    dismissError,
     handleLogin,
     handleGoogleLogin,
     cancelGoogleLogin,

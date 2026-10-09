@@ -1,8 +1,12 @@
+import { checkNow, hasNoConnection, isOffline, noteSavedData, onConnectionChange, onReconnect, setOffline, setOnline, setPingBase, waitForOnline } from "@/shared/api/connection";
+import { isCacheable, readCached, saveCached } from "@/shared/api/offlineCache";
+import { clearNetworkError, reportNetworkError, rewordNetworkError } from "@/shared/state/screenErrors";
 import { clearAccessToken, getAccessToken, setAccessToken } from "@/shared/utils/authStorage";
 import Constants from "expo-constants";
+import { Platform } from "react-native";
 
 /**
- * Base URL of the NutriFit API, resolved at startup rather than hardcoded.
+ * Base URL of the NutriFitAI API, resolved at startup rather than hardcoded.
  * 
  * The app was DOWNLOADED from Metro, running on the dev machine, so the host
  * the bundle arrived from is by definition the machine the API is on too.
@@ -58,11 +62,31 @@ function resolveBaseUrl() {
 }
 
 const BASE_URL = resolveBaseUrl();
+setPingBase(BASE_URL);
+
+/**
+ * What to say when a request gets no answer: the phone's own connection is
+ * down (NetInfo), or the network is fine and the server is what's down
+ */
+export function unreachableMessage() {
+  return hasNoConnection()
+    ? "You're not connected to the internet. Connect to Wi-Fi or mobile data and try again."
+    : "The server can't be reached right now. Please try again in a moment.";
+}
 
 if (__DEV__) {
   // Printed once at startup: when a device cannot reach the API this is the
   // single most useful line to see, and it costs nothing to log
   console.log(`[apiClient] base URL: ${BASE_URL}`);
+}
+
+// Device IANA zone ("Asia/Manila"), or null if the runtime can't tell
+function deviceTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
 }
 
 /** Abort a request that the server never answers, so callers don't hang forever */
@@ -79,7 +103,7 @@ export class ApiClientError extends Error {
     super(message);
     this.name = "ApiClientError";
     this.status = status;
-    this.code = code; // e.g. "EMAIL_NOT_VERIFIED", "UNAUTHORIZED", "VALIDATION_FAILED"
+    this.code = code; // e.g. "UNAUTHORIZED", "VALIDATION_FAILED", "RATE_LIMITED"
     this.details = details;
   }
 }
@@ -89,6 +113,8 @@ export class ApiClientError extends Error {
  * zod issue on "heightCm" reads as "Height" rather than the raw key
  */
 const FIELD_LABELS = {
+  firstName: "First name",
+  lastName: "Last name",
   fullName: "Full name",
   email: "Email",
   password: "Password",
@@ -96,14 +122,28 @@ const FIELD_LABELS = {
   age: "Age",
   heightCm: "Height",
   weightKg: "Weight",
-  gender: "Gender",
+  sex: "Sex",
   goal: "Goal",
+  fitnessGoal: "Goal",
+  activityLevel: "Activity level",
+  dietPreference: "Diet preference",
+  healthConditions: "Health conditions",
   termsAccepted: "Terms",
   code: "Verification code",
   resetToken: "Reset session",
   rememberMe: "Remember me",
   exchangeToken: "Sign-in token",
   redirectUri: "Redirect URL",
+  dailyCaloriesKcal: "Calories",
+  dailyProteinG: "Protein",
+  dailyCarbsG: "Carbs",
+  dailyFatG: "Fat",
+  dailySteps: "Daily steps",
+  dailyWaterMl: "Daily water",
+  targetWeightKg: "Target weight",
+  weeklyPaceKg: "Weekly pace",
+  workoutPrefs: "Workout preferences",
+  coachTone: "Coach tone",
 };
 
 /**
@@ -113,7 +153,7 @@ const FIELD_LABELS = {
  * message instead
  * @param {Array<{ path?: string, message?: string }>|undefined} details
  */
-export function formatValidationDetails(details) {
+function formatValidationDetails(details) {
   if (!Array.isArray(details)) return "";
 
   const lines = details
@@ -123,7 +163,10 @@ export function formatValidationDetails(details) {
       if (!message) return "";
       const key = detail.path ? String(detail.path).split(".").pop() : "";
       const label = FIELD_LABELS[key] || (key ? key : "");
-      return label ? `${label}: ${message}` : message;
+      // Server messages that already name their field ("Password can't contain
+      // spaces.") read badly with a "Password: " prefix, so skip it for those
+      if (!label || message.toLowerCase().includes(label.toLowerCase())) return message;
+      return `${label}: ${message}`;
     })
     .filter(Boolean);
 
@@ -270,9 +313,12 @@ function refreshAccessToken() {
  */
 async function request(
   path,
-  { method = "GET", body, auth = false, full = false, timeoutMs = DEFAULT_TIMEOUT_MS } = {},
+  { method = "GET", body, auth = false, full = false, as = "json", timeoutMs = DEFAULT_TIMEOUT_MS, signal } = {},
   isRetry = false,
 ) {
+  // `signal`: the caller gave up (a dialog closed). Nothing comes back after that
+  if (signal?.aborted) throw cancelledError();
+
   // FormData must NOT get an explicit Content-Type: the runtime sets it along
   // with the multipart boundary, and overriding it makes the body unparseable
   // on the server
@@ -282,7 +328,10 @@ async function request(
   // Free ngrok endpoints serve an HTML interstitial to browser user-agents on
   // GET requests. That breaks JSON parsing, and AuthContext reads any /auth/me
   // failure as "logged out" — so the guard bounces a valid session
-  headers["ngrok-skip-browser-warning"] = "true";  
+  headers["ngrok-skip-browser-warning"] = "true";
+  // Read fresh each request, so a user who travels is picked up immediately
+  const timeZone = deviceTimeZone();
+  if (timeZone) headers["X-Timezone"] = timeZone;
 
   if (auth) {
     const token = await getAccessToken();
@@ -291,6 +340,8 @@ async function request(
 
   const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
   const timer = controller && timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  const cancel = () => controller?.abort();
+  signal?.addEventListener?.("abort", cancel);
 
   let response;
   try {
@@ -302,24 +353,31 @@ async function request(
       signal: controller ? controller.signal : undefined,
     });
   } catch (networkErr) {
+    if (signal?.aborted) throw cancelledError();
     if (networkErr && networkErr.name === "AbortError") {
       throw new ApiClientError("The server took too long to respond. Please try again.", {
         status: 0,
         code: "TIMEOUT",
       });
     }
-    throw new ApiClientError("Unable to reach the server. Check your connection and try again.", {
+    throw new ApiClientError(unreachableMessage(), {
       status: 0,
       code: "NETWORK_ERROR",
     });
   } finally {
     if (timer) clearTimeout(timer);
+    signal?.removeEventListener?.("abort", cancel);
   }
+  if (signal?.aborted) throw cancelledError();
+
+  // `as: "text"` for non-JSON downloads (the audit CSV). Errors still come
+  // back as the JSON envelope, so only a success skips the parse below
+  if (as === "text" && response.ok) return response.text();
 
   let payload = null;
   try {
     payload = await response.json();
-  } catch (parseErr) {
+  } catch {
     // Non-JSON response (e.g. a proxy error page) — fall through with no payload
   }
 
@@ -337,7 +395,7 @@ async function request(
     if (response.status === 401 && auth && !isRetry && path !== "/auth/refresh") {
       try {
         await refreshAccessToken();
-        return request(path, { method, body, auth, full, timeoutMs }, true);
+        return request(path, { method, body, auth, full, as, timeoutMs, signal }, true);
       } catch {
         // Refresh failed too (refresh cookie missing/expired/invalid) — fall
         // through and report the ORIGINAL 401 below, exactly as if no retry
@@ -363,16 +421,233 @@ async function request(
   return full ? payload : payload.data;
 }
 
+/**
+ * Uploads one local file as multipart/form-data. `file` is { uri, name, type }.
+ *
+ * Why not `request` with a FormData body: on Android, React Native 0.84+ has a
+ * networking bug where multipart uploads with a { uri, name, type } part fail
+ * with a bare "Network request failed" while every JSON call works
+ * (react-native#55841). Native uploads therefore go through expo-file-system's
+ * own uploader, which doesn't use that code path. Web keeps FormData, where
+ * the page's blob: / data: URL is fetched back into real bytes first.
+ *
+ * Same contract as `request`: resolves with `data`, throws ApiClientError,
+ * and a 401 gets one silent refresh-and-retry
+ */
+async function uploadFile(path, file, { field = "file", auth = false, timeoutMs = DEFAULT_TIMEOUT_MS } = {}, isRetry = false) {
+  if (Platform.OS === "web") {
+    const formData = new FormData();
+    const blob = await (await fetch(file.uri)).blob();
+    formData.append(field, blob, file.name || "upload");
+    return request(path, { method: "POST", body: formData, auth, timeoutMs });
+  }
+
+  // Native only, so web bundles never load it
+  const FileSystem = require("expo-file-system/legacy");
+
+  const headers = { "ngrok-skip-browser-warning": "true" };
+  const timeZone = deviceTimeZone();
+  if (timeZone) headers["X-Timezone"] = timeZone;
+  if (auth) {
+    const token = await getAccessToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+
+  let result;
+  try {
+    const upload = FileSystem.uploadAsync(`${BASE_URL}${path}`, file.uri, {
+      httpMethod: "POST",
+      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+      fieldName: field,
+      mimeType: file.type || "application/octet-stream",
+      headers,
+    });
+    // uploadAsync has no timeout of its own
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), timeoutMs));
+    result = await Promise.race([upload, timeout]);
+  } catch (err) {
+    if (err?.message === "timeout") {
+      throw new ApiClientError("The server took too long to respond. Please try again.", { status: 0, code: "TIMEOUT" });
+    }
+    // The native reason (missing file, refused connection...) is shown in
+    // development, where it's the one line that explains the failure
+    const reason = __DEV__ && err?.message ? ` (${err.message})` : "";
+    throw new ApiClientError(`${unreachableMessage()}${reason}`, {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+
+  let payload = null;
+  try {
+    payload = JSON.parse(result.body);
+  } catch {
+    // Non-JSON body (proxy error page) -- handled as a failure below
+  }
+
+  const ok = result.status >= 200 && result.status < 300;
+  if (!ok || !payload || payload.success === false) {
+    if (result.status === 401 && auth && !isRetry) {
+      try {
+        await refreshAccessToken();
+        return uploadFile(path, file, { field, auth, timeoutMs }, true);
+      } catch {
+        // Refresh failed too: report the original 401 below
+      }
+    }
+    const details = payload && payload.details;
+    const message = formatValidationDetails(details) || (payload && payload.message) || statusFallbackMessage(result.status);
+    throw new ApiClientError(message, {
+      status: result.status,
+      code: (payload && payload.code) || codeFallback(result.status),
+      details,
+    });
+  }
+
+  return payload.data;
+}
+
+// ---- Offline handling ------------------------------------------------------
+
+// The request never got an answer: no network, a timeout, or a proxy saying
+// the server is down. Other errors came FROM the server and are passed on
+const isUnreachable = (err) =>
+  err instanceof ApiClientError && (err.status === 0 || err.status === 502 || err.status === 503 || err.status === 504);
+
+const offlineError = () => new ApiClientError(unreachableMessage(), { status: 0, code: "OFFLINE" });
+
+// The caller cancelled (its `signal` aborted). Not a failure to show: no
+// message, and status -1 so it never counts as the server being unreachable
+function cancelledError() {
+  return new ApiClientError("", { status: -1, code: "CANCELLED" });
+}
+
+// Waits for the server, unless the caller cancels first
+function waitForOnlineOrCancel(signal) {
+  if (!signal) return waitForOnline();
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(cancelledError());
+    signal.addEventListener("abort", () => reject(cancelledError()), { once: true });
+    waitForOnline().then(resolve);
+  });
+}
+
+/**
+ * GETs. While the server can't be reached:
+ *   - a signed-in GET with a saved copy returns that copy (offlineCache),
+ *     and the OfflineBanner says how old it is
+ *   - anything else waits until the server is back and then retries, so the
+ *     screen keeps its loading skeleton instead of showing empty data.
+ *     `wait: false` throws instead (the session check, which has its own screen)
+ * Known offline, the network isn't even tried: answers come at once, and
+ * connection.js's /health check is what notices the server is back
+ */
+async function get(path, options = {}) {
+  const { wait = true, ...rest } = options;
+  // Downloads (the audit CSV export) are actions, not loads: refused at once
+  if (rest.as === "text") return send(() => request(path, { ...rest, method: "GET" }));
+  const cacheable = rest.auth && !rest.full && rest.as !== "text" && isCacheable(path);
+
+  if (!isOffline()) {
+    try {
+      const data = await request(path, { ...rest, method: "GET" });
+      // Any answer clears the offline state and the banner
+      setOnline();
+      if (cacheable) saveCached(path, data);
+      return data;
+    } catch (err) {
+      if (err?.code === "CANCELLED") throw err;
+      if (!isUnreachable(err)) {
+        // The server answered, just with an error
+        setOnline();
+        throw err;
+      }
+      setOffline();
+    }
+  }
+
+  const hit = cacheable ? await readCached(path) : null;
+  if (hit) {
+    // Not an error: the OfflineBanner says the data is saved, and from when
+    noteSavedData(hit.savedAt);
+    // Saved copy now, and the real request still tried in the background:
+    // if it gets through, that alone marks the app online (and reloads)
+    if (isOffline()) retryInBackground(path, rest, cacheable);
+    return hit.data;
+  }
+  if (rest.signal?.aborted) throw cancelledError();
+  checkNow();
+  reportNetworkError(unreachableMessage());
+  if (!wait) throw offlineError();
+  await waitForOnlineOrCancel(rest.signal);
+  return get(path, options);
+}
+
+function retryInBackground(path, options, cacheable) {
+  request(path, { ...options, method: "GET" })
+    .then((data) => {
+      if (cacheable) saveCached(path, data);
+      setOnline();
+    })
+    .catch((err) => {
+      if (!isUnreachable(err)) setOnline();
+    });
+}
+
+/**
+ * Everything that changes data. Blocked outright while offline, so nothing
+ * is half-done, and the screen alert says why
+ */
+async function send(run) {
+  if (isOffline()) {
+    reportNetworkError(unreachableMessage());
+    checkNow();
+    throw offlineError();
+  }
+  try {
+    const result = await run();
+    setOnline();
+    return result;
+  } catch (err) {
+    if (err?.code === "CANCELLED") throw err;
+    if (isUnreachable(err)) {
+      setOffline();
+      reportNetworkError(unreachableMessage());
+    } else {
+      setOnline();
+    }
+    throw err;
+  }
+}
+
+/**
+ * For actions that only reach the server later (starting a workout logs it
+ * when it ends): refuse up front while offline, with the same message.
+ * `if (!requireOnline()) return;`
+ */
+export function requireOnline() {
+  if (!isOffline()) return true;
+  reportNetworkError(unreachableMessage());
+  return false;
+}
+
+// Back online: the connection message goes; screens reload (DashboardLayout)
+onReconnect(clearNetworkError);
+// Still offline, but for a different reason: the message follows
+onConnectionChange(() => isOffline() && rewordNetworkError(unreachableMessage()));
+
 export const apiClient = {
-  get: (path, options) => request(path, { ...options, method: "GET" }),
-  post: (path, body, options) => request(path, { ...options, method: "POST", body }),
-  patch: (path, body, options) => request(path, { ...options, method: "PATCH", body }),
-  put: (path, body, options) => request(path, { ...options, method: "PUT", body }),
-  delete: (path, options) => request(path, { ...options, method: "DELETE" }),
+  get: (path, options) => get(path, options),
+  post: (path, body, options) => send(() => request(path, { ...options, method: "POST", body })),
+  patch: (path, body, options) => send(() => request(path, { ...options, method: "PATCH", body })),
+  put: (path, body, options) => send(() => request(path, { ...options, method: "PUT", body })),
+  delete: (path, options) => send(() => request(path, { ...options, method: "DELETE" })),
 
   /** Multipart POST. Pass a FormData; headers are left to the runtime */
-  upload: (path, formData, options) => request(path, { ...options, method: "POST", body: formData }),
+  upload: (path, formData, options) => send(() => request(path, { ...options, method: "POST", body: formData })),
+
+  /** One local file, multipart. Use this for native file uploads, see uploadFile */
+  uploadFile: (path, file, options) => send(() => uploadFile(path, file, options)),
 };
 
 export { BASE_URL as API_BASE_URL };
-

@@ -1,177 +1,188 @@
-import NutriFitLogo from "@/shared/components/ui/NutriFitLogo";
+import LoadingScreen, { useLoadingGate } from "@/shared/components/ui/LoadingScreen";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { AUTH_STATUS, useAuth } from "@/shared/context/AuthContext";
-import { colors, radii, spacing, typography } from "@/shared/theme/nutrifit";
-import { publicStyles } from "@/shared/theme/screenStyles";
+import { FEATURES, HERO } from "@/shared/constants/publicContent";
+import { AUTH_STATUS, homeFor, useAuth } from "@/shared/context/AuthContext";
+import { chipTints, colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { Redirect, useRouter } from "expo-router";
-import { useRef, useState } from "react";
-import { ActivityIndicator, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import { AppState, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const FEATURES = [
-  {
-    icon: "scan-outline",
-    title: "Food Scanner",
-    body: "Point your camera at a meal and get an instant breakdown of calories, protein, carbs, and fat.",
-  },
-  {
-    icon: "chatbubbles-outline",
-    title: "AI Coach",
-    body: "Chat with a coach that knows your goals, your diet preference, and any health conditions you've shared.",
-  },
-  {
-    icon: "barbell-outline",
-    title: "Workout Tracking",
-    body: "Log sessions from a curated routine or a single exercise, and see your history at a glance.",
-  },
-  {
-    icon: "trending-up-outline",
-    title: "Progress Tracking",
-    body: "Weight, steps, and water intake over time -- so you can see what's actually trending, not just today.",
-  },
-];
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const CARD_WIDTH = Math.min(SCREEN_WIDTH - spacing.lg * 2 - spacing.md * 2, 300);
-const CARD_SPACING = spacing.md;
-const SNAP_INTERVAL = CARD_WIDTH + CARD_SPACING;
+// Onboarding: a welcome page, then one page per feature, swiped or stepped
+// through with Next. Always starts on the welcome page, including when a
+// signed-out user comes back to the app (useLandingOnResume)
+const SLIDES = [{ key: "welcome" }, ...FEATURES.map((f) => ({ key: f.title, ...f }))];
+const LAST = SLIDES.length - 1;
 
 export default function LandingScreen() {
-  const { status, isAuthenticated, emailVerified } = useAuth();
+  const { status, isAuthenticated, emailVerified, role } = useAuth();
   const router = useRouter();
+  // Opened from the app's menu (?from=app): show the page instead of skipping it
+  const { from } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
-  const [activeSlide, setActiveSlide] = useState(0);
+  const { width } = useWindowDimensions();
   const scrollRef = useRef(null);
+  const [page, setPage] = useState(0);
+  const gate = useLoadingGate(status === AUTH_STATUS.LOADING);
+  const signedIn = isAuthenticated && emailVerified;
 
-  if (status === AUTH_STATUS.LOADING) {
-    return (
-      <View style={styles.loadingRoot}>
-        <ActivityIndicator size="large" color={colors.green600} />
-      </View>
-    );
-  }
+  // Back from the background while signed out: start over on the first page
+  const previous = useRef(AppState.currentState);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      const resumed = previous.current === "background" && next === "active";
+      previous.current = next;
+      if (!resumed || signedIn) return;
+      setPage(0);
+      scrollRef.current?.scrollTo({ x: 0, animated: false });
+    });
+    return () => sub.remove();
+  }, [signedIn]);
 
-  if (isAuthenticated && emailVerified) {
-    return <Redirect href="/dashboard" />;
-  }
+  if (gate.pending) return <LoadingScreen visible={gate.visible} />;
 
-  const handleScroll = (e) => {
-    const x = e.nativeEvent.contentOffset.x;
-    const index = Math.round(x / SNAP_INTERVAL);
-    if (index !== activeSlide) setActiveSlide(index);
+  // App launch still goes straight in
+  if (signedIn && from !== "app") return <Redirect href={homeFor(role)} />;
+
+  const goTo = (i) => {
+    setPage(i);
+    scrollRef.current?.scrollTo({ x: i * width, animated: true });
   };
 
+  const onScrollEnd = (e) => {
+    const i = Math.round(e.nativeEvent.contentOffset.x / width);
+    if (i !== page) setPage(i);
+  };
+
+  const leave = (route) => router.push(route);
+
+  const last = page === LAST;
+
   return (
-    <View style={styles.root}>
-      {/* Compact top bar */}
-      <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
-        <NutriFitLogo small />
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      {/* Skip jumps to the last page */}
+      <View style={styles.topBar}>
+        {from === "app" ? (
+          <Pressable onPress={() => router.back()} hitSlop={10} accessibilityLabel="Close">
+            <Ionicons name="close" size={24} color={colors.textSecondary} />
+          </Pressable>
+        ) : <View />}
+        {!last && (
+          <Pressable onPress={() => goTo(LAST)} hitSlop={10}>
+            <Text style={styles.skip}>Skip</Text>
+          </Pressable>
+        )}
       </View>
 
-      <View style={styles.body}>
-        {/* Hero */}
-        <View style={styles.hero}>
-          <Image source={require("@/assets/images/nutrifit-logo.png")} style={styles.heroLogo} contentFit="contain" />
-          <Text style={styles.heroHeading}>Your Food. Your Fitness.{"\n"}Your Future.</Text>
-          <Text style={styles.heroSubhead}>Scan meals, chat with an AI coach, and track it all in one app.</Text>
-        </View>
-
-        {/* Feature carousel */}
-        <View style={styles.carouselSection}>
-          <ScrollView
-            ref={scrollRef}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={SNAP_INTERVAL}
-            decelerationRate="fast"
-            snapToAlignment="start"
-            contentContainerStyle={styles.carouselContent}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-          >
-            {FEATURES.map((f) => (
-              <View key={f.title} style={[styles.featureCard, { width: CARD_WIDTH }]}>
-                <View style={styles.featureIconWrap}>
-                  <Ionicons name={f.icon} size={24} color={colors.green700} />
-                </View>
-                <Text style={styles.featureTitle}>{f.title}</Text>
-                <Text style={styles.featureBody}>{f.body}</Text>
-              </View>
-            ))}
-          </ScrollView>
-
-          <View style={styles.dots}>
-            {FEATURES.map((f, i) => (
-              <View key={f.title} style={[styles.dot, i === activeSlide && styles.dotActive]} />
-            ))}
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={onScrollEnd}
+        style={styles.pager}
+      >
+        {SLIDES.map((slide) => (
+          <View key={slide.key} style={[styles.slide, { width }]}>
+            {slide.key === "welcome" ? <Welcome /> : <Feature slide={slide} />}
           </View>
-        </View>
+        ))}
+      </ScrollView>
+
+      <View style={styles.dots}>
+        {SLIDES.map((s, i) => (
+          <Pressable key={s.key} onPress={() => goTo(i)} hitSlop={6} accessibilityLabel={`Page ${i + 1}`}>
+            <View style={[styles.dot, i === page && styles.dotActive]} />
+          </Pressable>
+        ))}
       </View>
 
-      {/* Bottom-anchored primary action */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}>
-        <PrimaryButton title="Get Started" onPress={() => router.push("/register")} style={styles.ctaBtn} />
-        <Pressable onPress={() => router.push("/login")} hitSlop={8} style={styles.secondaryLink}>
-          <Text style={styles.secondaryLinkText}>I Already Have an Account</Text>
+      {/* Actions stay in thumb reach */}
+      <View style={[styles.actions, { paddingBottom: insets.bottom + spacing.md }]}>
+        {signedIn ? (
+          <PrimaryButton title="Back to NutriFitAI" onPress={() => router.replace(homeFor(role))} style={styles.fullBtn} />
+        ) : last ? (
+          <>
+            <PrimaryButton title="Create an Account" onPress={() => leave("/register")} style={styles.fullBtn} />
+            <Pressable onPress={() => leave("/login")} style={styles.outlineBtn}>
+              <Text style={styles.outlineText}>Log In</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <PrimaryButton title="Next" onPress={() => goTo(page + 1)} style={styles.fullBtn} />
+            <View style={styles.loginRow}>
+              <Text style={styles.muted}>Already have an account? </Text>
+              <Pressable onPress={() => leave("/login")} hitSlop={8}>
+                <Text style={styles.link}>Log In</Text>
+              </Pressable>
+            </View>
+          </>
+        )}
+
+        <Pressable onPress={() => router.push("/terms")} hitSlop={8} style={styles.termsLink}>
+          <Text style={styles.terms}>Terms of Service & Privacy Policy</Text>
         </Pressable>
       </View>
     </View>
   );
 }
 
+function Welcome() {
+  return (
+    <View style={styles.slideInner}>
+      <View style={[styles.art, { backgroundColor: colors.white }]}>
+        <Image source={require("@/assets/images/nutrifit-logo.png")} style={styles.logo} contentFit="contain" />
+      </View>
+      <Text style={styles.brand}>NutriFitAI</Text>
+      <Text style={styles.title}>{HERO.title}</Text>
+      <Text style={styles.body}>{HERO.body}</Text>
+    </View>
+  );
+}
+
+function Feature({ slide }) {
+  const tint = chipTints[slide.tint] || chipTints.green;
+  return (
+    <View style={styles.slideInner}>
+      <View style={[styles.art, { backgroundColor: tint.light }]}>
+        <Ionicons name={slide.icon.replace(/-outline$/, "")} size={72} color={tint.icon} />
+      </View>
+      <Text style={styles.title}>{slide.title}</Text>
+      <Text style={styles.body}>{slide.body}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  ...publicStyles,
+  root: { flex: 1, backgroundColor: colors.bgMint },
 
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  topBarLogin: { ...typography.caption, color: colors.textPrimary, fontWeight: "700" },
+  topBar: { height: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg },
+  skip: { ...typography.bodyBold, color: colors.textSecondary },
 
-  body: { flex: 1, justifyContent: "center" },
+  pager: { flex: 1 },
+  slide: { flex: 1, justifyContent: "center" },
+  slideInner: { alignItems: "center", paddingHorizontal: spacing.xl },
+  // Big round "illustration" each page leads with
+  art: { width: 200, height: 200, borderRadius: 100, alignItems: "center", justifyContent: "center", marginBottom: spacing.xl },
+  logo: { width: 110, height: 122 },
+  brand: { ...typography.bodyBold, color: colors.green700, letterSpacing: 1, textTransform: "uppercase", marginBottom: spacing.sm },
+  title: { ...typography.h1, color: colors.brandDark, textAlign: "center" },
+  body: { ...typography.body, color: colors.textSecondary, textAlign: "center", marginTop: spacing.md, lineHeight: 22, maxWidth: 340 },
 
-  hero: { alignItems: "center", paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  heroLogo: { width: 64, height: 64, marginBottom: spacing.md },
-  heroHeading: { ...typography.h1, color: colors.brandDark, textAlign: "center" },
-  heroSubhead: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: "center",
-    marginTop: spacing.sm,
-    lineHeight: 21,
-    maxWidth: 320,
-  },
+  dots: { flexDirection: "row", justifyContent: "center", gap: 8, paddingVertical: spacing.md },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.border },
+  dotActive: { width: 24, backgroundColor: colors.primary },
 
-  carouselSection: { marginTop: spacing.xl },
-  carouselContent: { paddingHorizontal: spacing.lg, gap: CARD_SPACING },
-  featureCard: {
-    borderRadius: radii.lg,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    minHeight: 168,
-  },
-  featureIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.md,
-    backgroundColor: colors.greenTint,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.md,
-  },
-  dots: { flexDirection: "row", justifyContent: "center", gap: 6, marginTop: spacing.md },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
-  dotActive: { backgroundColor: colors.primary, width: 18 },
-
-  bottomBar: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-  ctaBtn: { width: "100%" },
-  secondaryLink: { alignItems: "center", justifyContent: "center", paddingVertical: spacing.md },
-  secondaryLinkText: { ...typography.bodyBold, color: colors.green700 },
+  actions: { paddingHorizontal: spacing.lg, gap: spacing.sm },
+  fullBtn: { width: "100%" },
+  outlineBtn: { height: 48, borderRadius: radii.sm, borderWidth: 2, borderColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  outlineText: { ...typography.button, color: colors.green700 },
+  loginRow: { flexDirection: "row", justifyContent: "center", paddingVertical: spacing.sm },
+  muted: { ...typography.body, color: colors.textSecondary },
+  link: { ...typography.bodyBold, color: colors.green700 },
+  termsLink: { alignItems: "center", paddingVertical: spacing.xs },
+  terms: { ...typography.caption, color: colors.textMuted },
 });

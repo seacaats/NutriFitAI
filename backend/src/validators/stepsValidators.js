@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { CALENDAR_DAY_RE } = require('../utils/calendarDay');
 
 
 const STEP_SOURCES = ['healthkit', 'health_connect', 'device_sensor'];
@@ -9,7 +10,7 @@ const MAX_SYNC_DAYS = 31;
 // Dates stay as strings here and arrive as already-correct strings from the client
 const isoDate = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a YYYY-MM-DD date')
+  .regex(CALENDAR_DAY_RE, 'Expected a YYYY-MM-DD date')
   .refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00Z`)), {
     message: 'Not a real calendar date',
   });
@@ -26,7 +27,7 @@ const notFarFuture = isoDate.refine(
 
 // `date` is optional on /today; the controller falls back to the server's UTC date when its omitted
 const todayQuerySchema = z
-  .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })
+  .object({ date: z.string().regex(CALENDAR_DAY_RE).optional() })
   .strict();
 
 const syncStepsSchema = z
@@ -58,7 +59,7 @@ const stepRangeSchema = z
     to: isoDate,
   })
   .strict()
-  .refine((q) => q.from <= q.to, { message: '`from` must not be after `to`' })
+  .refine((q) => q.from <= q.to, { message: 'The start date must be before the end date.' })
   // Lexical comparison is safe on zero-padded ISO dates
   .refine(
     (q) => {
@@ -76,6 +77,15 @@ const manualStepsSchema = z
   })
   .strict();
 
+// Daily step goal, in steps. Mirrors the limits on the Steps page
+const stepGoalSchema = z
+  .object({
+    dailySteps: z.number().int()
+      .min(1000, 'The daily goal is at least 1,000 steps.')
+      .max(50000, 'The daily goal can be up to 50,000 steps.'),
+  })
+  .strict();
+
 const stepSourceSchema = z
   .object({
     source: z.enum(STEP_SOURCES),
@@ -83,12 +93,10 @@ const stepSourceSchema = z
   .strict();
 
 module.exports = {
-  STEP_SOURCES,
-  MAX_SYNC_DAYS,
-  MAX_STEPS_PER_DAY,
   todayQuerySchema,
   syncStepsSchema,
   stepRangeSchema,
   manualStepsSchema,
+  stepGoalSchema,
   stepSourceSchema,
 };

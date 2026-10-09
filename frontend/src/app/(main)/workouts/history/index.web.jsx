@@ -1,14 +1,13 @@
-import {
-  groupByDay,
-  useWorkoutHistory,
-} from "@/features/workouts/hooks/useWorkoutHistory";
+import { ExerciseSessionModal, RoutineDetailsModal, SessionTile } from "@/features/workouts/components/PlanPanels";
+import { TileGrid } from "@/features/workouts/components/PlanTiles";
+import { useWorkoutHistory } from "@/features/workouts/hooks/useWorkoutHistory";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
 import Skeleton from "@/shared/components/Skeleton";
+import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { chipTints, colors, radii, screenTones, shellColors } from "@/shared/theme/nutrifit";
+import { colors, radii, screenTones, shellColors } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 /**
@@ -37,26 +36,14 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
  *     right half of a wide screen blank under a 720px column.
  */
 export default function WorkoutHistoryScreen() {
-  const { shell: c } = useTheme();
+  const { shell: c, darkMode } = useTheme();
   const router = useRouter();
-
   const textColor = { color: c.sidebarText };
-  const { sessions, total, loading, loadingMore, hasMore, error, loadMore } =
-    useWorkoutHistory();
-
-  const groups = groupByDay(sessions);
-
-  // Collapsed-by-key set rather than expanded-by-default per group: a day
-  // newly appended by "Load more" should open automatically without this
-  // screen having to know about it.
-  const [collapsed, setCollapsed] = useState(() => new Set());
-  const toggleGroup = (key) =>
-    setCollapsed((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  const {
+    viewing, setViewing, viewingExercise, setViewingExercise, openSession,
+    sessions, total, loading, loadingMore, hasMore, error, loadMore,
+    deletes, groups, imageOf, collapsed, toggleGroup,
+  } = useWorkoutHistory();
 
   return (
     <DashboardLayout>
@@ -141,20 +128,18 @@ export default function WorkoutHistoryScreen() {
                   <Text style={styles.dayCount}>
                     {group.sessions.length} session{group.sessions.length === 1 ? "" : "s"}
                   </Text>
+                  <Pressable onPress={() => deletes.askDay(group)} hitSlop={8} style={styles.dayDelete} accessibilityLabel={`Delete ${group.label}'s sessions`}>
+                    <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
+                  </Pressable>
                 </Pressable>
 
+                {/* Same image cards as the Recent tab */}
                 {isOpen && (
-                  <View style={styles.dayRow}>
+                  <TileGrid>
                     {group.sessions.map((session) => (
-                      <View key={session.id} style={styles.cardSlot}>
-                        <HistoryRow
-                          session={session}
-                          textColor={textColor}
-                          borderColor={c.dropdownBorder}
-                        />
-                      </View>
+                      <SessionTile key={session.id} session={session} imageOf={imageOf} darkMode={darkMode} timeOnly onDelete={deletes.askSession} onOpen={openSession} />
                     ))}
-                  </View>
+                  </TileGrid>
                 )}
               </View>
             );
@@ -162,61 +147,29 @@ export default function WorkoutHistoryScreen() {
         </View>
       )}
 
-      {error && sessions.length === 0 && <Text style={styles.error}>{error}</Text>}
+      <ScreenError message={sessions.length === 0 ? error : ""} />
+      {deletes.modal}
+
+      <RoutineDetailsModal
+        visible={viewing !== null}
+        routine={viewing}
+        imageOf={imageOf}
+        onClose={() => setViewing(null)}
+        darkMode={darkMode}
+      />
+
+      <ExerciseSessionModal
+        visible={viewingExercise !== null}
+        session={viewingExercise}
+        onClose={() => setViewingExercise(null)}
+        darkMode={darkMode}
+      />
     </DashboardLayout>
   );
 }
 
-/**
- * One session.
- *
- * Skipped sessions are shown, not hidden — the user did that work — but marked
- * in amber so the list stays honest about what was finished without colouring
- * an abandoned set like an error.
- */
-function HistoryRow({ session, textColor, borderColor }) {
-  const skipped = session.status === "skipped";
-  const minutes = session.actualDurationSeconds
-    ? Math.round(session.actualDurationSeconds / 60)
-    : null;
-
-  return (
-    <View style={[styles.row, { borderBottomColor: borderColor }]}>
-      <View style={[styles.icon, { backgroundColor: skipped ? chipTints.orange.light : chipTints.green.light }]}>
-        <Ionicons
-          name={skipped ? "pause" : "barbell"}
-          size={16}
-          color={skipped ? colors.skippedAmber : shellColors.primary}
-        />
-      </View>
-
-      <View style={styles.body}>
-        <Text style={[styles.name, textColor]} numberOfLines={1}>
-          {session.exerciseName}
-        </Text>
-        <Text style={styles.meta}>
-          {skipped
-            ? `${session.completedSets} of ${session.targetSets} sets`
-            : `${session.completedSets} × ${session.targetReps}`}
-          {minutes ? ` · ${minutes} min` : ""}
-        </Text>
-      </View>
-
-      {/* Sets and duration sit in their own columns on web, where the width is
-          available — on mobile they are collapsed into the meta line. */}
-      <Text style={styles.time}>
-        {session.completedAt
-          ? new Date(session.completedAt).toLocaleTimeString(undefined, {
-              hour: "numeric",
-              minute: "2-digit",
-            })
-          : ""}
-      </Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
+  dayDelete: { marginLeft: "auto", padding: 4 },
   pageHeader: { marginBottom: 20 },
   eyebrow: { fontSize: 10, fontWeight: "800", letterSpacing: 1.3, color: colors.textMuted },
   pageTitle: { marginTop: 2, fontSize: 28, fontWeight: "800" },

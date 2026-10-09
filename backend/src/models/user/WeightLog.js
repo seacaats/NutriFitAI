@@ -1,46 +1,53 @@
-const db = require('../../../config/mongo');
-const { WeightLogDoc } = require('../schemas');
+const { mongoose, opts } = require('../../../config/mongo');
+const { USER_REF } = require('../shared');
 
-const { opts } = db;
+const { Schema } = mongoose;
 
-/**
- * Weight is a time series, never a column on the user.
- *
- * This is a product decision, not a storage one: the profile screen edits what
- * looks like a single "weight" field, but a change there creates a new entry
- * here rather than overwriting. That is what makes "am I trending down?"
- * answerable at all, and it is why contextBuilder can summarise a 30-day trend
- * for the coach.
- *
- * Kept in its own collection rather than embedded in the user document because
- * it is genuinely unbounded -- a daily logger produces 365 entries a year, and
- * embedding would grow the hottest document in the database on every weigh-in.
- */
-const WeightLog = {
-  /**
-   * @param {{ userId: string, weightKg: number }} input
-   * @param {import('mongoose').ClientSession} [client]
-   */
-  async create(input, client = db) {
-    const doc = await WeightLogDoc.create(
-      [{ userId: input.userId, weightKg: input.weightKg, measuredAt: new Date() }],
-      opts(client),
-    );
-    return doc[0].toObject();
+// Weight is a time series, never a field on the user. A profile edit adds
+// an entry rather than overwriting, which is what makes a trend answerable.
+// Own collection since it's unbounded (a daily logger is 365 entries a year)
+const weightLogSchema = new Schema(
+  {
+    userId: USER_REF,
+    weightKg: { type: Number, required: true, min: 0, max: 700 },
+    measuredAt: { type: Date, default: () => new Date() },
   },
+  { versionKey: false, collection: 'weight_logs' },
+);
 
-  /**
-   * Served by { userId: 1, measuredAt: -1 }.
-   *
-   * The index is not optional here. Free-tier Atlas caps in-memory sorts at
-   * 32 MB with allowDiskUse ignored, so an uncovered sort does not run slowly
-   * -- it fails outright.
-   */
-  async findLatestByUserId(userId, client = db) {
-    return WeightLogDoc.findOne({ userId }, null, opts(client))
-      .sort({ measuredAt: -1 })
-      .lean();
-  },
+// Indexes are created by migrations 001, not declared here
+
+weightLogSchema.statics.record = async function record(input, client) {
+  const [doc] = await this.create(
+    [{ userId: input.userId, weightKg: input.weightKg, measuredAt: new Date() }],
+    opts(client),
+  );
+  return doc.toObject();
 };
 
-module.exports = WeightLog;
+weightLogSchema.statics.findLatestByUserId = async function findLatestByUserId(userId, client) {
+  return this.findOne({ userId }, null, opts(client)).sort({ measuredAt: -1 }).lean();
+};
+
+// Oldest first, for the coach's 30-day trend
+weightLogSchema.statics.findSince = async function findSince(userId, since, client) {
+  return this.find({ userId, measuredAt: { $gte: since } }, 'weightKg measuredAt', opts(client))
+    .sort({ measuredAt: 1 })
+    .lean();
+};
+
+// Oldest first, between two instants. Feeds the Progress weight chart
+weightLogSchema.statics.findBetween = async function findBetween(userId, start, end, client) {
+  return this.find({ userId, measuredAt: { $gte: start, $lt: end } }, 'weightKg measuredAt', opts(client))
+    .sort({ measuredAt: 1 })
+    .lean();
+};
+
+// The last weight before an instant, the baseline a period's change is measured from
+weightLogSchema.statics.findLatestBefore = async function findLatestBefore(userId, before, client) {
+  return this.findOne({ userId, measuredAt: { $lt: before } }, 'weightKg measuredAt', opts(client))
+    .sort({ measuredAt: -1 })
+    .lean();
+};
+
+module.exports = mongoose.model('WeightLog', weightLogSchema);

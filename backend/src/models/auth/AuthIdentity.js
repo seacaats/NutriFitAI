@@ -1,53 +1,43 @@
-const db = require('../../../config/mongo');
-const { AuthIdentity: AuthIdentityDoc } = require('../schemas');
+const { mongoose, opts } = require('../../../config/mongo');
+const { USER_REF, withId } = require('../shared');
 
-const { opts } = db;
+const { Schema } = mongoose;
 
-function shape(doc) {
-  if (!doc) return null;
-  const { _id, ...rest } = doc;
-  return { id: String(_id), ...rest };
-}
-
-// Provider identity have separate collections rather than being embedded
-// on the user. Enforcing uniqueness on two top-level fields is just easier
-// to manage and less messier is all
-const AuthIdentity = {
-  async findByProviderSubject(provider, providerSubject, client = db) {
-    return shape(
-      await AuthIdentityDoc.findOne({ provider, providerSubject }, null, opts(client)).lean(),
-    );
+// Provider identities have their own collection rather than being embedded
+// on the user. A compound unique index across two top-level fields keeps
+// duplicate-key errors and similar issues interpretable
+const authIdentitySchema = new Schema(
+  {
+    userId: USER_REF,
+    provider: { type: String, enum: ['google', 'facebook'], required: true },
+    providerSubject: { type: String, required: true, maxlength: 255 },
   },
+  { versionKey: false, collection: 'auth_identities' },
+);
 
-  async create(input, client = db) {
-    const [doc] = await AuthIdentityDoc.create(
-      [
-        {
-          userId: input.userId,
-          provider: input.provider,
-          providerSubject: input.providerSubject,
-        },
-      ],
-      opts(client),
-    );
-    return shape(doc.toObject());
-  },
+// Indexes are created by migrations 001, not declared here
 
-  // Link a provider identity (Just Google right now) to a user
-  // setOnInsert makes it so this function can change who
-  // an already-linked identity belongs to
-  async link(input, client = db) {
-    await AuthIdentityDoc.updateOne(
-      { provider: input.provider, providerSubject: input.providerSubject },
-      { $setOnInsert: { userId: input.userId } },
-      { upsert: true, runValidators: true, ...opts(client) },
-    );
-  },
-
-  async findByUserId(userId, client = db) {
-    const rows = await AuthIdentityDoc.find({ userId }, null, opts(client)).lean();
-    return rows.map(shape);
-  },
+authIdentitySchema.statics.findByProviderSubject = async function findByProviderSubject(
+  provider,
+  providerSubject,
+  client,
+) {
+  return withId(await this.findOne({ provider, providerSubject }, null, opts(client)).lean());
 };
 
-module.exports = AuthIdentity;
+// Link a provider identity (Just Google right now) to a user.
+// $setOnInsert means an already-linked identity never changes owner
+authIdentitySchema.statics.link = async function link(input, client) {
+  await this.updateOne(
+    { provider: input.provider, providerSubject: input.providerSubject },
+    { $setOnInsert: { userId: input.userId } },
+    { upsert: true, runValidators: true, ...opts(client) },
+  );
+};
+
+authIdentitySchema.statics.findByUserId = async function findByUserId(userId, client) {
+  const rows = await this.find({ userId }, null, opts(client)).lean();
+  return rows.map(withId);
+};
+
+module.exports = mongoose.model('AuthIdentity', authIdentitySchema);

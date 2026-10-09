@@ -1,9 +1,13 @@
 const { Router } = require('express');
 
 const controller = require('../controllers/workoutsController');
-const { validateBody, validateQuery } = require('../middleware/validateMiddleware');
+const { validateBody, validateQuery, validateParams } = require('../middleware/validateMiddleware');
 const { requireAuth } = require('../middleware/authMiddleware');
-const { sessionRangeSchema, logSessionSchema, listQuerySchema, CALENDAR_DAY } = require('../validators/workoutValidators')
+const {
+  sessionRangeSchema, logSessionSchema, listQuerySchema, createRoutineSchema, updateRoutineSchema,
+  logRoutineSessionSchema, favoriteSchema, favoriteParamsSchema, scheduleSchema, idParamSchema,
+  rescheduleSchema, dayParamSchema,
+} = require('../validators/workoutValidators');
 
 const router = Router();
 
@@ -20,6 +24,7 @@ router.get(
   requireAuth, 
   controller.listCategories
 );
+router.get('/equipment', requireAuth, controller.listEquipment);
 
 router.post(
   '/sessions', 
@@ -27,6 +32,20 @@ router.post(
   validateBody(logSessionSchema), 
   controller.logSession
 );
+// Declared before /sessions/:id so "day" isn't read as an id
+router.delete(
+  '/sessions/day/:date', 
+  requireAuth, 
+  validateParams(dayParamSchema), 
+  controller.deleteSessionsOnDay
+);
+router.delete(
+  '/sessions/:id', 
+  requireAuth, 
+  validateParams(idParamSchema), 
+  controller.deleteSession
+);
+
 router.get(
   '/sessions/summary', 
   requireAuth, 
@@ -38,6 +57,90 @@ router.get(
   validateQuery(sessionRangeSchema),
    controller.listSessions
   );
+
+// ---- Routines ----
+// Also before /:id. "sessions" is declared before "/:id" below for the same reason
+router.get(
+  '/routines', 
+  requireAuth, 
+  controller.listRoutines
+);
+router.post(
+  '/routines', 
+  requireAuth, 
+  validateBody(createRoutineSchema), 
+  controller.createRoutine
+);
+router.post(
+  '/routines/sessions', 
+  requireAuth, 
+  validateBody(logRoutineSessionSchema), 
+  controller.logRoutineSession
+);
+router.get(
+  '/routines/:id', 
+  requireAuth, 
+  validateParams(idParamSchema), 
+  controller.getRoutine
+);
+router.patch(
+  '/routines/:id',
+  requireAuth,
+  validateParams(idParamSchema),
+  validateBody(updateRoutineSchema),
+  controller.updateRoutine,
+);
+router.delete(
+  '/routines/:id', 
+  requireAuth, 
+  validateParams(idParamSchema), 
+  controller.deleteRoutine
+);
+
+// ---- Favorites (routines and single exercises) ----
+router.get(
+  '/favorites', 
+  requireAuth, 
+  controller.listFavorites
+);
+router.put(
+  '/favorites', 
+  requireAuth, 
+  validateBody(favoriteSchema), 
+  controller.addFavorite
+);
+router.delete(
+  '/favorites/:kind/:refId',
+  requireAuth,
+  validateParams(favoriteParamsSchema),
+  controller.removeFavorite,
+);
+
+// ---- Scheduling (next 7 days) ----
+router.get(
+  '/schedule', 
+  requireAuth, 
+  controller.listSchedule
+);
+router.post(
+  '/schedule', 
+  requireAuth, 
+  validateBody(scheduleSchema), 
+  controller.createSchedule
+);
+router.patch(
+  '/schedule/:id',
+  requireAuth,
+  validateParams(idParamSchema),
+  validateBody(rescheduleSchema),
+  controller.reschedule
+);
+router.delete(
+  '/schedule/:id', 
+  requireAuth, 
+  validateParams(idParamSchema), 
+  controller.removeSchedule
+);
 
 router.get(
   '/', 

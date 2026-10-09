@@ -1,8 +1,10 @@
-const DailySteps = require('../models/health/DailySteps');
-const UserGoal = require('../models/user/UserGoal');
-const UserProfile = require('../models/user/UserProfile');
+const DailySteps = require('../models/steps/DailySteps');
+const User = require('../models/user/User');
 
-const { sendSuccess, asyncHandler } = require('../utils/httpResponse');
+const { sendSuccess, asyncHandler, ApiError } = require('../utils/httpResponse');
+const { today } = require('../utils/calendarDay');
+const { logAction } = require('../utils/audit-logs/auditLogger');
+const { notify } = require('../services/notifications/notify');
 
 // Daily step goal fallback
 const DEFAULT_DAILY_STEP_GOAL = 10000;
@@ -23,8 +25,8 @@ function toClientRow(row) {
 async function buildStepsPayload(userId, from, to) {
   const [rows, goal, profile] = await Promise.all([
     DailySteps.findRange({ userId, from, to }),
-    UserGoal.findActiveByUserId(userId),
-    UserProfile.findByUserId(userId),
+    User.getActiveGoal(userId),
+    User.getProfile(userId),
   ]);
 
   return {
@@ -58,7 +60,7 @@ const getToday = asyncHandler(async (req, res) => {
 
   const [row, goal] = await Promise.all([
     DailySteps.findByDate({ userId: req.userId, activityDate: date }),
-    UserGoal.findActiveByUserId(req.userId),
+    User.getActiveGoal(req.userId),
   ]);
 
   return sendSuccess(res, {
@@ -75,16 +77,37 @@ const getToday = asyncHandler(async (req, res) => {
 //
 // The phone pushes whatever window it read from the OS health store. Called on
 // every app foreground, -- DailySteps.upsertMany skips rows whose numbers haven't moved
+// Step goal reached today, once per day (dedupe key). Only today counts: a
+// backfilled or edited past day isn't news. Never throws
+async function checkStepGoal(req) {
+  try {
+    const timeZone = req.timeZone || (await User.getProfile(req.userId))?.timezone || undefined;
+    const day = today(timeZone);
+    const [row, goal] = await Promise.all([
+      DailySteps.findByDate({ userId: req.userId, activityDate: day }),
+      User.getActiveGoal(req.userId),
+    ]);
+    if (row && Number(row.stepCount) >= (goal?.dailySteps ?? DEFAULT_DAILY_STEP_GOAL)) {
+      await notify(req.userId, 'steps_goal_reached', { dedupeKey: `steps-goal:${day}` });
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[steps] goal check failed', err);
+  }
+}
+
 const syncSteps = asyncHandler(async (req, res) => {
   const { source, days } = req.body;
 
   const changed = await DailySteps.upsertMany({ userId: req.userId, source, days });
 
   // Records that a sync happened even when nothing changed
-  await UserProfile.upsert(req.userId, {
+  await User.updateProfile(req.userId, {
     stepSource: source,
     lastStepSyncAt: new Date(),
   });
+
+  checkStepGoal(req);
 
   return sendSuccess(res, {
     data: {
@@ -101,7 +124,18 @@ const syncSteps = asyncHandler(async (req, res) => {
 // All in case, a phone with the sensor/application was left at home
 const setManualSteps = asyncHandler(async (req, res) => {
   const { activityDate, stepCount } = req.body;
+
+  // The user's own "today", not the server's
+  const timeZone = req.timeZone || (await User.getProfile(req.userId))?.timezone || undefined;
+  const last = today(timeZone);
+  // Any past day can be edited, just not a day that hasn't happened yet
+  if (activityDate > last) {
+    throw ApiError.badRequest("Steps can't be entered for a future day.", { code: 'FUTURE_DAY' });
+  }
+
+  // Manual rows are never overwritten by a phone sync (see DailySteps.upsertMany)
   const row = await DailySteps.setManual({ userId: req.userId, activityDate, stepCount });
+  if (activityDate === last) checkStepGoal(req);
   return sendSuccess(res, { data: toClientRow(row), message: 'Steps saved' });
 });
 
@@ -111,10 +145,20 @@ const setManualSteps = asyncHandler(async (req, res) => {
 const setStepSource = asyncHandler(async (req, res) => {
   const { source } = req.body;
 
-  const profile = await UserProfile.upsert(req.userId, {
+  const previous = await User.getProfile(req.userId);
+  const profile = await User.updateProfile(req.userId, {
     stepSource: source,
     stepPermissionAt: new Date(),
   });
+
+  // Reconnecting the same source isn't a change
+  if ((previous?.stepSource ?? null) !== source) {
+    await logAction(req, {
+      action: 'activity.steps.source_changed',
+      targetType: 'user',
+      details: { previousSource: previous?.stepSource ?? 'none', source },
+    });
+  }
 
   return sendSuccess(res, {
     data: {
@@ -127,10 +171,19 @@ const setStepSource = asyncHandler(async (req, res) => {
 
 // DELETE /api/steps/source
 const clearStepSource = asyncHandler(async (req, res) => {
-  await UserProfile.upsert(req.userId, {
+  const previous = await User.getProfile(req.userId);
+  await User.updateProfile(req.userId, {
     stepSource: null,
     stepPermissionAt: null,
   });
+
+  if (previous?.stepSource) {
+    await logAction(req, {
+      action: 'activity.steps.permission_revoked',
+      targetType: 'user',
+      details: { previousSource: previous.stepSource },
+    });
+  }
 
   return sendSuccess(res, {
     data: { source: null },
@@ -138,8 +191,16 @@ const clearStepSource = asyncHandler(async (req, res) => {
   });
 });
 
+// PUT /api/steps/goal -- saved on the active goal, like the water goal
+const setStepGoal = asyncHandler(async (req, res) => {
+  const goal = await User.setGoalTarget(req.userId, 'dailySteps', req.body.dailySteps);
+  if (!goal) throw ApiError.notFound('User not found');
+  return sendSuccess(res, { data: { dailyGoal: goal.dailySteps }, message: 'Step goal saved' });
+});
+
 module.exports = {
   getSteps,
+  setStepGoal,
   getToday,
   syncSteps,
   setManualSteps,

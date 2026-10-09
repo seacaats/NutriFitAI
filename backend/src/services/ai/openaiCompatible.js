@@ -32,10 +32,11 @@ function parseRetryAfter(headers) {
 /**
  * Builds a chat client.
  *
- * @param {{ name: string, baseUrl: string, apiKey?: string|null, model: string, timeoutMs?: number, maxTokens?: number }} config
+ * @param {{ name: string, baseUrl: string, apiKey?: string|null, model: string, timeoutMs?: number, maxTokens?: number, headers?: object }} config
+ *   headers  sent on every request, e.g. a tunnel's Basic auth
  */
 function createOpenAICompatibleProvider(config) {
-  const { name, baseUrl, apiKey, model, timeoutMs = 30000, maxTokens = 700 } = config;
+  const { name, baseUrl, apiKey, model, timeoutMs = 30000, maxTokens = 700, headers = {} } = config;
 
   return {
     name,
@@ -65,6 +66,7 @@ function createOpenAICompatibleProvider(config) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...headers,
             ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
           },
           body: JSON.stringify({
@@ -89,7 +91,10 @@ function createOpenAICompatibleProvider(config) {
       if (!response.ok) {
         const body = await response.text().catch(() => '');
         // Defines and distinguishes from transiesnt and non-transient status codes/bugs
-        const transient = response.status === 429 || response.status >= 500;
+        // An ngrok error (tunnel offline: the PC is off) is transient too,
+        // whatever its status, so the chain moves on to the next provider
+        const transient = response.status === 429 || response.status >= 500
+          || response.headers.has('ngrok-error-code');
         throw new ProviderError(`${name} returned ${response.status}: ${body.slice(0, 300)}`, {
           provider: name,
           status: response.status,
@@ -115,4 +120,4 @@ function createOpenAICompatibleProvider(config) {
   };
 }
 
-module.exports = { createOpenAICompatibleProvider, ProviderError, parseRetryAfter };
+module.exports = { createOpenAICompatibleProvider, ProviderError };

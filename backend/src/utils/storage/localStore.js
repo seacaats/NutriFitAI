@@ -49,6 +49,18 @@ async function removePrefix(prefix) {
   }
 }
 
+// Keys under a prefix, for the files in one folder (avatars/<userId>-)
+async function list(prefix) {
+  const dir = prefix.includes('/') ? prefix.slice(0, prefix.lastIndexOf('/')) : '';
+  const start = prefix.slice(dir ? dir.length + 1 : 0);
+  try {
+    const files = await fs.readdir(dir ? absolutePathFor(dir) : env.uploadsDir);
+    return files.filter((f) => f.startsWith(start) && !f.endsWith('.tmp')).map((f) => (dir ? `${dir}/${f}` : f));
+  } catch {
+    return [];
+  }
+}
+
 async function exists(key) {
   try {
     await fs.access(absolutePathFor(key));
@@ -66,4 +78,4 @@ async function urlFor(key) {
   return `${PUBLIC_PREFIX}/${key}`;
 }
 
-module.exports = { save, remove, removePrefix, exists, urlFor, driver: 'local', isPrivate: false };
+module.exports = { save, remove, removePrefix, list, exists, urlFor, driver: 'local', isPrivate: false };

@@ -1,16 +1,13 @@
-import { ApiClientError, useAuth } from "@/shared/context/AuthContext";
-import {
-  exchangeGoogleToken,
-  GOOGLE_AUTH_ACK_TYPE,
-  GOOGLE_AUTH_CHANNEL,
-  GOOGLE_AUTH_MESSAGE_TYPE,
-  googleErrorMessage,
-} from "@/shared/services/googleAuth";
-import { colors, spacing, typography } from "@/shared/theme/nutrifit";
+import { ApiClientError } from "@/shared/api/apiClient";
+import LoadingScreen from "@/shared/components/ui/LoadingScreen";
+import { homeFor, useAuth } from "@/shared/context/AuthContext";
+import { exchangeGoogleToken, googleErrorMessage } from "@/shared/services/googleAuth";
+import { colors, spacing, typography } from "@/shared/theme/nutrifitai";
+import { GOOGLE_AUTH_ACK_TYPE, GOOGLE_AUTH_CHANNEL, GOOGLE_AUTH_MESSAGE_TYPE } from "@/shared/utils/authChannel";
 import { setAccessToken } from "@/shared/utils/authStorage";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 /**
  * How long to wait for the opener to acknowledge the result before giving up
@@ -32,6 +29,24 @@ function isPopup(params) {
 
 function firstParam(value) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+// On web, read the query straight from the address bar. Router params can
+// still be empty on the first render, which used to look like a missing token
+function readQuery(params) {
+  if (typeof window !== "undefined" && window.location?.search) {
+    const search = new URLSearchParams(window.location.search);
+    return {
+      error: search.get("error"),
+      email: search.get("email"),
+      exchangeToken: search.get("exchangeToken"),
+    };
+  }
+  return {
+    error: firstParam(params.error),
+    email: firstParam(params.email),
+    exchangeToken: firstParam(params.exchangeToken),
+  };
 }
 
 /**
@@ -86,7 +101,7 @@ function publishResult(result) {
 export default function GoogleAuthCallback() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { refresh } = useAuth();
+  const { refresh, role } = useAuth();
   const ranOnce = useRef(false);
 
   // Set only when the popup could not hand the result back to the opener, so
@@ -103,16 +118,16 @@ export default function GoogleAuthCallback() {
       async function finish(result) {
         if (!popup) {
           if (result.success) {
-            router.replace("/dashboard");
+            router.replace(homeFor(result.role));
           } else {
             router.replace({
               pathname: "/login",
               params: {
                 googleError: result.error || "exchange_failed",
                 googleMessage: result.message || "",
-                // Carried so the login screen can prefill the OTP screen for
-                // an unverified account (error=email_not_verified). Empty for
-                // every other failure, which the login screen ignores
+                // Carried so the login screen can prefill the register screen
+                // (error=registration_required). Empty for every other
+                // failure, which the login screen ignores
                 googleEmail: result.email || "",
               },
             });
@@ -143,19 +158,26 @@ export default function GoogleAuthCallback() {
         }
       }
 
-      const errorParam = firstParam(params.error);
-      const exchangeToken = firstParam(params.exchangeToken);
+      const query = readQuery(params);
 
-      if (errorParam) {
-        // `email` accompanies error=email_not_verified only
-        await finish({ success: false, error: errorParam, email: firstParam(params.email) || "" });
+      if (query.error) {
+        // `email` accompanies error=registration_required only
+        await finish({ success: false, error: query.error, email: query.email || "" });
         return;
       }
 
-      if (!exchangeToken) {
-        await finish({ success: false, error: "missing_exchange_token" });
+      // No token and no error: a stray visit (Back button, history, reload),
+      // not a failed sign-in. Leave quietly instead of showing an error
+      if (!query.exchangeToken) {
+        if (popup) {
+          await finish({ success: false, error: "missing_exchange_token" });
+        } else {
+          router.replace("/login");
+        }
         return;
       }
+
+      const exchangeToken = query.exchangeToken;
 
       try {
         const data = await exchangeGoogleToken(exchangeToken);
@@ -164,8 +186,8 @@ export default function GoogleAuthCallback() {
           await finish({ success: true, accessToken: data.accessToken });
         } else {
           await setAccessToken(data.accessToken);
-          await refresh();
-          await finish({ success: true }); // → router.replace("/dashboard")
+          const me = await refresh();
+          await finish({ success: true, role: me?.role }); // → router.replace(homeFor(role))
         }
       } catch (err) {
         // Forward the server's own message ("Invalid or expired sign-in
@@ -192,7 +214,7 @@ export default function GoogleAuthCallback() {
         </Text>
 
         {stranded.success ? (
-          <Pressable style={styles.button} onPress={() => router.replace("/dashboard")}>
+          <Pressable style={styles.button} onPress={() => router.replace(homeFor(role))}>
             <Text style={styles.buttonText}>Continue</Text>
           </Pressable>
         ) : (
@@ -204,12 +226,7 @@ export default function GoogleAuthCallback() {
     );
   }
 
-  return (
-    <View style={styles.center}>
-      <ActivityIndicator size="large" />
-      <Text style={styles.message}>Completing sign-in…</Text>
-    </View>
-  );
+  return <LoadingScreen message="Completing sign-in…" />;
 }
 
 const styles = StyleSheet.create({

@@ -3,11 +3,9 @@ import { apiClient } from "@/shared/api/apiClient";
 /**
  * Workout catalog client.
  *
- * The exported surface is unchanged on purpose, so the screens need no edits
- * beyond removing their now-pointless pagination loops. Several of the helpers
- * below are consequently near-passthroughs: the work they used to do now
- * happens on the server, but they stay because deleting them would ripple
- * through four files for no benefit
+ * Thin client over the server's synced catalog. Unused legacy wrappers
+ * (fetchExercises, searchExercises, fetchExerciseImages, fetchExerciseBatch)
+ * were removed; everything left here is imported by the workouts screens
  */
 
 const LANG = 2; // English. Kept for the helpers' legacy shape checks
@@ -17,6 +15,11 @@ const LANG = 2; // English. Kept for the helpers' legacy shape checks
 /** Categories (Abs, Arms, Back, Chest, Legs, …). */
 export async function fetchCategories() {
   return apiClient.get("/workouts/categories", { auth: true });
+}
+
+// Every piece of equipment the catalog uses, bodyweight excluded
+export async function fetchEquipment() {
+  return apiClient.get("/workouts/equipment", { auth: true });
 }
 
 /**
@@ -30,11 +33,22 @@ export async function fetchExerciseInfoPage({
   limit = 20,
   offset = 0,
   search,
+  equipment,
+  ids,
+  shuffle,
   includeImageless = false,
 } = {}) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  // With no filter the server shuffles the catalog, preferred exercises first
+  // (suggested: true when there are any, for "Picked for you")
+  // when no filter is set, and answers with suggested: true
+  if (shuffle) params.set("shuffle", String(shuffle));
   if (category) params.set("category", String(category));
   if (search) params.set("search", search);
+  // "none" | "any" | an equipment id
+  if (equipment != null) params.set("equipment", String(equipment));
+  // Only these exercises (the Favorites tab)
+  if (ids) params.set("ids", ids.join(","));
 
   // The server defaults to illustrated exercises only. Opt out explicitly when
   // a screen genuinely wants the full catalog.
@@ -47,55 +61,84 @@ export async function fetchExerciseInfoPage({
     next: data.hasMore ? offset + limit : null,
     previous: offset > 0 ? Math.max(0, offset - limit) : null,
     results: data.items,
+    suggested: Boolean(data.suggested),
   };
 }
 
 /**
- * Alias kept for callers that only wanted ids and counts. There is no longer a
- * cheaper "just the stubs" endpoint — the full record is small enough that a
- * second shape would be complexity for nothing.
+ * One exercise by wger id. For the details dialogs: while the server can't
+ * be reached it gives back the saved copy or fails at once, never waits,
+ * so a dialog can't open on its own when the connection comes back.
+ * `signal` cancels it outright when the dialog closes
  */
-export async function fetchExercises(options) {
-  return fetchExerciseInfoPage(options);
+export async function fetchExerciseInfo(id, { signal } = {}) {
+  return apiClient.get(`/workouts/${id}`, { auth: true, wait: false, signal });
 }
 
-/** One exercise by wger id. */
-export async function fetchExerciseInfo(id) {
-  return apiClient.get(`/workouts/${id}`, { auth: true });
+/* ------------------------------------------------- routines, favorites, schedule */
+
+// Your routines plus built-ins
+export async function fetchRoutines() {
+  const data = await apiClient.get("/workouts/routines", { auth: true });
+  return data.routines || [];
 }
 
-/**
- * Search by term.
- *
- * Was two upstream requests with a client-side fallback, because wger's search
- * endpoint is inconsistent across versions. Now a single indexed text query,
- * ordered by relevance.
- */
-export async function searchExercises(term, limit = 30) {
-  const { results } = await fetchExerciseInfoPage({ search: term, limit });
-  return results;
+export function createRoutine(body) {
+  return apiClient.post("/workouts/routines", body, { auth: true });
 }
 
-/**
- * Images for an exercise.
- *
- * They travel with the record now, so this no longer makes a request. Kept so
- * existing call sites do not break.
- */
-export async function fetchExerciseImages(exerciseId) {
-  const info = await fetchExerciseInfo(exerciseId);
-  return getExerciseImages(info);
+export function updateRoutine(id, body) {
+  return apiClient.patch(`/workouts/routines/${id}`, body, { auth: true });
 }
 
-/**
- * A batch of exercises by id.
- *
- * Still parallel requests, but against our own API rather than a rate-limited
- * public one. allSettled because one missing id should not lose the rest.
- */
-export async function fetchExerciseBatch(ids) {
-  const results = await Promise.allSettled(ids.map(fetchExerciseInfo));
-  return results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+export function deleteRoutine(id) {
+  return apiClient.delete(`/workouts/routines/${id}`, { auth: true });
+}
+
+// One routine run. completedSets/targetSets count exercises, not sets
+export function logRoutineSession(body) {
+  return apiClient.post("/workouts/routines/sessions", body, { auth: true });
+}
+
+export async function fetchFavorites() {
+  const data = await apiClient.get("/workouts/favorites", { auth: true });
+  return data.favorites || [];
+}
+
+export function addFavorite({ kind, refId, name }) {
+  return apiClient.put("/workouts/favorites", { kind, refId: String(refId), name }, { auth: true });
+}
+
+export function removeFavorite(kind, refId) {
+  return apiClient.delete(`/workouts/favorites/${kind}/${encodeURIComponent(String(refId))}`, { auth: true });
+}
+
+// Planned sessions for the next 7 days, soonest first
+export async function fetchSchedule() {
+  const data = await apiClient.get("/workouts/schedule", { auth: true });
+  return data.sessions || [];
+}
+
+export function scheduleWorkout(body) {
+  return apiClient.post("/workouts/schedule", body, { auth: true });
+}
+
+// A logged session, or every logged session on one local day ("YYYY-MM-DD")
+export function deleteSession(id) {
+  return apiClient.delete(`/workouts/sessions/${id}`, { auth: true });
+}
+
+export function deleteSessionsOnDay(date) {
+  return apiClient.delete(`/workouts/sessions/day/${date}`, { auth: true });
+}
+
+// New time for a planned or missed session
+export function rescheduleWorkout(id, scheduledFor) {
+  return apiClient.patch(`/workouts/schedule/${id}`, { scheduledFor }, { auth: true });
+}
+
+export function unscheduleWorkout(id) {
+  return apiClient.delete(`/workouts/schedule/${id}`, { auth: true });
 }
 
 /* ------------------------------------------------------------------- helpers */
@@ -181,7 +224,7 @@ export function getExerciseImages(info) {
  * on an https page as mixed content, so an un-normalised legacy URL renders as
  * nothing at all.
  */
-export function normalizeImageUrl(url) {
+function normalizeImageUrl(url) {
   if (!url) return null;
   if (typeof url === "object") return normalizeImageUrl(url.image || url.url || url.src);
   if (typeof url !== "string") return null;

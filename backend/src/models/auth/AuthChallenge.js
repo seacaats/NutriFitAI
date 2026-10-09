@@ -1,90 +1,91 @@
-const db = require('../../../config/mongo');
-const { AuthChallenge: AuthChallengeDoc } = require('../schemas');
+const { mongoose, opts } = require('../../../config/mongo');
+const env = require('../../../config/env');
+const { USER_REF, withId } = require('../shared');
 
-const { opts } = db;
+const { Schema } = mongoose;
 
-function shape(doc) {
-  if (!doc) return null;
-  const { _id, ...rest } = doc;
-  return { id: String(_id), ...rest };
-}
-
-//OTP challenges for email verification and password reset.
-//The collection carries a TTL index on expiresAt (expireAfterSeconds: 0), so
-//expired challenges delete themselves. Note that TTL monitors run every 60 seconds
- 
-const AuthChallenge = {
-  /**
-   * @param {{ userId: string, purpose: 'email_verification'|'password_reset',
-   *           codeHash: string, expiresAt: Date }} input
-   */
-  async create(input, client = db) {
-    const [doc] = await AuthChallengeDoc.create(
-      [
-        {
-          userId: input.userId,
-          purpose: input.purpose,
-          codeHash: input.codeHash,
-          expiresAt: input.expiresAt,
-          consumedAt: null,
-          failedAttempts: 0,
-          createdAt: new Date(),
-        },
-      ],
-      opts(client),
-    );
-    return shape(doc.toObject());
+// OTP challenges for email verification and password reset
+const authChallengeSchema = new Schema(
+  {
+    userId: USER_REF,
+    purpose: { type: String, enum: ['email_verification', 'password_reset'], required: true },
+    codeHash: { type: String, required: true }, // hash of the OTP, never plaintext
+    expiresAt: { type: Date, required: true },
+    consumedAt: { type: Date, default: null },
+    failedAttempts: { type: Number, default: 0, min: 0 },
+    createdAt: { type: Date, default: () => new Date() },
   },
+  { versionKey: false, collection: 'auth_challenges' },
+);
 
-  // Served by { userId: 1, purpose: 1, createdAt: -1 }
-  // to find the most recent unconsumed challenge by a user
-  async findLatestActive(userId, purpose, client = db) {
-    return shape(
-      await AuthChallengeDoc.findOne(
-        { userId, purpose, consumedAt: null },
-        null,
-        opts(client),
-      )
-        .sort({ createdAt: -1 })
-        .lean(),
-    );
-  },
+// Indexes are created by migrations 001, not declared here
 
-  async findById(id, client = db) {
-    if (!AuthChallengeDoc.base.isValidObjectId(id)) return null;
-    return shape(await AuthChallengeDoc.findById(id, null, opts(client)).lean());
-  },
-
-  // Invalidate active OTP codes before issuing new ones
-  async invalidateActive(userId, purpose, client = db) {
-    await AuthChallengeDoc.updateMany(
-      { userId, purpose, consumedAt: null },
-      { $set: { consumedAt: new Date() } },
-      opts(client),
-    );
-  },
-
-  async incrementFailedAttempts(id, client = db) {
-    return shape(
-      await AuthChallengeDoc.findByIdAndUpdate(
-        id,
-        { $inc: { failedAttempts: 1 } },
-        { new: true, ...opts(client) },
-      ).lean(),
-    );
-  },
-
-  // Checks and marks a code as used so any concurrent verification
-  // attempts with the same code can't succeed or fail at the same time
-  async markConsumed(id, client = db) {
-    return shape(
-      await AuthChallengeDoc.findOneAndUpdate(
-        { _id: id, consumedAt: null },
-        { $set: { consumedAt: new Date() } },
-        { new: true, ...opts(client) },
-      ).lean(),
-    );
-  },
+// Not expired and under the attempt limit. Consumption is checked by
+// the query that found it, and again atomically by markConsumed
+authChallengeSchema.statics.isUsable = function isUsable(challenge) {
+  return Boolean(challenge)
+    && new Date(challenge.expiresAt).getTime() >= Date.now()
+    && challenge.failedAttempts < env.otp.maxFailedAttempts;
 };
 
-module.exports = AuthChallenge;
+authChallengeSchema.statics.issue = async function issue(input, client) {
+  const [doc] = await this.create(
+    [
+      {
+        userId: input.userId,
+        purpose: input.purpose,
+        codeHash: input.codeHash,
+        expiresAt: input.expiresAt,
+        consumedAt: null,
+        failedAttempts: 0,
+        createdAt: new Date(),
+      },
+    ],
+    opts(client),
+  );
+  return withId(doc.toObject());
+};
+
+// Most recent unconsumed challenge, served by user_purpose_recent
+authChallengeSchema.statics.findLatestActive = async function findLatestActive(userId, purpose, client) {
+  return withId(
+    await this.findOne({ userId, purpose, consumedAt: null }, null, opts(client))
+      .sort({ createdAt: -1 })
+      .lean(),
+  );
+};
+
+// Malformed ids read as "not found" rather than a cast error (500)
+authChallengeSchema.statics.getById = async function getById(id, client) {
+  if (!mongoose.isValidObjectId(id)) return null;
+  return withId(await this.findById(id, null, opts(client)).lean());
+};
+
+// Invalidate active OTP codes before issuing new ones
+authChallengeSchema.statics.invalidateActive = async function invalidateActive(userId, purpose, client) {
+  await this.updateMany(
+    { userId, purpose, consumedAt: null },
+    { $set: { consumedAt: new Date() } },
+    opts(client),
+  );
+};
+
+authChallengeSchema.statics.incrementFailedAttempts = async function incrementFailedAttempts(id, client) {
+  return withId(
+    await this.findByIdAndUpdate(id, { $inc: { failedAttempts: 1 } }, { new: true, ...opts(client) }).lean(),
+  );
+};
+
+// Conditional on still being unconsumed, so of two concurrent
+// correct submissions only one gets through
+authChallengeSchema.statics.markConsumed = async function markConsumed(id, client) {
+  return withId(
+    await this.findOneAndUpdate(
+      { _id: id, consumedAt: null },
+      { $set: { consumedAt: new Date() } },
+      { new: true, ...opts(client) },
+    ).lean(),
+  );
+};
+
+module.exports = mongoose.model('AuthChallenge', authChallengeSchema);

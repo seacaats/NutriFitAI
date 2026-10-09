@@ -2,13 +2,18 @@ import { apiClient, ApiClientError } from "@/shared/api/apiClient";
 import {
   activityLabelToValue,
   activityValueToLabel,
-  genderLabelToValue,
-  genderValueToLabel,
+  CUSTOM_OPTION_MAX,
+  DIET_PREFERENCES_MAX,
   goalLabelToValue,
   goalValueToLabel,
+  sexLabelToValue,
+  sexValueToLabel,
 } from "@/shared/constants/profileOptions";
+import { NO_WORKOUT_PREFS, weightTargetProblem } from "@/shared/constants/goalOptions";
+import { useAuth } from "@/shared/context/AuthContext";
+import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { resolveMediaUrl } from "@/shared/services/mediaUrl";
-import { isValidEmail, validateOptionalNumber } from "@/shared/utils/authValidators";
+import { AGE_MAX, AGE_MIN, isValidEmail, validateName, validateNumber } from "@/shared/utils/authValidators";
 import * as ImagePicker from "expo-image-picker";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
@@ -28,13 +33,16 @@ const EMPTY = {
   lastName: "",
   email: "",
   age: "",
-  gender: "",
+  sex: "",
   height: "",
   weight: "",
   goal: "",
   activity: "",
   dietPreference: "",
   healthConditions: "",
+  targetWeight: "",
+  weeklyPace: "",
+  workoutPrefs: NO_WORKOUT_PREFS,
 };
 
 function toForm(data) {
@@ -44,13 +52,16 @@ function toForm(data) {
     lastName: data.lastName || "",
     email: data.email || "",
     age: data.age ?? "",
-    gender: genderValueToLabel(data.gender) || "",
+    sex: sexValueToLabel(data.sex) || "",
     height: data.heightCm ?? "",
     weight: data.weightKg ?? "",
     goal: goalValueToLabel(data.fitnessGoal) || "",
     activity: activityValueToLabel(data.activityLevel) || "",
     dietPreference: data.dietPreference || "",
     healthConditions: data.healthConditions || "",
+    targetWeight: data.targetWeightKg ?? "",
+    weeklyPace: data.weeklyPaceKg ?? "",
+    workoutPrefs: data.workoutPrefs || NO_WORKOUT_PREFS,
   };
 }
 
@@ -63,6 +74,7 @@ function numberOrNull(value) {
 }
 
 export function useProfileForm() {
+  const { refresh: refreshAuth } = useAuth();
   const [serverData, setServerData] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [loading, setLoading] = useState(true);
@@ -113,21 +125,33 @@ export function useProfileForm() {
   }, [serverData]);
 
   function validate() {
-    if (form.firstName.trim() && form.firstName.trim().length > 75) {
-      return "First name must be 75 characters or fewer.";
-    }
-    if (form.lastName.trim() && form.lastName.trim().length > 75) {
-      return "Last name must be 75 characters or fewer.";
-    }
+    // Same required fields as registration: only last name and sex can be blank
+    const firstNameError = validateName(form.firstName, { label: "First name", required: true });
+    if (firstNameError) return firstNameError;
+    const lastNameError = validateName(form.lastName, { label: "Last name" });
+    if (lastNameError) return lastNameError;
     if (form.email && !isValidEmail(form.email)) {
       return "Please enter a valid email address.";
     }
-    const ageError = validateOptionalNumber(form.age, { label: "Age", min: 10, max: 120, integer: true });
+    // Required: an age can be changed but not cleared
+    const ageError = validateNumber(form.age, { label: "Age", min: AGE_MIN, max: AGE_MAX, integer: true, required: true });
     if (ageError) return ageError;
-    const heightError = validateOptionalNumber(form.height, { label: "Height", min: 1, max: 300 });
+    const heightError = validateNumber(form.height, { label: "Height", min: 1, max: 300, required: true });
     if (heightError) return heightError;
-    const weightError = validateOptionalNumber(form.weight, { label: "Weight", min: 1, max: 500 });
+    if (!String(form.goal || "").trim()) return "Please choose your fitness goal.";
+    if (!String(form.activity || "").trim()) return "Please choose your activity level.";
+    if (!String(form.dietPreference || "").trim()) return "Please choose your diet preference.";
+    if (!String(form.healthConditions || "").trim()) return "Please choose your health conditions, or None.";
+    // Custom "Other" text shares the backend's 50-char cap
+    if (String(form.goal || "").trim().length > CUSTOM_OPTION_MAX) return "Fitness goal is too long.";
+    if (String(form.activity || "").trim().length > CUSTOM_OPTION_MAX) return "Activity level is too long.";
+    if (String(form.dietPreference || "").trim().length > DIET_PREFERENCES_MAX) return "Diet preferences are too long.";
+    if (String(form.healthConditions || "").trim().length > 2000) return "Health conditions are too long.";
+    const weightError = validateNumber(form.weight, { label: "Weight", min: 1, max: 500, required: true });
     if (weightError) return weightError;
+    // Optional, unlike the fields above
+    const targetError = weightTargetProblem(form.targetWeight, form.weeklyPace);
+    if (targetError) return targetError;
     return "";
   }
 
@@ -139,7 +163,7 @@ export function useProfileForm() {
     if (form.firstName.trim() !== original.firstName) patch.firstName = form.firstName.trim() || null;
     if (form.lastName.trim() !== original.lastName) patch.lastName = form.lastName.trim() || null;
     if (String(form.age) !== String(original.age)) patch.age = numberOrNull(form.age);
-    if (form.gender !== original.gender) patch.gender = genderLabelToValue(form.gender);
+    if (form.sex !== original.sex) patch.sex = sexLabelToValue(form.sex);
     if (String(form.height) !== String(original.height)) patch.heightCm = numberOrNull(form.height);
     if (form.goal !== original.goal) patch.fitnessGoal = goalLabelToValue(form.goal);
     if (form.activity !== original.activity) patch.activityLevel = activityLabelToValue(form.activity);
@@ -149,6 +173,10 @@ export function useProfileForm() {
     if (form.healthConditions.trim() !== original.healthConditions) {
       patch.healthConditions = form.healthConditions.trim() || null;
     }
+    if (String(form.targetWeight) !== String(original.targetWeight)) patch.targetWeightKg = numberOrNull(form.targetWeight);
+    if (String(form.weeklyPace) !== String(original.weeklyPace)) patch.weeklyPaceKg = numberOrNull(form.weeklyPace);
+    // Sent whole, like the API wants it
+    if (JSON.stringify(form.workoutPrefs) !== JSON.stringify(original.workoutPrefs)) patch.workoutPrefs = form.workoutPrefs;
 
     // weightKg is append-only server-side (a new weight_logs row), so it is
     // only sent when it changed -- never as a no-op rewrite of the same value
@@ -178,6 +206,8 @@ export function useProfileForm() {
     try {
       const data = await apiClient.patch("/profile", patch, { auth: true });
       setServerData(data);
+      // The topbar and menus read name and photo from AuthContext, not this form
+      refreshAuth();
       setForm(toForm(data));
       setEditing(false);
       setSaved(true);
@@ -266,6 +296,8 @@ export function useProfileForm() {
 
       const data = await apiClient.upload("/profile/avatar", formData, { auth: true });
       setServerData(data);
+      // The topbar and menus read name and photo from AuthContext, not this form
+      refreshAuth();
       setForm(toForm(data));
       // Cleared only on success, so a failed upload keeps the preview and the
       // user can retry or undo rather than losing their selection
@@ -285,6 +317,8 @@ export function useProfileForm() {
     try {
       const data = await apiClient.delete("/profile/avatar", { auth: true });
       setServerData(data);
+      // The topbar and menus read name and photo from AuthContext, not this form
+      refreshAuth();
       setForm(toForm(data));
       setPendingAvatar(null);
       return true;
@@ -311,6 +345,9 @@ export function useProfileForm() {
     if (bmi < 30) return "Overweight";
     return "Obese";
   })();
+
+  // Not mid-edit: a reload would wipe what's been typed
+  usePullRefresh(() => (editing ? undefined : load()));
 
   return {
     form,

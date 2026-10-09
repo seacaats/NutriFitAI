@@ -1,6 +1,7 @@
 const env = require('../../../config/env');
 const { ApiError } = require('../../utils/httpResponse');
 const quotaStore = require('./quotaStore');
+const { logSystemAction } = require('../../utils/audit-logs/auditLogger');
 const { createOpenAICompatibleProvider, ProviderError } = require('./openaiCompatible');
 
 /**
@@ -18,7 +19,11 @@ const { createOpenAICompatibleProvider, ProviderError } = require('./openaiCompa
 
 // Quota ceilings
 const LIMITS = {
-  ollama: {}, // local, no ceiling
+  ollama: {}, // self-hosted, no ceiling
+  // Free-tier limits change; Groq's 429s set the cooldown
+  // (classifyRateLimit) instead of a guessed ceiling here
+  groq: {},
+  cerebras: {}, // same reasoning as groq
 };
 
 // Fallback for 429 status codes with no Retry-After header
@@ -45,6 +50,26 @@ function buildProviders() {
       // Local models don't run as fast as hosted ones
       timeoutMs: env.ai.ollama.timeoutMs,
       maxTokens: env.ai.maxOutputTokens,
+      // Through a tunnel: the basic-auth policy's credentials
+      headers: env.ai.ollama.basicAuth
+        ? { Authorization: `Basic ${Buffer.from(env.ai.ollama.basicAuth).toString('base64')}` }
+        : {},
+    }),
+    groq: createOpenAICompatibleProvider({
+      name: 'groq',
+      baseUrl: env.ai.groq.baseUrl,
+      apiKey: env.ai.groq.apiKey,
+      model: env.ai.groq.model,
+      timeoutMs: env.ai.groq.timeoutMs,
+      maxTokens: Math.min(env.ai.groq.maxOutputTokens, env.ai.maxOutputTokens),
+    }),
+    cerebras: createOpenAICompatibleProvider({
+      name: 'cerebras',
+      baseUrl: env.ai.cerebras.baseUrl,
+      apiKey: env.ai.cerebras.apiKey,
+      model: env.ai.cerebras.model,
+      timeoutMs: env.ai.cerebras.timeoutMs,
+      maxTokens: Math.min(env.ai.cerebras.maxOutputTokens, env.ai.maxOutputTokens),
     }),
   };
 
@@ -89,6 +114,21 @@ async function chat(request) {
 
       if (attempts.length > 0) {
         console.warn(`[ai] answered by "${provider.name}" after ${attempts.length} skipped/failed`, attempts);
+        // Only when a provider actually failed on this call. Skips during a
+        // cooldown would otherwise write one row per message
+        const failed = attempts.filter((a) => a.status);
+        if (failed.length > 0) {
+          logSystemAction({
+            action: 'coach.provider.failover',
+            targetType: 'system',
+            details: {
+              fromProvider: failed[failed.length - 1].provider,
+              toProvider: provider.name,
+              reason: failed[failed.length - 1].status === 429 ? 'rate_limited' : 'provider_error',
+              status: failed[failed.length - 1].status,
+            },
+          });
+        }
       }
 
       return {
@@ -108,6 +148,20 @@ async function chat(request) {
         : SERVER_ERROR_COOLDOWN_MS;
 
       quotaStore.cooldown(provider.name, cooldownMs, err.message);
+
+      // Once per cooldown: the gate above skips this provider until it ends.
+      // Not awaited, logSystemAction never throws
+      if (err.status === 429) {
+        logSystemAction({
+          action: 'coach.quota.exhausted',
+          targetType: 'system',
+          details: {
+            provider: provider.name,
+            limitKind: cooldownMs >= DAILY_COOLDOWN_MS ? 'daily' : 'burst',
+            resumesAt: new Date(Date.now() + cooldownMs).toISOString(),
+          },
+        });
+      }
       attempts.push({ provider: provider.name, status: err.status, error: err.message });
     }
   }
@@ -127,4 +181,4 @@ function health() {
   };
 }
 
-module.exports = { chat, health, LIMITS };
+module.exports = { chat, health };

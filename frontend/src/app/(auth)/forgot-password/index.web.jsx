@@ -1,8 +1,7 @@
 import { useForgotPasswordForm } from "@/features/auth/hooks/useForgotPasswordForm";
-import FormInput from "@/shared/components/ui/FormInput";
-import NutriFitLogo from "@/shared/components/ui/NutriFitLogo";
+import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { colors, radii, spacing, typography } from "@/shared/theme/nutrifit";
+import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { forgotPasswordStyles } from "@/shared/theme/screenStyles";
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -13,10 +12,6 @@ export default function ForgotPasswordScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <View style={styles.logoWrap}>
-        <NutriFitLogo light small />
-      </View>
-
       <View style={styles.center}>
         <View style={styles.card}>
           <Text style={styles.emoji}>📧</Text>
@@ -26,7 +21,7 @@ export default function ForgotPasswordScreen() {
 
           <FormInput
             icon="mail-outline"
-            placeholder="Email Address"
+            placeholder="Email (e.g. name@example.com)"
             value={form.email}
             onChangeText={form.setEmail}
             keyboardType="email-address"
@@ -34,7 +29,7 @@ export default function ForgotPasswordScreen() {
             style={[styles.fieldSpacing, styles.grayInput]}
           />
 
-          {!!form.error && <Text style={styles.error}>{form.error}</Text>}
+          <FormAlert message={form.error} onDismiss={form.dismissError} />
 
           <PrimaryButton title="Send Code" onPress={form.handleSubmit} loading={form.loading} style={styles.button} />
 
@@ -50,7 +45,6 @@ export default function ForgotPasswordScreen() {
 const styles = StyleSheet.create({
   ...forgotPasswordStyles,
 
-  logoWrap: { position: "absolute", top: 24, left: spacing.lg, zIndex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.lg },
   card: {
     width: "100%",
@@ -69,7 +63,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: spacing.lg,
   },
-  fieldSpacing: { marginBottom: spacing.md, width: "100%" },
+  fieldSpacing: { marginBottom: 20, width: "100%" },
   grayInput: { backgroundColor: colors.grayInputBg },
   button: { width: "100%" },
   backLink: { ...typography.caption, color: colors.textMuted, marginTop: spacing.md },

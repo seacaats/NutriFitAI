@@ -1,5 +1,5 @@
 import { useTheme } from "@/shared/context/ThemeContext";
-import { colors, getChipTint, getScreenTones, radii } from "@/shared/theme/nutrifit";
+import { colors, getChipTint, getScreenTones, radii } from "@/shared/theme/nutrifitai";
 import { StyleSheet, Text, View } from "react-native";
 
 /**

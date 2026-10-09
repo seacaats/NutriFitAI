@@ -8,18 +8,23 @@ const keys = require('./keys');
  *   save(buffer, { key, contentType })  -> Promise<{ key, bytes }>
  *   remove(key)                         -> Promise<void>  (never throws)
  *   removePrefix(prefix)                -> Promise<void>  (never throws)
+ *   list(prefix)                        -> Promise<string[]>  (keys)
  *   exists(key)                         -> Promise<boolean>
  *   urlFor(key)                         -> Promise<string | null>
  * 
  */
 
+// local = the uploads/ folder (development, or one server with a backed-up
+// disk); r2 = Cloudflare R2 (deployed). Required lazily, so local never
+// loads the AWS SDK
 const drivers = {
   local: () => require('./localStore'),
+  r2: () => require('./r2Store'),
 };
 
 const selected = drivers[env.storage.driver];
 if (!selected) {
-  throw new Error(`Unknown STORAGE_DRIVER "${env.storage.driver}" (expected "local")`);
+  throw new Error(`Unknown STORAGE_DRIVER "${env.storage.driver}" (expected "local" or "r2")`);
 }
 
 const store = selected();
@@ -37,16 +42,11 @@ async function save(buffer, { key, contentType }) {
   return store.save(buffer, { key, contentType });
 }
 
-// Wrapper for urlFor(), (e.g., responding with multiple files at a time)
-async function urlsFor(keyList) {
-  return Promise.all(keyList.map((k) => store.urlFor(k)));
-}
 console.log(`[storage] driver=${store.driver}`);
 
 module.exports = {
   ...store,
   save,
-  urlsFor,
   keys,
   driver: store.driver,
 };

@@ -1,97 +1,83 @@
-import { colors, spacing, typography } from "@/shared/theme/nutrifit";
+import { SECTIONS, splitTitle, TERMS_INTRO, TERMS_UPDATED } from "@/shared/constants/publicContent";
+import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const SECTIONS = [
-  {
-    title: "1. Using NutriFit AI",
-    body: "NutriFit AI provides fitness tracking, nutrition guidance, and an AI coaching assistant. By creating an account, you agree to use the service honestly and to keep your login credentials secure.",
-  },
-  {
-    title: "2. Health & Dietary Information",
-    body:
-      "During registration and while using your profile, you may choose to share information such as your diet " +
-      "preference and any health conditions. We collect and store this information only to personalize your " +
-      "nutrition and fitness recommendations -- for example, adjusting meal guidance around a food allergy or a " +
-      "medical condition you tell us about.\n\n" +
-      "This information is optional. Checking the consent box on the registration form means you agree to let " +
-      "NutriFit AI collect, store, and use the dietary and health details you provide for this purpose. You can " +
-      "review, edit, or remove this information at any time from your Profile page.",
-  },
-  {
-    title: "3. Other Account & Activity Data",
-    body: "We also store the account details you provide (name, email, age, height, weight) and the activity you log (workouts, weight entries, chats with your AI coach) so the app can show your history and progress over time.",
-  },
-  {
-    title: "4. Data Sharing",
-    body: "We do not sell your personal or health information. Data is used only to operate and improve NutriFit AI, and is shared with service providers solely as needed to run the app (for example, hosting and email delivery).",
-  },
-  {
-    title: "5. Your Choices",
-    body: "You can update your profile information, change your consent preferences, or request that your account and its data be deleted, at any time from within the app.",
-  },
-  {
-    title: "6. Changes to This Policy",
-    body: "We may update these terms as NutriFit AI evolves. Continuing to use the app after a change means you accept the updated terms.",
-  },
-];
-
 export default function TermsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const back = () => (router.canGoBack() ? router.back() : router.replace("/"));
 
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
+        <Pressable onPress={back} hitSlop={12} style={styles.side} accessibilityLabel="Go back">
           <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
         </Pressable>
-        <Text style={styles.headerTitle}>Terms of Service</Text>
-        <View style={styles.headerSpacer} />
+        <Text style={styles.headerTitle}>Terms &amp; Privacy</Text>
+        <View style={styles.side} />
       </View>
 
-      <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xl }]}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.docTitle}>Terms of Service &amp; Privacy Policy</Text>
-        <Text style={styles.lastUpdated}>Last updated: September 2026</Text>
-
-        {SECTIONS.map((s) => (
-          <View key={s.title} style={styles.section}>
-            <Text style={styles.sectionTitle}>{s.title}</Text>
-            <Text style={styles.sectionBody}>{s.body}</Text>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xl }]} showsVerticalScrollIndicator={false}>
+        {/* Hero */}
+        <View style={styles.hero}>
+          <View style={styles.heroIcon}>
+            <Ionicons name="shield-checkmark" size={30} color={colors.green700} />
           </View>
-        ))}
+          <Text style={styles.title}>Terms of Service &amp; Privacy Policy</Text>
+          <Text style={styles.intro}>{TERMS_INTRO}</Text>
+          <View style={styles.updated}>
+            <Ionicons name="time-outline" size={13} color={colors.green700} />
+            <Text style={styles.updatedText}>Last updated {TERMS_UPDATED}</Text>
+          </View>
+        </View>
+
+        {/* One card per section */}
+        {SECTIONS.map((s) => {
+          const [num, title] = splitTitle(s.title);
+          return (
+            <View key={s.title} style={styles.card}>
+              <View style={styles.cardHead}>
+                <View style={styles.cardIcon}>
+                  <Ionicons name={s.icon || "document-text-outline"} size={20} color={colors.green700} />
+                </View>
+                <View style={styles.flex1}>
+                  {!!num && <Text style={styles.cardNum}>SECTION {num}</Text>}
+                  <Text style={styles.cardTitle}>{title}</Text>
+                </View>
+              </View>
+              <Text style={styles.cardBody}>{s.body}</Text>
+            </View>
+          );
+        })}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.white },
+  root: { flex: 1, backgroundColor: colors.bgMint },
+  flex1: { flex: 1 },
 
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.sm,
-    paddingBottom: spacing.sm,
-    backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
-  },
-  backBtn: { padding: spacing.xs, width: 40 },
+  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm, paddingBottom: spacing.sm },
+  side: { width: 40, padding: spacing.xs },
   headerTitle: { ...typography.bodyBold, color: colors.textPrimary, flex: 1, textAlign: "center" },
-  headerSpacer: { width: 40 },
 
-  scroll: { paddingHorizontal: spacing.lg, paddingTop: spacing.xl },
+  scroll: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.md },
 
-  docTitle: { ...typography.h1, color: colors.brandDark },
-  lastUpdated: { ...typography.caption, color: colors.textMuted, marginTop: spacing.xs, marginBottom: spacing.lg },
+  hero: { alignItems: "center", paddingHorizontal: spacing.md, paddingVertical: spacing.lg },
+  heroIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.greenTint, alignItems: "center", justifyContent: "center", marginBottom: spacing.md },
+  title: { ...typography.h2, fontSize: 22, color: colors.brandDark, textAlign: "center" },
+  intro: { ...typography.body, color: colors.textSecondary, textAlign: "center", marginTop: spacing.sm, lineHeight: 22 },
+  updated: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.md, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: colors.white },
+  updatedText: { ...typography.caption, fontWeight: "700", color: colors.green700 },
 
-  section: { marginTop: spacing.xl },
-  sectionTitle: { ...typography.h2, color: colors.textPrimary, marginBottom: spacing.sm },
-  sectionBody: { ...typography.body, color: colors.textSecondary, lineHeight: 24 },
+  card: { backgroundColor: colors.white, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md },
+  cardHead: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: spacing.sm },
+  cardIcon: { width: 40, height: 40, borderRadius: radii.sm, backgroundColor: colors.greenTint, alignItems: "center", justifyContent: "center" },
+  cardNum: { ...typography.tiny, fontWeight: "800", letterSpacing: 1, color: colors.green700 },
+  cardTitle: { ...typography.bodyBold, fontSize: 16, color: colors.textPrimary, marginTop: 1 },
+  cardBody: { ...typography.body, fontSize: 14, color: colors.textSecondary, lineHeight: 22 },
 });

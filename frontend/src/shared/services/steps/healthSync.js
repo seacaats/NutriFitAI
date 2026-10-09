@@ -1,5 +1,5 @@
 import { Pedometer } from "expo-sensors";
-import { addDays, daysBetween, eachDay, todayISO } from "./stepDates";
+import { addDays, daysBetween, eachDay, todayISO } from "@/shared/utils/dates";
 
 /**
  * iOS step source, and the default this file resolves to on any platform
@@ -12,7 +12,7 @@ import { addDays, daysBetween, eachDay, todayISO } from "./stepDates";
  * of scattered through the screens.
  *
  * Backed by CoreMotion's CMPedometer, which records continuously whether or not
- * NutriFit is running. So the app being closed affects how FRESH the data is,
+ * NutriFitAI is running. So the app being closed affects how FRESH the data is,
  * never how COMPLETE it is: opening the app on Thursday correctly backfills
  * Monday through Thursday.
  *
@@ -24,7 +24,7 @@ import { addDays, daysBetween, eachDay, todayISO } from "./stepDates";
 export const MAX_BACKFILL_DAYS = 7;
 
 /** Matches the daily_steps_source_check constraint in migration 002. */
-export const SOURCE = "healthkit";
+const SOURCE = "healthkit";
 
 /**
  * CMPedometer wants Date objects spanning the local day. Built from the local

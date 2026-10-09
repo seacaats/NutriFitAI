@@ -1,28 +1,26 @@
+import ExercisePills from "@/features/workouts/components/ExercisePills";
 import ExerciseWorkoutTracker from "@/features/workouts/components/ExerciseWorkoutTracker";
+import { RoutineEditorModal, RoutinePlayerModal, ScheduleModal } from "@/features/workouts/components/PlanModals";
+import { FavoriteRoutines, PanelHeading, RecentPanel, relativeDay, RoutinesPanel, UpcomingPanel } from "@/features/workouts/components/PlanPanels";
+import { EmptyState, FavoriteButton, WorkoutTabs } from "@/features/workouts/components/PlanParts";
+import { WorkoutFilters, WorkoutImage } from "@/features/workouts/components/PlanTiles";
+import { WorkoutPrefsModal } from "@/features/workouts/components/WorkoutPrefsPicker";
 import {
-  fetchCategories,
-  fetchExerciseInfo,
-  fetchExerciseInfoPage,
-  getEnglishTranslation,
-  hasEnglishTranslation,
-  isBlockedLocalizedExercise,
-  getExerciseImage,
-  getExerciseImages,
-  getMuscleNames,
   getWorkoutFallbackImage,
-  hasEnglishTranslation,
-  isBlockedLocalizedExercise,
 } from "@/features/workouts/hooks/useWorkoutApi";
-import { useWorkoutSessions } from "@/features/workouts/hooks/useWorkoutSessions";
+import { useWorkouts } from "@/features/workouts/hooks/useWorkouts";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
+import { MenuButton } from "@/shared/components/layout/ScreenHeader";
 import Skeleton from "@/shared/components/Skeleton";
+import { useFocusRing } from "@/shared/components/ui/FormInput";
+import PlanButton from "@/shared/components/ui/PlanButton";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { chipTints, colors, radii, screenTones, shellColors } from "@/shared/theme/nutrifit";
+import { useHeldWhileClosing } from "@/shared/hooks/useHeldWhileClosing";
+import { chipTints, colors, getChipTint, getScreenPalette, radii, screenTones, shellColors } from "@/shared/theme/nutrifitai";
 import { workoutsStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -38,6 +36,7 @@ import {
 // Main Screen
 // ──────────────────────────────────────────────
 export default function WorkoutsScreen() {
+  const ring = useFocusRing();
   // darkMode is read here (not just `shell`) because it's threaded down to
   // RecentSessionRow below, which needs the raw boolean for its own
   // light/dark text color -- not the resolved shell palette.
@@ -46,167 +45,50 @@ export default function WorkoutsScreen() {
 
   const card = { backgroundColor: c.cardBg, borderColor: c.dropdownBorder };
   const textColor = { color: c.sidebarText };
+  const { mutedText } = getScreenPalette(darkMode);
 
-  const [categories, setCategories] = useState([]);
-  const [activeCategory, setActiveCategory] = useState(null); // null = "All"
-  const [exercises, setExercises] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedExercise, setSelectedExercise] = useState(null);
-
-  // logSession never throws: the user has already done the exercise, so a
-  // failed write must not surface as an error on their screen.
-  const { logSession, summary, recent, fetchExerciseHistory } = useWorkoutSessions();
-
-  // History for the exercise currently open in the detail modal. Fetched on
-  // open rather than with the grid: one request per visible card would be
-  // twenty requests for a line most of them never show.
-  const [exerciseHistory, setExerciseHistory] = useState(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-
-  const offsetRef = useRef(0);
-  const hasMoreRef = useRef(true);
-  const PAGE_SIZE = 20;
-
-  // Load categories on mount
-  useEffect(() => {
-    fetchCategories()
-      .then((cats) => setCategories(cats))
-      .catch(() => {});
-  }, []);
-
-  // Load exercises when category changes
-  useEffect(() => {
-    loadExercises(true);
-  }, [activeCategory]);
-
-  const loadExercises = useCallback(
-    async (reset = false) => {
-      if (reset) {
-        offsetRef.current = 0;
-        hasMoreRef.current = true;
-        setLoading(true);
-      } else {
-        if (!hasMoreRef.current) return;
-        setLoadingMore(true);
-      }
-
-      try {
-        let offset = offsetRef.current;
-        const collected = [];
-        let hasMore = true;
-
-        // Many wger exercises have no uploaded photo, so keep paging through the
-        // API until we have a full page of exercises that actually have a real
-        // image (or we run out of pages entirely).
-        while (collected.length < PAGE_SIZE && hasMore) {
-          const infoPage = await fetchExerciseInfoPage({
-            category: activeCategory,
-            limit: PAGE_SIZE,
-            offset,
-          });
-          const results = infoPage.results || [];
-
-          for (const info of results) {
-            if (!hasEnglishTranslation(info)) continue;
-            const realImage = getExerciseImages(info)[0];
-            if (!realImage) continue; // skip exercises without a real image
-            const { name, description } = getEnglishTranslation(info);
-            if (isBlockedLocalizedExercise(name)) continue;
-            collected.push({
-              id: info.id,
-              name,
-              description,
-              image: realImage,
-              muscles: getMuscleNames(info),
-              category: info.category?.name || "Other",
-              equipment: info.equipment?.map((e) => e.name) || [],
-            });
-          }
-
-          offset += results.length;
-          hasMore = infoPage.next !== null;
-        }
-
-        const valid = collected.filter((e) => e && e.name);
-        if (reset) {
-          setExercises(valid);
-        } else {
-          setExercises((prev) => [...prev, ...valid]);
-        }
-
-        offsetRef.current = offset;
-        hasMoreRef.current = hasMore;
-      } catch {
-        // silently handle error
-      } finally {
-        setLoading(false);
-        setLoadingMore(false);
-      }
-    },
-    [activeCategory],
-  );
-
-  // Search filtering (client-side on loaded exercises)
-  const englishExercises = exercises.filter((exercise) => !isBlockedLocalizedExercise(exercise.name));
-  const filtered = searchQuery
-    ? englishExercises.filter(
-        (e) =>
-          e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          e.muscles.some((m) =>
-            m.toLowerCase().includes(searchQuery.toLowerCase()),
-          ) ||
-          e.category.toLowerCase().includes(searchQuery.toLowerCase()),
-      )
-    : englishExercises;
-
-  // Open exercise detail modal
-  const openDetail = async (exerciseId, cardImage) => {
-    setDetailLoading(true);
-    setSelectedExercise(null);
-    setExerciseHistory(null);
-    try {
-      const info = await fetchExerciseInfo(exerciseId);
-      // Fired alongside the detail load, not awaited with it: the history line
-      // is supplementary, and making the modal wait on it would delay the
-      // whole sheet for a line that may not exist.
-      fetchExerciseHistory(exerciseId).then((history) =>
-        setExerciseHistory(history?.last || null),
-      );
-      const { name, description } = getEnglishTranslation(info);
-      const image = cardImage || getExerciseImage(info);
-      const muscles = getMuscleNames(info);
-      setSelectedExercise({
-        id: info.id,
-        name,
-        description,
-        image,
-        muscles,
-        musclesSecondary:
-          info.muscles_secondary?.map((m) => m.name_en || m.name) || [],
-        category: info.category?.name || "Other",
-        equipment: info.equipment?.map((e) => e.name) || [],
-        images: getExerciseImages(info),
-      });
-    } catch {
-      setSelectedExercise(null);
-    } finally {
-      setDetailLoading(false);
-    }
-  };
-
-  // ── Category icon map ──
-  const catIcon = {
-    Abs: "body",
-    Arms: "fitness",
-    Back: "swap-horizontal",
-    Calves: "footsteps",
-    Cardio: "heart",
-    Chest: "shield",
-    Legs: "walk",
-    Shoulders: "resize",
-  };
+  const {
+    activeCategory,
+    categories,
+    closeDetail,
+    detailLoading,
+    detailPlan,
+    editor,
+    equipment,
+    equipmentList,
+    exerciseHistory,
+    exercises,
+    filtered,
+    loadExercises,
+    loading,
+    loadingMore,
+    hasMoreRef,
+    logFromDetail,
+    logRoutineRun,
+    openDetail,
+    plan,
+    player,
+    prefsOpen,
+    recent,
+    refreshSessions,
+    reloadExercises,
+    scheduleTarget,
+    searchQuery,
+    selectedExercise,
+    sessionsLoading,
+    setActiveCategory,
+    setEditor,
+    setEquipment,
+    setPlayer,
+    setPrefsOpen,
+    setScheduleTarget,
+    setSearchQuery,
+    setTab,
+    startScheduled,
+    suggested,
+    summary,
+    tab,
+  } = useWorkouts();
 
   return (
     <DashboardLayout hideTabBar>
@@ -216,16 +98,120 @@ export default function WorkoutsScreen() {
           <Ionicons name="arrow-back" size={22} color={c.sidebarText} />
         </Pressable>
         <Text style={[styles.pageTitle, textColor]}>Workouts</Text>
-        {/* Spacer to keep title centered */}
-        <View style={styles.backBtn} />
+        {/* Same width as the back button, so the title stays centered */}
+        <View style={styles.backBtn}><MenuButton /></View>
       </View>
       <Text style={styles.pageSubtitle}>Browse workouts with photos</Text>
 
+      {/* Quick Stats */}
+      {/*
+        Was "1,400+ Exercises / 15 Categories / All Muscles" — facts about the
+        catalog. Nothing on this screen told the user anything about themselves.
+        Same component and position, the user's own week instead.
+      */}
+      <View style={styles.statsRow}>
+        <View style={[styles.statCard, { backgroundColor: getChipTint("green", darkMode).backgroundColor }]}>
+          <Ionicons name="barbell" size={18} color={shellColors.primary} />
+          <Text style={[styles.statValue, textColor]}>
+            {summary ? `${summary.completed}` : "\u2014"}
+          </Text>
+          <Text style={[styles.statLabel, mutedText]}>This week</Text>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: getChipTint("blue", darkMode).backgroundColor }]}>
+          <Ionicons name="time" size={18} color={chipTints.blue.icon} />
+          <Text style={[styles.statValue, textColor]}>{summary ? summary.totalMinutes : "\u2014"}</Text>
+          <Text style={[styles.statLabel, mutedText]}>Minutes</Text>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: getChipTint("purple", darkMode).backgroundColor }]}>
+          <Ionicons name="layers" size={18} color={chipTints.purple.icon} />
+          <Text style={[styles.statValue, textColor]}>{categories.length}</Text>
+          <Text style={[styles.statLabel, mutedText]}>Categories</Text>
+        </View>
+      </View>
+
+      {/* Browse / Favorites / Routines / Upcoming / Recent */}
+      <View style={styles.tabsRow}>
+        <WorkoutTabs
+          value={tab}
+          onChange={setTab}
+          darkMode={darkMode}
+          counts={{
+            favorites: plan.favorites.length,
+            routines: plan.routines.length,
+            upcoming: plan.schedule.length,
+          }}
+        />
+      </View>
+
+      {tab === "routines" && (
+        <RoutinesPanel
+          plan={plan}
+          onNew={() => setEditor({ open: true, routine: null })}
+          onEdit={(routine) => setEditor({ open: true, routine })}
+          onStart={(routine) => setPlayer({ routine, plannedId: null })}
+          onSchedule={setScheduleTarget}
+          darkMode={darkMode}
+        />
+      )}
+
+      {tab === "upcoming" && (
+        <UpcomingPanel
+          plan={plan}
+          onStart={startScheduled}
+          onReschedule={(s) => setScheduleTarget({
+            kind: s.kind,
+            refId: s.kind === "routine" ? s.routineId : s.exerciseRef,
+            name: s.kind === "routine" ? s.routineName : s.exerciseName,
+            rescheduleId: s.id,
+          })}
+          onGoBrowse={() => setTab("browse")}
+          onOpenExercise={(ref) => openDetail(ref)}
+          darkMode={darkMode}
+        />
+      )}
+
+      {tab === "recent" && (
+        <RecentPanel
+          sessions={recent}
+          loading={sessionsLoading}
+          onSeeAll={() => router.push("/workouts/history")}
+          onGoBrowse={() => setTab("browse")}
+          onChanged={refreshSessions}
+          darkMode={darkMode}
+        />
+      )}
+
+      {tab === "favorites" && !plan.loading && !plan.favorites.length && (
+        <EmptyState
+          icon="heart-outline"
+          title="No favorites yet"
+          body="Tap the heart on any exercise or routine to keep it here for quick access."
+          darkMode={darkMode}
+        />
+      )}
+
+      {(tab === "browse" || (tab === "favorites" && (plan.loading || plan.favorites.length > 0))) && (
+      <>
+      {/* Favorites: routines first, then the exercise grid below */}
+      {tab === "favorites" && plan.favorites.some((f) => f.kind === "routine") && (
+        <View style={styles.favSection}>
+          <PanelHeading icon="list" title="Routines" darkMode={darkMode} />
+          <FavoriteRoutines
+            plan={plan}
+            onStartRoutine={(routine) => setPlayer({ routine, plannedId: null })}
+            onSchedule={setScheduleTarget}
+            onEdit={(routine) => setEditor({ open: true, routine })}
+            darkMode={darkMode}
+          />
+          <PanelHeading icon="barbell" title="Exercises" darkMode={darkMode} />
+        </View>
+      )}
       {/* Search Bar */}
-      <View style={[styles.searchBar, card]}>
+      <View style={[styles.searchBar, card, ring.style]}>
         <Ionicons name="search" size={18} color={colors.textMuted} />
         <TextInput
-          style={[styles.searchInput, textColor]}
+          {...ring.handlers}
+          style={[ring.input, styles.searchInput, textColor]}
           placeholder="Search exercises, muscles…"
           placeholderTextColor={colors.textMuted}
           value={searchQuery}
@@ -238,134 +224,17 @@ export default function WorkoutsScreen() {
         )}
       </View>
 
-      {/* Category Pills */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.catScroll}
-        contentContainerStyle={styles.catContent}
-      >
-        <Pressable
-          onPress={() => setActiveCategory(null)}
-          style={[
-            styles.catPill,
-            activeCategory === null
-              ? styles.catPillActive
-              : { backgroundColor: c.inactiveNavHoverBg },
-          ]}
-        >
-          <Ionicons
-            name="grid"
-            size={14}
-            color={activeCategory === null ? colors.white : c.inactiveNavText}
-          />
-          <Text
-            style={[
-              styles.catPillText,
-              activeCategory === null
-                ? styles.catPillTextActive
-                : { color: c.inactiveNavText },
-            ]}
-          >
-            All
-          </Text>
-        </Pressable>
-
-        {categories.map((cat) => (
-          <Pressable
-            key={cat.id}
-            onPress={() => setActiveCategory(cat.id)}
-            style={[
-              styles.catPill,
-              activeCategory === cat.id
-                ? styles.catPillActive
-                : { backgroundColor: c.inactiveNavHoverBg },
-            ]}
-          >
-            <Ionicons
-              name={catIcon[cat.name] || "barbell"}
-              size={14}
-              color={activeCategory === cat.id ? colors.white : c.inactiveNavText}
-            />
-            <Text
-              style={[
-                styles.catPillText,
-                activeCategory === cat.id
-                  ? styles.catPillTextActive
-                  : { color: c.inactiveNavText },
-              ]}
-            >
-              {cat.name}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-
-      {/* Quick Stats */}
-      {/*
-        Was "1,400+ Exercises / 15 Categories / All Muscles" — facts about the
-        catalog. Nothing on this screen told the user anything about themselves.
-        Same component and position, the user's own week instead.
-      */}
-      <View style={styles.statsRow}>
-        <View style={[styles.statCard, { backgroundColor: chipTints.green.light }]}>
-          <Ionicons name="barbell" size={18} color={shellColors.primary} />
-          <Text style={styles.statValue}>
-            {summary
-              ? summary.target
-                ? `${summary.completed}/${summary.target}`
-                : `${summary.completed}`
-              : "\u2014"}
-          </Text>
-          <Text style={styles.statLabel}>This week</Text>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: chipTints.blue.light }]}>
-          <Ionicons name="time" size={18} color={chipTints.blue.icon} />
-          <Text style={styles.statValue}>{summary ? summary.totalMinutes : "\u2014"}</Text>
-          <Text style={styles.statLabel}>Minutes</Text>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: chipTints.purple.light }]}>
-          <Ionicons name="layers" size={18} color={chipTints.purple.icon} />
-          <Text style={styles.statValue}>{categories.length}</Text>
-          <Text style={styles.statLabel}>Categories</Text>
-        </View>
-      </View>
-
-      {/*
-        Recent workouts. Hidden entirely when empty rather than shown with an
-        empty-state card: a new user has not failed at anything, and a section
-        headed "Recent" with nothing under it reads as a broken screen. It
-        appears the moment they finish their first workout.
-      */}
-      {recent.length > 0 && (
-        <View style={styles.recentBlock}>
-          <View style={styles.recentHeader}>
-            <Text style={[styles.recentTitle, textColor]}>Recent</Text>
-            {/*
-              Shown only when there is more than this list holds. A "See all"
-              that leads to the same five rows is a dead end the user has to
-              learn to ignore.
-            */}
-            {/*
-              Always shown once there is any history. Gating this on
-              "more than the five listed" made the history page unreachable
-              for anyone with five or fewer sessions — an unreachable screen is
-              worse than a slightly redundant link.
-            */}
-            <Pressable onPress={() => router.push("/workouts/history")} hitSlop={8}>
-              <Text style={styles.recentSeeAll}>See all</Text>
-            </Pressable>
-          </View>
-          {recent.map((session) => (
-            <RecentSessionRow
-              key={session.id}
-              session={session}
-              darkMode={darkMode}
-              borderColor={c.dropdownBorder}
-            />
-          ))}
-        </View>
-      )}
+      {/* Category and equipment, behind one "Filters" button */}
+      <WorkoutFilters
+        categories={categories}
+        category={activeCategory}
+        onCategory={setActiveCategory}
+        equipment={equipment}
+        onEquipment={setEquipment}
+        equipmentList={equipmentList}
+        onPreferences={() => setPrefsOpen(true)}
+        darkMode={darkMode}
+      />
 
       {/* Results Header */}
       <View style={styles.resultHeader}>
@@ -373,7 +242,7 @@ export default function WorkoutsScreen() {
           {activeCategory
             ? categories.find((c) => c.id === activeCategory)?.name ||
               "Exercises"
-            : "All Exercises"}
+            : tab === "favorites" ? "" : suggested ? "Picked for you" : "All Exercises"}
         </Text>
         <Text style={styles.resultCount}>{filtered.length} loaded</Text>
       </View>
@@ -383,7 +252,7 @@ export default function WorkoutsScreen() {
         <View>
           {[0, 1, 2, 3, 4, 5].map((i) => (
             <View key={i} style={[styles.exerciseCard, card]}>
-              <Skeleton width={56} height={56} borderRadius={8} />
+              <Skeleton width={76} height={76} borderRadius={8} />
               <View style={styles.flex1}>
                 <Skeleton width="60%" height={14} />
                 <View style={{ flexDirection: "row", gap: 6, marginTop: 8 }}>
@@ -411,6 +280,8 @@ export default function WorkoutsScreen() {
               card={card}
               textColor={textColor}
               shellColors={c}
+              favorite={plan.isFavorite("exercise", exercise.id)}
+              onToggleFavorite={() => plan.toggleFavorite({ kind: "exercise", refId: exercise.id, name: exercise.name })}
               onPress={() => openDetail(exercise.id, exercise.image)}
             />
           ))}
@@ -438,19 +309,62 @@ export default function WorkoutsScreen() {
           )}
         </>
       )}
+      </>
+      )}
 
       {/* Exercise Detail Modal */}
       <ExerciseDetailModal
         visible={detailLoading || selectedExercise !== null}
         exercise={selectedExercise}
         loading={detailLoading}
-        onClose={() => {
-          setSelectedExercise(null);
-          setDetailLoading(false);
-        }}
+        onClose={closeDetail}
         shellColors={c}
-        onLogSession={logSession}
+        onLogSession={logFromDetail}
         lastSession={exerciseHistory}
+        planned={detailPlan}
+        favorite={selectedExercise ? plan.isFavorite("exercise", selectedExercise.id) : false}
+        onToggleFavorite={() =>
+          selectedExercise &&
+          plan.toggleFavorite({ kind: "exercise", refId: selectedExercise.id, name: selectedExercise.name })}
+        onSchedule={() =>
+          selectedExercise &&
+          setScheduleTarget({ kind: "exercise", refId: selectedExercise.id, name: selectedExercise.name })}
+      />
+
+      <ScheduleModal
+        visible={scheduleTarget !== null}
+        target={scheduleTarget}
+        onClose={() => setScheduleTarget(null)}
+        // A missed plan moves its own row instead of adding a new one
+        onSubmit={(body) => (scheduleTarget?.rescheduleId
+          ? plan.reschedule(scheduleTarget.rescheduleId, body.scheduledFor)
+          : plan.scheduleWorkout(body))}
+        darkMode={darkMode}
+      />
+
+      <RoutineEditorModal
+        visible={editor.open}
+        routine={editor.routine}
+        onClose={() => setEditor({ open: false, routine: null })}
+        onSave={plan.saveRoutine}
+        darkMode={darkMode}
+      />
+
+      <RoutinePlayerModal
+        visible={player.routine !== null}
+        routine={player.routine}
+        plannedId={player.plannedId}
+        onClose={() => setPlayer({ routine: null, plannedId: null })}
+        onFinish={logRoutineRun}
+        darkMode={darkMode}
+      />
+
+      <WorkoutPrefsModal
+        visible={prefsOpen}
+        onClose={() => setPrefsOpen(false)}
+        onSaved={reloadExercises}
+        options={{ categories, equipmentList, loading: false }}
+        darkMode={darkMode}
       />
     </DashboardLayout>
   );
@@ -459,7 +373,7 @@ export default function WorkoutsScreen() {
 // ──────────────────────────────────────────────
 // Exercise Card Component
 // ──────────────────────────────────────────────
-function ExerciseCard({ exercise, card, textColor, shellColors, onPress }) {
+function ExerciseCard({ exercise, card, textColor, shellColors, onPress, favorite, onToggleFavorite }) {
   return (
     <Pressable onPress={onPress} style={[styles.exerciseCard, card]}>
       {/* Image */}
@@ -502,29 +416,14 @@ function ExerciseCard({ exercise, card, textColor, shellColors, onPress }) {
         )}
       </View>
 
-      <View style={styles.cardStartButton}>
-        <Ionicons name="play" size={12} color={colors.white} />
-        <Text style={styles.cardStartText}>Start</Text>
+      <View style={styles.cardSide}>
+        <FavoriteButton active={favorite} onPress={onToggleFavorite} />
+        <View style={styles.cardStartButton}>
+          <Ionicons name="play" size={12} color={colors.white} />
+          <Text style={styles.cardStartText}>Start</Text>
+        </View>
       </View>
     </Pressable>
-  );
-}
-
-function WorkoutImage({ uri, fallbackUri, style }) {
-  const [failed, setFailed] = useState(false);
-
-  return (
-    <Image
-      source={{ uri: failed ? fallbackUri : uri }}
-      style={style}
-      contentFit="cover"
-      cachePolicy="memory-disk"
-      priority="low"
-      transition={150}
-      onError={() => {
-        if (!failed && fallbackUri && uri !== fallbackUri) setFailed(true);
-      }}
-    />
   );
 }
 
@@ -533,26 +432,40 @@ function WorkoutImage({ uri, fallbackUri, style }) {
 // ──────────────────────────────────────────────
 function ExerciseDetailModal({
   visible,
-  exercise,
-  loading,
+  exercise: exerciseProp,
+  loading: loadingProp,
   onClose,
   shellColors,
   onLogSession,
-  lastSession,
+  lastSession: lastSessionProp,
+  planned: plannedProp,
+  favorite: favoriteProp,
+  onToggleFavorite,
+  onSchedule,
 }) {
+  // Kept while the modal fades out: the parent clears the exercise as it
+  // closes, which used to blank the card for a moment first
+  const { exercise, loading, lastSession, planned, favorite } = useHeldWhileClosing(visible, {
+    exercise: exerciseProp,
+    loading: loadingProp,
+    lastSession: lastSessionProp,
+    planned: plannedProp,
+    favorite: favoriteProp,
+  });
   const { darkMode } = useTheme();
   // Note: `shellColors` here is the resolved-per-theme prop (see call site),
   // not the theme module's raw shellColors export, so the dark literal below
   // can't be swapped for `shellColors.dark.shellBg` without breaking on this
   // shadowed name -- left as a literal rather than threading another prop
   // through for one modal background.
-  const bg = darkMode ? "#111111" : colors.white;
+  const bg = darkMode ? "#1a1a1a" : colors.white;
   const textColor = { color: darkMode ? colors.white : screenTones.light.text };
 
   return (
     <Modal
+      // Never over another screen: hidden once you've navigated away
       visible={visible}
-      animationType="slide"
+      animationType="fade"
       transparent
       onRequestClose={onClose}
     >
@@ -603,84 +516,21 @@ function ExerciseDetailModal({
               {/* Category Badge */}
               <View style={styles.modalBadgeRow}>
                 <View
-                  style={[styles.modalBadge, { backgroundColor: chipTints.green.light }]}
+                  style={[styles.modalBadge, { backgroundColor: getChipTint("green", darkMode).backgroundColor }]}
                 >
-                  <Text style={styles.modalBadgeText}>
+                  <Text style={[styles.modalBadgeText, textColor]}>
                     📂 {exercise.category}
                   </Text>
                 </View>
               </View>
 
-              {/* Muscles */}
-              {exercise.muscles.length > 0 && (
-                <View style={styles.modalSection}>
-                  <Text style={[styles.modalSectionTitle, textColor]}>
-                    Primary Muscles
-                  </Text>
-                  <View style={styles.muscleRow}>
-                    {exercise.muscles.map((m) => (
-                      <View
-                        key={m}
-                        style={[
-                          styles.musclePill,
-                          { backgroundColor: chipTints.blue.light },
-                        ]}
-                      >
-                        <Ionicons name="body" size={12} color={chipTints.blue.icon} />
-                        <Text style={styles.musclePillText}>{m}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {exercise.musclesSecondary?.length > 0 && (
-                <View style={styles.modalSection}>
-                  <Text style={[styles.modalSectionTitle, textColor]}>
-                    Secondary Muscles
-                  </Text>
-                  <View style={styles.muscleRow}>
-                    {exercise.musclesSecondary.map((m) => (
-                      <View
-                        key={m}
-                        style={[
-                          styles.musclePill,
-                          { backgroundColor: chipTints.purple.light },
-                        ]}
-                      >
-                        <Ionicons
-                          name="body-outline"
-                          size={12}
-                          color={chipTints.purple.icon}
-                        />
-                        <Text style={styles.musclePillText}>{m}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {/* Equipment */}
-              {exercise.equipment.length > 0 && (
-                <View style={styles.modalSection}>
-                  <Text style={[styles.modalSectionTitle, textColor]}>
-                    Equipment
-                  </Text>
-                  <View style={styles.muscleRow}>
-                    {exercise.equipment.map((e) => (
-                      <View
-                        key={e}
-                        style={[
-                          styles.musclePill,
-                          { backgroundColor: chipTints.orange.light },
-                        ]}
-                      >
-                        <Text style={styles.musclePillText}>🏋️ {e}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
+              <ExercisePills
+                exercise={exercise}
+                darkMode={darkMode}
+                textColor={textColor}
+                sectionStyle={styles.modalSection}
+                titleStyle={styles.modalSectionTitle}
+              />
 
               {/* Description */}
               {exercise.description ? (
@@ -716,9 +566,28 @@ function ExerciseDetailModal({
                 </View>
               )}
 
+              {/* Plan actions. Hidden when this run is a scheduled session */}
+              {!planned && (
+                <View style={styles.detailActions}>
+                  <PlanButton
+                    variant="secondary"
+                    label={favorite ? "Favorited" : "Favorite"}
+                    onPress={onToggleFavorite}
+                    darkMode={darkMode}
+                  />
+                  <PlanButton variant="secondary" label="Schedule" onPress={onSchedule} darkMode={darkMode} />
+                </View>
+              )}
+              {planned && (
+                <Text style={styles.plannedNote}>Scheduled session. Finishing it here marks it done.</Text>
+              )}
+
               <ExerciseWorkoutTracker
+                key={`${exercise.id}-${planned?.plannedId || "free"}`}
                 exerciseName={exercise.name}
                 exerciseRef={exercise.id}
+                initialSets={planned?.targetSets || 3}
+                initialReps={planned?.targetReps || 10}
                 onFinish={onLogSession}
                 darkMode={darkMode}
               />
@@ -753,83 +622,14 @@ function ExerciseDetailModal({
 // Styles
 // ──────────────────────────────────────────────
 
-/**
- * "Today" / "Tue" / "12 Mar" — the shape a person actually reads.
- *
- * completedAt is an INSTANT, so new Date() is correct here. The day-boundary
- * comparison uses local calendar days rather than a 24-hour subtraction: a
- * session finished at 11pm yesterday is "Yesterday", not "today, 9 hours ago".
- */
-function relativeDay(iso) {
-  if (!iso) return "";
-  const then = new Date(iso);
-  const now = new Date();
-  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const days = Math.round((startOfDay(now) - startOfDay(then)) / 86400000);
-
-  if (days <= 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days < 7) return then.toLocaleDateString(undefined, { weekday: "short" });
-  return then.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-}
-
-/**
- * One row of workout history.
- *
- * A skipped session is shown, not hidden — the user did that work — but marked
- * differently so the list stays honest about what was finished. Amber rather
- * than red: an abandoned set is not an error, and colouring it like one would
- * scold someone for training.
- */
-function RecentSessionRow({ session, darkMode, borderColor }) {
-  const skipped = session.status === "skipped";
-  const minutes = session.actualDurationSeconds
-    ? Math.round(session.actualDurationSeconds / 60)
-    : null;
-
-  return (
-    <View style={[styles.recentRow, { borderBottomColor: borderColor }]}>
-      <View
-        style={[
-          styles.recentIcon,
-          { backgroundColor: skipped ? chipTints.orange.light : chipTints.green.light },
-        ]}
-      >
-        <Ionicons
-          name={skipped ? "pause" : "barbell"}
-          size={16}
-          color={skipped ? colors.skippedAmber : shellColors.primary}
-        />
-      </View>
-
-      <View style={styles.recentBody}>
-        <Text
-          style={[styles.recentName, { color: darkMode ? colors.white : screenTones.light.text }]}
-          numberOfLines={1}
-        >
-          {session.exerciseName}
-        </Text>
-        <Text style={styles.recentMeta}>
-          {skipped
-            ? `${session.completedSets} of ${session.targetSets} sets`
-            : `${session.completedSets} x ${session.targetReps}`}
-          {minutes ? ` \u00b7 ${minutes} min` : ""}
-        </Text>
-      </View>
-
-      <Text style={styles.recentWhen}>{relativeDay(session.completedAt)}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  ...workoutsStyles,
+  favSection: { gap: 10, marginBottom: 16 },
+  tabsRow: { marginTop: 4, marginBottom: 14 },
+  cardSide: { alignItems: "flex-end", gap: 10 },
+  detailActions: { flexDirection: "row", gap: 10, marginTop: 16, flexWrap: "wrap" },
+  plannedNote: { fontSize: 12, fontWeight: "700", marginTop: 16, color: shellColors.primary },
 
-  recentBlock: { marginTop: 18 },
-  recentHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
-  recentTitle: { fontSize: 15, fontWeight: "700" },
-  recentSeeAll: { fontSize: 12, fontWeight: "700", color: shellColors.primary },
-  recentIcon: { width: 32, height: 32, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  ...workoutsStyles,
 
   lastPerformed: { marginTop: 16, borderWidth: 1, borderColor: colors.infoBorder, backgroundColor: colors.infoBg, borderRadius: 10, padding: 11 },
 
@@ -868,17 +668,6 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 14, padding: 0 },
 
-  // Categories
-  catScroll: { marginBottom: 14 },
-  catContent: { gap: 8 },
-  catPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radii.pill,
-  },
   // Stats
   statsRow: { flexDirection: "row", gap: 10, marginBottom: 16 },
   statCard: {
@@ -888,8 +677,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
   },
-  statValue: { fontSize: 18, fontWeight: "800", color: colors.nearBlack },
-  statLabel: { fontSize: 10, fontWeight: "600", color: colors.textMuted },
+  statValue: { fontSize: 18, fontWeight: "800" },
+  statLabel: { fontSize: 10, fontWeight: "600" },
 
   // Results
   resultTitle: { fontSize: 16, fontWeight: "700" },
@@ -905,15 +694,16 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     gap: 10,
   },
+  // Bigger thumbnail so the exercise reads at a glance
   exerciseImage: {
-    width: 56,
-    height: 56,
+    width: 76,
+    height: 76,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  exerciseImg: { width: 56, height: 56 },
+  exerciseImg: { width: 76, height: 76 },
   exerciseMeta: { flexDirection: "row", gap: 6, marginTop: 4 },
   metaPill: {
     flexDirection: "row",
@@ -939,8 +729,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
-  // Loader / Empty
-  loaderWrap: { alignItems: "center", paddingVertical: 48 },
   emptyWrap: { alignItems: "center", paddingVertical: 48 },
   emptyTitle: { fontSize: 16, fontWeight: "700", marginTop: 12 },
   emptySubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 4 },
@@ -975,10 +763,9 @@ const styles = StyleSheet.create({
   modalImg: { width: "100%", height: 200 },
   modalTitle: { fontSize: 22, fontWeight: "800", marginBottom: 8 },
   modalBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
-  modalBadgeText: { fontSize: 12, fontWeight: "600", color: colors.nearBlack },
+  modalBadgeText: { fontSize: 12, fontWeight: "600" },
   modalSection: { marginBottom: 16 },
   modalSectionTitle: { fontSize: 14, fontWeight: "700", marginBottom: 8 },
-  musclePillText: { fontSize: 11, fontWeight: "600", color: colors.nearBlack },
   modalDesc: { fontSize: 13, lineHeight: 20 },
   extraImage: {
     width: 120,

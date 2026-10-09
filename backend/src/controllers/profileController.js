@@ -1,23 +1,28 @@
 const { withTransaction } = require('../../config/mongo');
 const User = require('../models/user/User');
-const UserProfile = require('../models/user/UserProfile');
-const UserGoal = require('../models/user/UserGoal');
 const WeightLog = require('../models/user/WeightLog');
+const AuthIdentity = require('../models/auth/AuthIdentity');
+const { hashPassword, verifyPassword } = require('../utils/auth/password');
+const { logAction, diffFields } = require('../utils/audit-logs/auditLogger');
+const { notify } = require('../services/notifications/notify');
 
 const { normalizeGoal } = require('../utils/goalNormalizer');
 const { sendSuccess, ApiError, asyncHandler } = require('../utils/httpResponse');
-const { saveUploadedAvatar, clearStoredAvatar, toPublicAvatarUrl } = require('../utils/avatarStore');
+const { saveUploadedAvatar, clearStoredAvatar, toPublicAvatarUrl } = require('../utils/storage/avatarStore');
+const { deleteUserAccount } = require('../services/userDeletion');
+const { clearRefreshCookie } = require('../utils/auth/refreshCookie');
 
 
 // Used by GET /profile and response returned after PATCH /profile since
 // they need the same shape of data anyway, so no refetches are made for syncing
 async function buildProfilePayload(userId) {
-  const user = await User.findById(userId);
+  const user = await User.getById(userId);
   if (!user) throw ApiError.notFound('User not found');
 
-  const profile = await UserProfile.findByUserId(userId);
-  const goal = await UserGoal.findActiveByUserId(userId);
+  const profile = await User.getProfile(userId);
+  const goal = await User.getActiveGoal(userId);
   const latestWeight = await WeightLog.findLatestByUserId(userId);
+  const identities = await AuthIdentity.findByUserId(userId);
 
   return {
     id: user.id,
@@ -28,21 +33,56 @@ async function buildProfilePayload(userId) {
     emailVerified: Boolean(user.emailVerifiedAt),
     role: user.role || 'user',
     createdAt: user.createdAt,
+    // Settings > Account: whether there's a password to change, and which
+    // sign-in providers are linked (read-only)
+    hasPassword: Boolean(user.passwordHash),
+    linkedProviders: identities.map((i) => i.provider),
 
     age: profile?.age ?? null,
-    gender: profile?.gender ?? null,
+    sex: profile?.sex ?? null,
     heightCm: profile?.heightCm ?? null,
     activityLevel: profile?.activityLevel ?? null,
     dietPreference: profile?.dietPreference ?? null,
     healthConditions: profile?.healthConditions ?? null,
     theme: profile?.theme ?? 'system',
     notificationsEnabled: profile?.notificationsEnabled ?? true,
+    notificationPrefs: {
+      reminders: profile?.notificationPrefs?.reminders ?? true,
+      achievements: profile?.notificationPrefs?.achievements ?? true,
+      quietStart: profile?.notificationPrefs?.quietStart ?? null,
+      quietEnd: profile?.notificationPrefs?.quietEnd ?? null,
+    },
     timezone: profile?.timezone ?? null,
-    avatarUrl: toPublicAvatarUrl(profile?.avatarStorageKey),
+    avatarUrl: await toPublicAvatarUrl(profile?.avatarStorageKey),
+
+    // Setup wizard answers, also editable from Profile and Settings
+    workoutPrefs: workoutPrefsOf(profile),
+    targetWeightKg: profile?.targetWeightKg ?? null,
+    weeklyPaceKg: profile?.weeklyPaceKg ?? null,
+    coachTone: profile?.coachTone ?? null,
+    onboarded: Boolean(profile?.onboardedAt),
 
     weightKg: latestWeight?.weightKg ?? null,
     weightMeasuredAt: latestWeight?.measuredAt ?? null,
     fitnessGoal: goal?.fitnessGoal ?? null,
+    // The wizard starts from these, so it never shows a blank over a saved goal
+    goals: {
+      dailyCaloriesKcal: goal?.dailyCaloriesKcal ?? null,
+      dailyProteinG: goal?.dailyProteinG ?? null,
+      dailyCarbsG: goal?.dailyCarbsG ?? null,
+      dailyFatG: goal?.dailyFatG ?? null,
+      dailySteps: goal?.dailySteps ?? null,
+      dailyWaterMl: goal?.dailyWaterMl ?? null,
+    },
+  };
+}
+
+// Always the full shape, older accounts have no workoutPrefs stored at all
+function workoutPrefsOf(profile) {
+  return {
+    categoryIds: profile?.workoutPrefs?.categoryIds ?? [],
+    equipment: profile?.workoutPrefs?.equipment ?? null,
+    equipmentIds: profile?.workoutPrefs?.equipmentIds ?? [],
   };
 }
 
@@ -52,6 +92,68 @@ const getProfile = asyncHandler(async (req, res) => {
   return sendSuccess(res, { data });
 });
 
+// Fields PATCH /api/profile can change, diffed into account.profile.updated
+const PROFILE_AUDIT_FIELDS = [
+  'firstName',
+  'lastName',
+  'age',
+  'sex',
+  'heightCm',
+  'weightKg',
+  'activityLevel',
+  'dietPreference',
+  'healthConditions',
+  'timezone',
+  'theme',
+  'targetWeightKg',
+  'weeklyPaceKg',
+  'coachTone',
+];
+
+// Keys the profile subdocument takes from PATCH /api/profile as is
+const PROFILE_KEYS = [
+  'age',
+  'sex',
+  'heightCm',
+  'activityLevel',
+  'dietPreference',
+  'healthConditions',
+  'timezone',
+  'notificationsEnabled',
+  'notificationPrefs',
+  'theme',
+  'workoutPrefs',
+  'targetWeightKg',
+  'weeklyPaceKg',
+  'coachTone',
+];
+
+// Profile diff for the audit row. workoutPrefs is an object, so it's compared
+// whole and recorded by name only
+function profileChanges(before, after) {
+  const changes = diffFields(PROFILE_AUDIT_FIELDS, before, after);
+  if (JSON.stringify(before.workoutPrefs) !== JSON.stringify(after.workoutPrefs)) {
+    changes.push({ field: 'workoutPrefs' });
+  }
+  return changes;
+}
+
+// What moved in the notification settings, as one readable line for the
+// audit row ("Reminders off · Quiet hours 22:00–07:00"). null when nothing did
+function notificationSettingChanges(before, after) {
+  const parts = [];
+  const onOff = (v) => (v ? 'on' : 'off');
+  if (before.notificationsEnabled !== after.notificationsEnabled) parts.push(`Notifications ${onOff(after.notificationsEnabled)}`);
+  const b = before.notificationPrefs;
+  const a = after.notificationPrefs;
+  if (b.reminders !== a.reminders) parts.push(`Reminders ${onOff(a.reminders)}`);
+  if (b.achievements !== a.achievements) parts.push(`Achievements ${onOff(a.achievements)}`);
+  if (b.quietStart !== a.quietStart || b.quietEnd !== a.quietEnd) {
+    parts.push(a.quietStart ? `Quiet hours ${a.quietStart}–${a.quietEnd}` : 'Quiet hours off');
+  }
+  return parts.length ? parts.join(' · ') : null;
+}
+
 // PATCH /api/profile
 const updateProfile = asyncHandler(async (req, res) => {
   const body = req.body;
@@ -59,18 +161,16 @@ const updateProfile = asyncHandler(async (req, res) => {
 
   // Email is not updateable. Must wire another verification flow to allow it
 
-  let normalizedGoal;
-  if (has('fitnessGoal')) {
-    normalizedGoal = body.fitnessGoal === null ? null : normalizeGoal(body.fitnessGoal);
-    if (body.fitnessGoal !== null && normalizedGoal === null) {
-      throw ApiError.badRequest('Unrecognized fitness goal', { code: 'INVALID_GOAL' });
-    }
-  }
+  // Known goals collapse to their slug; custom text is kept as typed
+  const normalizedGoal = has('fitnessGoal') ? normalizeGoal(body.fitnessGoal) : undefined;
+
+  // Snapshot for the audit diff, read before the write
+  const before = await buildProfilePayload(req.userId);
 
   await withTransaction(async (client) => {
     // ----- users -----
     if (has('firstName') || has('lastName')) {
-      const current = await User.findById(req.userId, client);
+      const current = await User.getById(req.userId, client);
       const firstName = has('firstName') ? body.firstName : current.firstName;
       const lastName = has('lastName') ? body.lastName : current.lastName;
       const fullName = [firstName, lastName].filter(Boolean).join(' ') || null;
@@ -78,27 +178,17 @@ const updateProfile = asyncHandler(async (req, res) => {
     }
 
     // ----- user_profiles -----
-    const profileChanges = {};
-    for (const key of [
-      'age',
-      'gender',
-      'heightCm',
-      'activityLevel',
-      'dietPreference',
-      'healthConditions',
-      'timezone',
-      'notificationsEnabled',
-      'theme',
-    ]) {
-      if (has(key)) profileChanges[key] = body[key];
+    const changes = {};
+    for (const key of PROFILE_KEYS) {
+      if (has(key)) changes[key] = body[key];
     }
-    if (Object.keys(profileChanges).length > 0) {
-      await UserProfile.upsert(req.userId, profileChanges, client);
+    if (Object.keys(changes).length > 0) {
+      await User.updateProfile(req.userId, changes, client);
     }
 
     // ----- user_goals (append-only history) -----
     if (has('fitnessGoal')) {
-      await UserGoal.setActive({ userId: req.userId, fitnessGoal: normalizedGoal }, client);
+      await User.setActiveGoal({ userId: req.userId, fitnessGoal: normalizedGoal }, client);
     }
 
     // ----- weight_logs (new measurement, not updated) -----
@@ -106,13 +196,91 @@ const updateProfile = asyncHandler(async (req, res) => {
       const latest = await WeightLog.findLatestByUserId(req.userId, client);
       const unchanged = latest && Number(latest.weightKg) === Number(body.weightKg);
       if (!unchanged) {
-        await WeightLog.create({ userId: req.userId, weightKg: body.weightKg }, client);
+        await WeightLog.record({ userId: req.userId, weightKg: body.weightKg }, client);
       }
     }
   });
 
   const data = await buildProfilePayload(req.userId);
+
+  // Health fields come out of diffFields without values (HEALTH_FIELDS).
+  // Goal and notifications have their own actions, so they're left out here
+  const changes = profileChanges(before, data);
+  if (changes.length > 0) {
+    await logAction(req, { action: 'account.profile.updated', targetType: 'user', details: { changes } });
+  }
+  if (before.fitnessGoal !== data.fitnessGoal) {
+    // Audit-only read: a failure here must not fail the saved update
+    const goal = await User.getActiveGoal(req.userId).catch(() => null);
+    await logAction(req, {
+      action: 'account.goal.changed',
+      targetType: 'user',
+      details: {
+        fitnessGoal: data.fitnessGoal,
+        previousGoal: before.fitnessGoal ?? 'none',
+        effectiveFrom: goal?.effectiveFrom ?? null,
+      },
+    });
+  }
+  const notificationChanges = notificationSettingChanges(before, data);
+  if (notificationChanges) {
+    await logAction(req, {
+      action: 'account.notifications.toggled',
+      targetType: 'user',
+      details: { summary: notificationChanges },
+    });
+  }
+
   return sendSuccess(res, { message: 'Profile updated', data });
+});
+
+// Daily targets the wizard can set, written on the active goal like the cards do
+const ONBOARDING_TARGETS = [
+  'dailyCaloriesKcal', 'dailyProteinG', 'dailyCarbsG', 'dailyFatG', 'dailySteps', 'dailyWaterMl',
+];
+const ONBOARDING_PROFILE_KEYS = ['workoutPrefs', 'targetWeightKg', 'weeklyPaceKg', 'coachTone', 'notificationPrefs'];
+
+// PUT /api/profile/onboarding -- the setup wizard's answers in one save. Skipped
+// steps aren't sent; an empty body is "Skip setup". Either way onboardedAt is
+// set, so the wizard isn't shown again
+const completeOnboarding = asyncHandler(async (req, res) => {
+  const body = req.body;
+  const has = (key) => Object.prototype.hasOwnProperty.call(body, key);
+
+  const before = await buildProfilePayload(req.userId);
+
+  await withTransaction(async (client) => {
+    const changes = { onboardedAt: new Date() };
+    for (const key of ONBOARDING_PROFILE_KEYS) {
+      if (has(key)) changes[key] = body[key];
+    }
+    await User.updateProfile(req.userId, changes, client);
+
+    const targets = {};
+    for (const key of ONBOARDING_TARGETS) {
+      if (has(key)) targets[key] = body[key];
+    }
+    if (Object.keys(targets).length > 0) await User.setGoalTargets(req.userId, targets, client);
+  });
+
+  const data = await buildProfilePayload(req.userId);
+
+  const changes = profileChanges(before, data);
+  await logAction(req, {
+    action: 'account.setup.completed',
+    targetType: 'user',
+    details: { skipped: Object.keys(body).length === 0, ...(changes.length ? { changes } : {}) },
+  });
+  const notificationChanges = notificationSettingChanges(before, data);
+  if (notificationChanges) {
+    await logAction(req, {
+      action: 'account.notifications.toggled',
+      targetType: 'user',
+      details: { summary: notificationChanges },
+    });
+  }
+
+  return sendSuccess(res, { message: 'Setup saved', data });
 });
 
 // POST /api/profile/avatar   (multipart/form-data, field name: "avatar")
@@ -132,7 +300,8 @@ const uploadAvatar = asyncHandler(async (req, res) => {
   // Upsert is used since profile is a subdocument which always exists upon
   // boot, never needing to verify that a user or their profile exists.
   // "stored" here though, is just a storage key, not the URL, storing it upon save
-  await UserProfile.upsert(req.userId, { avatarStorageKey: stored });
+  await User.updateProfile(req.userId, { avatarStorageKey: stored });
+  await logAction(req, { action: 'account.avatar.updated', targetType: 'user' });
 
   const data = await buildProfilePayload(req.userId);
   return sendSuccess(res, { message: 'Profile photo updated', data });
@@ -140,11 +309,112 @@ const uploadAvatar = asyncHandler(async (req, res) => {
 
 // DELETE /api/profile/avatar
 const removeAvatar = asyncHandler(async (req, res) => {
-  await UserProfile.upsert(req.userId, { avatarStorageKey: null });
+  await User.updateProfile(req.userId, { avatarStorageKey: null });
   await clearStoredAvatar(req.userId);
+  await logAction(req, { action: 'account.avatar.removed', targetType: 'user' });
 
   const data = await buildProfilePayload(req.userId);
   return sendSuccess(res, { message: 'Profile photo removed', data });
 });
 
-module.exports = { getProfile, updateProfile, uploadAvatar, removeAvatar, buildProfilePayload };
+// ---- Settings > change password -------------------------------------------
+
+// The signed-in user, or a 400 when the current password is wrong. Google-only
+// accounts have no password to check against
+async function requireCurrentPassword(req, userId, currentPassword) {
+  const user = await User.getById(userId);
+  if (!user) throw ApiError.notFound('User not found');
+  if (!user.passwordHash) {
+    throw ApiError.badRequest('This account signs in with Google and has no password to change.', {
+      code: 'NO_PASSWORD',
+    });
+  }
+  if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+    await logAction(req, { action: 'auth.password.verify_failed', targetType: 'user' });
+    throw ApiError.badRequest('That password is incorrect.', { code: 'WRONG_PASSWORD' });
+  }
+  return user;
+}
+
+// POST /api/profile/password/verify -- step 1, unlocks the form. Nothing changes
+const verifyCurrentPassword = asyncHandler(async (req, res) => {
+  await requireCurrentPassword(req, req.userId, req.body.currentPassword);
+  return sendSuccess(res, { message: 'Password confirmed' });
+});
+
+// PUT /api/profile/password -- step 2. The current password is checked again,
+// so step 1 can't be skipped by calling this directly
+const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const user = await requireCurrentPassword(req, req.userId, currentPassword);
+
+  if (await verifyPassword(newPassword, user.passwordHash)) {
+    throw ApiError.badRequest('Your new password must be different from your current password.', {
+      code: 'SAME_PASSWORD',
+    });
+  }
+
+  await User.updatePasswordHash(user.id, await hashPassword(newPassword));
+  await logAction(req, {
+    action: 'auth.password.changed',
+    targetType: 'user',
+    targetId: user.id,
+    targetLabel: User.displayName(user),
+    targetRole: user.role,
+  });
+  // Not awaited: notify never throws, and an email mustn't slow the response
+  notify(user.id, 'password_changed');
+
+  return sendSuccess(res, { message: 'Password changed' });
+});
+
+// DELETE /api/profile -- Settings > delete account. Irreversible: every
+// collection the user owns is cleared, the audit trail keeps one entry
+const deleteAccount = asyncHandler(async (req, res) => {
+  const user = await User.getById(req.userId);
+  if (!user) throw ApiError.notFound('User not found');
+
+  if (user.passwordHash) {
+    if (!req.body.currentPassword) {
+      throw ApiError.badRequest('Please enter your current password.', { code: 'PASSWORD_REQUIRED' });
+    }
+    await requireCurrentPassword(req, req.userId, req.body.currentPassword);
+  }
+
+  // The last superadmin can't leave the system without one
+  if (user.role === 'superadmin') {
+    const counts = await User.countByRole();
+    if ((counts.superadmin || 0) <= 1) {
+      throw ApiError.conflict('You are the only superadmin. Promote another account first.', {
+        code: 'LAST_SUPERADMIN',
+      });
+    }
+  }
+
+  const deletedCounts = await deleteUserAccount(user.id);
+
+  // Labels passed explicitly, the account is already gone
+  await logAction(req, {
+    action: 'account.deleted',
+    targetType: 'user',
+    targetId: user.id,
+    actorLabel: User.displayName(user),
+    targetLabel: User.displayName(user),
+    details: { deletedCounts },
+  });
+  notify(null, 'account_deleted', { email: user.email });
+
+  clearRefreshCookie(res, req);
+  return sendSuccess(res, { message: 'Your account has been deleted.' });
+});
+
+module.exports = {
+  deleteAccount,
+  getProfile,
+  updateProfile,
+  completeOnboarding,
+  uploadAvatar,
+  removeAvatar,
+  verifyCurrentPassword,
+  changePassword,
+};

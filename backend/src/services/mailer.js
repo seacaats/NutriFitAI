@@ -54,24 +54,73 @@ async function verifyMailer() {
   }
 }
 
-/**
- * @param {string} to
- * @param {string} code
- * @param {'email_verification'|'password_reset'} purpose
- */
-async function sendOtpEmail(to, code, purpose) {
-  const subject =
-    purpose === 'password_reset' ? 'Your NutriFit password reset code' : 'Verify your NutriFit account';
+// Brand colors, matching shared/theme/nutrifitai.js on the frontend
+const BRAND = {
+  header: '#24680d',
+  accent: '#4caf1f',
+  tint: '#f0faeb',
+  text: '#1e2939',
+  muted: '#6a7282',
+  border: '#d1d5dc',
+};
+// The app uses the platform's system font, so emails do the same
+const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
-  const html = `
-    <p>Your verification code is:</p>
-    <h2 style="letter-spacing:4px;">${code}</h2>
-    <p>This code expires in ${env.otp.ttlMinutes} minutes. If you didn't request this, you can ignore this email.</p>
-  `;
+// Escapes user-influenced text (the email address) before it goes into HTML
+function esc(value) {
+  return String(value).replace(/[&<>"']/g, (ch) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+  ));
+}
 
-  // Print otp on console
+// Shared layout for every email. Tables and inline styles only, since most
+// mail clients strip <style> blocks and ignore flexbox
+function renderEmail({ title, intro, code, actions = [], note }) {
+  const codeBlock = code
+    ? `<tr><td align="center" style="padding:8px 32px 24px;">
+         <div style="display:inline-block;background:${BRAND.tint};border:1px solid ${BRAND.accent};border-radius:12px;padding:16px 28px;font-size:32px;font-weight:800;letter-spacing:10px;color:${BRAND.header};">${esc(code)}</div>
+       </td></tr>`
+    : '';
+
+  const buttons = actions.length
+    ? `<tr><td align="center" style="padding:4px 32px 24px;">${actions.map((a, i) => `
+         <a href="${esc(a.href)}" style="display:inline-block;margin:4px;padding:12px 22px;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;${
+           i === 0
+             ? `background:${BRAND.accent};color:#ffffff;`
+             : `background:#ffffff;color:${BRAND.header};border:1px solid ${BRAND.accent};`
+         }">${esc(a.label)}</a>`).join('')}
+       </td></tr>`
+    : '';
+
+  return `<!doctype html>
+<html><body style="margin:0;padding:0;background:#f5f7f4;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f7f4;padding:24px 12px;font-family:${FONT};">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border:1px solid ${BRAND.border};border-radius:16px;overflow:hidden;">
+      <tr><td style="background:${BRAND.header};padding:20px 32px;">
+        <span style="font-size:20px;font-weight:800;color:#ffffff;">NutriFitAI</span>
+      </td></tr>
+      <tr><td style="padding:28px 32px 8px;">
+        <h1 style="margin:0 0 12px;font-size:20px;color:${BRAND.text};">${esc(title)}</h1>
+        <p style="margin:0 0 8px;font-size:15px;line-height:22px;color:${BRAND.text};">${intro}</p>
+      </td></tr>
+      ${codeBlock}
+      ${buttons}
+      <tr><td style="padding:0 32px 28px;">
+        <p style="margin:0;font-size:13px;line-height:20px;color:${BRAND.muted};">${note}</p>
+      </td></tr>
+    </table>
+    <p style="margin:16px 0 0;font-size:12px;color:${BRAND.muted};">NutriFitAI &middot; Your Food. Your Fitness. Your Future.</p>
+  </td></tr>
+</table>
+</body></html>`;
+}
+
+// Sends one email, tracking status the same way for every kind
+async function deliver(to, subject, html, devLog) {
+  // Print to console outside production, so flows work without SMTP
   if (env.nodeEnv !== 'production') {
-    console.log(`[mailer:dev] OTP for ${to} (${purpose}): ${code}`);
+    console.log(`[mailer:dev] ${devLog}`);
   }
 
   if (!isConfigured) {
@@ -101,8 +150,56 @@ async function sendOtpEmail(to, code, purpose) {
       );
     }
 
-    throw err; // deliverOtpEmail in authController decides what to do about it
+    throw err; // callers in authController decide what to do about it
   }
+}
+
+/**
+ * @param {string} to
+ * @param {string} code
+ * @param {'email_verification'|'password_reset'} purpose
+ */
+async function sendOtpEmail(to, code, purpose) {
+  const reset = purpose === 'password_reset';
+  const subject = reset ? 'Your NutriFitAI password reset code' : 'Verify your NutriFitAI account';
+
+  const html = renderEmail({
+    title: reset ? 'Reset your password' : 'Verify your email',
+    intro: reset
+      ? 'Use this code to reset your NutriFitAI password.'
+      : 'Welcome to NutriFitAI! Use this code to finish creating your account.',
+    code,
+    note: `This code expires in ${env.otp.ttlMinutes} minutes. If you didn't request it, you can safely ignore this email.`,
+  });
+
+  return deliver(to, subject, html, `OTP for ${to} (${purpose}): ${code}`);
+}
+
+// Sent when someone registers with an email that already has a verified account
+async function sendRegistrationNoticeEmail(to) {
+  const html = renderEmail({
+    title: 'Someone tried to register with your email',
+    intro: `A new NutriFitAI account was requested for <strong>${esc(to)}</strong>, which already has an account. No changes were made.`,
+    actions: [
+      { label: 'Log in', href: `${env.appUrl}/login` },
+      { label: 'Reset password', href: `${env.appUrl}/forgot-password?email=${encodeURIComponent(to)}` },
+    ],
+    note: "If this was you, log in or reset your password. If it wasn't, you can ignore this email; your account is safe.",
+  });
+
+  return deliver(to, 'Someone tried to register with your email', html, `Registration notice for ${to}`);
+}
+
+// Account notices (password changed, suspended, deleted...), sent by
+// services/notifications/notify.js. Plain text in, escaped here, so no caller builds HTML
+async function sendNoticeEmail(to, { subject, title, intro, note }) {
+  const html = renderEmail({
+    title,
+    intro: esc(intro),
+    actions: [{ label: 'Open NutriFitAI', href: `${env.appUrl}/login` }],
+    note: esc(note || "If this wasn't you, reset your password and contact support."),
+  });
+  return deliver(to, subject, html, `Notice for ${to}: ${subject}`);
 }
 
 // Health snapshot
@@ -119,4 +216,4 @@ function getMailerStatus() {
   };
 }
 
-module.exports = { sendOtpEmail, verifyMailer, getMailerStatus };
+module.exports = { sendOtpEmail, sendRegistrationNoticeEmail, sendNoticeEmail, verifyMailer, getMailerStatus };
