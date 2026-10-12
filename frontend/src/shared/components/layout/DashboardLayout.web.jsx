@@ -1,12 +1,12 @@
 import { useLogout } from "@/features/auth/hooks/useLogout";
 import NotificationList from "@/features/notifications/components/NotificationList";
 import { useNotifications } from "@/features/notifications/hooks/useNotifications";
-import { UntrackedSkeletons, useSkeletonsShowing } from "@/shared/state/skeletonTracker";
-import ServerImage from "@/shared/components/ui/ServerImage";
 import { useReloadOnReconnect, useScrollToErrors, withScreenAlert } from "@/shared/components/ui/ScreenAlert";
+import ServerImage from "@/shared/components/ui/ServerImage";
 import { canAccess, useAuth } from "@/shared/context/AuthContext";
 import { usePullRefreshState } from "@/shared/context/PullRefreshContext";
 import { useTheme } from "@/shared/context/ThemeContext";
+import { UntrackedSkeletons, useSkeletonsShowing } from "@/shared/state/skeletonTracker";
 import { colors } from "@/shared/theme/nutrifitai";
 import { getGreeting } from "@/shared/utils/greeting";
 import { Ionicons } from "@expo/vector-icons";
@@ -57,23 +57,6 @@ const MENU_ITEMS = [
     section: "Administration",
   },
 ];
-
-const PAGE_DESCRIPTIONS = {
-  Dashboard: "Here's your overview for today.",
-  "Food Scanner": "Scan your food and get personalized nutrition insights.",
-  Workouts: "Stay active and reach your fitness goals.",
-  "AI Coach": "Get personalized guidance from your AI fitness coach.",
-  Progress: "Track your health and fitness progress.",
-  Steps: "Follow your daily movement, goals, and walking streaks.",
-  Water: "Log what you drink and keep up with your daily goal.",
-  Notifications: "Updates and reminders in one place.",
-  Settings: "Adjust how NutriFitAI works for you.",
-  Profile: "Manage your personal information and preferences.",
-  Analytics: "How NutriFitAI is being used, at a glance.",
-  Users: "Review and manage the people using NutriFitAI.",
-  "Audit Logs": "A record of what happened, who did it, and when.",
-  Admins: "Manage who holds elevated access.",
-};
 
 const RAIL_KEY = "nutrifit.navRail";
 
@@ -258,7 +241,8 @@ export default function DashboardLayout({
             )}
           </View>
 
-          <View style={styles.nav}>
+          {/* Scrolls on short windows, so Log Out never gets squeezed or cut off */}
+          <ScrollView style={styles.navScroll} contentContainerStyle={styles.nav} showsVerticalScrollIndicator={false}>
             {navGroups.map((group) => (
               <View key={group.section || "__main"} style={styles.navGroup}>
                 {/* Compact Sidebar */}
@@ -298,7 +282,7 @@ export default function DashboardLayout({
                 })}
               </View>
             ))}
-          </View>
+          </ScrollView>
 
           <Pressable
             onPress={handleLogout}
@@ -330,7 +314,6 @@ export default function DashboardLayout({
                 <Text numberOfLines={1} style={[styles.greeting, isMobile && styles.greetingMobile, { color: c.sidebarText }]}>
                   {greeting}, {loading ? "..." : firstName} 👋
                 </Text>
-                <Text numberOfLines={1} style={[styles.pageDesc, { color: c.headerDescText }]}>{PAGE_DESCRIPTIONS[currentPage]}</Text>
               </View>
             </View>
 
@@ -545,7 +528,8 @@ function createStyles(radii, spacing) {
   // gap moved onto navGroup: the nav's children are groups now, and an 8px
   // gap between GROUPS as well as between items is what separates a section
   // from the one above it without a second margin rule
-  nav: { marginTop: 28, flex: 1, gap: 12, paddingHorizontal: 12 },
+  navScroll: { marginTop: 28, flex: 1, minHeight: 0 },
+  nav: { gap: 12, paddingHorizontal: 12, paddingBottom: 12 },
   navGroup: { gap: 8 },
   navSection: { fontSize: 10, fontWeight: "800", letterSpacing: 0.8, textTransform: "uppercase", paddingHorizontal: 16, paddingTop: 8 },
   navDivider: { borderTopWidth: 1, marginVertical: 6, marginHorizontal: 8 },
@@ -553,7 +537,7 @@ function createStyles(radii, spacing) {
   // Icon centred in the rail, not sat at the left padding
   navItemRail: { justifyContent: "center", paddingHorizontal: 0 },
   navText: { fontSize: 14, fontWeight: "600" },
-  logoutBtn: { marginHorizontal: 12, marginBottom: 20, flexDirection: "row", alignItems: "center", gap: 16, borderRadius: radii.sm, paddingHorizontal: 16, paddingVertical: 12 },
+  logoutBtn: { marginHorizontal: 12, marginTop: 8, marginBottom: 20, flexDirection: "row", alignItems: "center", gap: 16, borderRadius: radii.sm, paddingHorizontal: 16, paddingVertical: 12 },
 
   // Main Content
   // minHeight:0 alongside minWidth:0 -- on web a flex child defaults to
@@ -578,7 +562,6 @@ function createStyles(radii, spacing) {
   menuBtn: { borderRadius: radii.sm, padding: 8, marginLeft: -8 },
   greeting: { fontSize: 24, fontWeight: "800" },
   greetingMobile: { fontSize: 18 },
-  pageDesc: { fontSize: 13, marginTop: 4 },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 16 },
 
   // Each trigger's wrapper sits above the shared backdrop (zIndex 30), so any tap triggers the pressable

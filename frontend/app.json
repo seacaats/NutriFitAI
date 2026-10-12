@@ -36,9 +36,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "backgroundColor": "#dcffca",
+          "image": "./assets/images/nutrifit-logo.png",
+          "imageWidth": 96
         }
       ],
       "expo-font",

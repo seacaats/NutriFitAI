@@ -108,7 +108,7 @@ export default function FoodScannerScreen() {
       {!cameraOpen && scanner.staged && (
         <>
           <ScreenError message={scanner.error} onDismiss={scanner.clearError} />
-          <Pressable onPress={scanner.analyze} disabled={scanning} style={[styles.cameraBtn, scanning && styles.disabled]}>
+          <Pressable onPress={scanner.analyze} style={[styles.cameraBtn, scanning && styles.disabled]}>
             <Ionicons name="sparkles-outline" size={17} color={colors.white} />
             <Text style={styles.cameraBtnText}>{scanning ? "Analyzing..." : "Analyze & Save"}</Text>
           </Pressable>

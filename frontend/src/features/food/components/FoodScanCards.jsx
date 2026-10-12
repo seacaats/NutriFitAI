@@ -5,7 +5,7 @@ import { RingField, RingInput } from "@/shared/components/ui/FormInput";
 import PlanButton from "@/shared/components/ui/PlanButton";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import Stepper from "@/shared/components/ui/Stepper";
-import { MIN_SERVINGS, NUTRITION_GOAL_FIELDS as GOAL_FIELDS, nutritionGoalProblem as goalProblem } from "@/shared/constants/goalOptions";
+import { NUTRITION_GOAL_FIELDS as GOAL_FIELDS, nutritionGoalProblem as goalProblem, MIN_SERVINGS } from "@/shared/constants/goalOptions";
 import { chipTints, colors, getScreenTones, shellColors } from "@/shared/theme/nutrifitai";
 import { toLocalISODate } from "@/shared/utils/dates";
 import { Ionicons } from "@expo/vector-icons";
@@ -41,18 +41,26 @@ export function FoodCamera({ onCapture, onCancel, darkMode, height = 320 }) {
   const [ready, setReady] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [failure, setFailure] = useState("");
+  // Guards a double tap without disabling the shutter: a button that disables
+  // or unmounts in the middle of its own press strands its touch record, and
+  // react-native-web then logs "Cannot find single active touch"
+  const capturingRef = useRef(false);
+  // Runs after the current press has fully ended
+  const afterPress = (fn) => setTimeout(fn, 0);
 
   const capture = async () => {
-    if (!ready || capturing) return;
+    if (!ready || capturingRef.current) return;
+    capturingRef.current = true;
     setCapturing(true);
     try {
       // jpg explicitly, web would otherwise hand back a much larger png
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8, imageType: "jpg" });
-      onCapture({ uri: photo.uri, name: photoName(), type: "image/jpeg", width: photo.width });
+      // Handing over closes the camera, so no state is reset on success
+      afterPress(() => onCapture({ uri: photo.uri, name: photoName(), type: "image/jpeg", width: photo.width }));
     } catch {
-      setFailure("Couldn't take the photo. Try again or upload one instead.");
-    } finally {
+      capturingRef.current = false;
       setCapturing(false);
+      setFailure("Couldn't take the photo. Try again or upload one instead.");
     }
   };
 
@@ -100,13 +108,12 @@ export function FoodCamera({ onCapture, onCancel, darkMode, height = 320 }) {
       />
 
       <View style={styles.cameraBar}>
-        <Pressable onPress={onCancel} hitSlop={8} style={styles.roundBtn} accessibilityLabel="Close camera">
+        <Pressable onPress={() => afterPress(onCancel)} hitSlop={8} style={styles.roundBtn} accessibilityLabel="Close camera">
           <Ionicons name="close" size={20} color={colors.white} />
         </Pressable>
 
         <Pressable
           onPress={capture}
-          disabled={!ready || capturing}
           style={[styles.shutter, (!ready || capturing) && styles.disabled]}
           accessibilityLabel="Take photo"
         >

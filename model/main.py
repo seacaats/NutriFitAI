@@ -130,7 +130,7 @@ with open(NUTRITION_PATH, encoding="utf-8") as f:
     NUTRITION = {norm(r["name"]): r for r in json.load(f)}
 
 
-@app.get("/health")
+@app.get("/health", methods=["GET", "HEAD"])
 def health():
     unmatched = sorted(n for n in NAMES.values() if norm(n) not in NUTRITION)
     return {"ok": True, "classes": len(NAMES), "foods": len(NUTRITION), "unmatched": unmatched}

@@ -8,7 +8,7 @@ const FoodScan = require('../../models/food/FoodScan');
 const Meal = require('../../models/food/Meal');
 const WaterLog = require('../../models/water/WaterLog');
 const { activityStreak } = require('../activityStreak');
-const { today, dayRangeToInstants } = require('../../utils/calendarDay');
+const { today, dayRangeToInstants, daysBetween } = require('../../utils/calendarDay');
 
 // Same defaults the dashboard shows when the user hasn't set a goal
 // (progressController / waterController)
@@ -28,6 +28,9 @@ const BASE_RULES = [
   // A hard number: larger models (Groq, Cerebras) read "short" loosely
   'Answer in plain language, under about 120 words: two or three short paragraphs at most, or a short list. Go longer only when the user asks for detail.',
   'Use the user data below when it is relevant. Never invent numbers that are not there.',
+  // The data below is already worded relative to today; the model must not turn it back into dates
+  'Never write calendar dates or timestamps such as 2026-10-12. Talk about time the way a friend would: today, this morning, yesterday, two days ago, last week, on Thursday.',
+  'Days in the data below are already worded relative to today. Keep that wording, and round numbers naturally (about 8,000 steps) unless the user asks for exact figures.',
   'Today, goals and progress below are already in the user\'s own timezone. Compare progress against their targets when it helps.',
   'If a number is missing, say you do not have it yet and suggest how to log it.',
   'You are not a doctor. For symptoms, injuries, medication or diagnosis, say so and recommend a professional.',
@@ -58,6 +61,35 @@ function fmt(n) {
 function daysAgo(n, timeZone) {
   const at = new Date(Date.now() - n * 86400000);
   return today(timeZone, at);
+}
+
+/**
+ * A calendar day in words relative to `from` ("today", "yesterday", "3 days
+ * ago", "tomorrow"), so the model never sees, and never repeats, a raw date.
+ * Both are "YYYY-MM-DD" strings in the user's timezone
+ */
+function relativeDay(day, from) {
+  const diff = daysBetween(from, day);
+  const span = (n) => (n < 14 ? `${n} days` : n < 60 ? `about ${Math.round(n / 7)} weeks` : `about ${Math.round(n / 30)} months`);
+  if (diff === 0) return 'today';
+  if (diff === -1) return 'yesterday';
+  if (diff === 1) return 'tomorrow';
+  return diff < 0 ? `${span(-diff)} ago` : `in ${span(diff)}`;
+}
+
+// An instant as a relative day in the user's timezone ("yesterday")
+function relativeInstant(instant, timeZone) {
+  return relativeDay(today(timeZone, new Date(instant)), today(timeZone));
+}
+
+// morning / afternoon / evening / night in the user's timezone, for greetings
+// and for judging whether "nothing logged yet today" means much
+function timeOfDay(timeZone) {
+  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: timeZone || 'UTC', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
+  if (hour >= 5 && hour < 12) return 'morning';
+  if (hour >= 12 && hour < 17) return 'afternoon';
+  if (hour >= 17 && hour < 21) return 'evening';
+  return 'night';
 }
 
 /**
@@ -101,7 +133,7 @@ async function summariseSteps(userId, timeZone) {
 
 
 // As an instant, a Date bound is used, unlike activityDate above
-async function summariseWorkouts(userId) {
+async function summariseWorkouts(userId, timeZone) {
   const since = new Date(Date.now() - 7 * 86400000);
 
   const [row] = await WorkoutSession.aggregate([
@@ -111,13 +143,14 @@ async function summariseWorkouts(userId) {
         _id: null,
         completed: { $sum: 1 },
         seconds: { $sum: { $ifNull: ['$actualDurationSeconds', 0] } },
+        last: { $max: '$completedAt' },
       },
     },
   ]);
 
   return row
-    ? { completed: row.completed, minutes: Math.round(row.seconds / 60) }
-    : { completed: 0, minutes: 0 };
+    ? { completed: row.completed, minutes: Math.round(row.seconds / 60), last: row.last ? relativeInstant(row.last, timeZone) : null }
+    : { completed: 0, minutes: 0, last: null };
 }
 
 // The next planned session in the coming week, if any
@@ -125,9 +158,12 @@ async function nextPlannedWorkout(userId, timeZone) {
   const rows = await WorkoutSession.listUpcoming(userId, { until: new Date(Date.now() + 7 * 86400000) });
   const next = rows.find((w) => new Date(w.scheduledFor) > new Date());
   if (!next) return null;
-  const when = new Date(next.scheduledFor).toLocaleString('en-US', {
-    timeZone: timeZone || 'UTC', weekday: 'short', hour: 'numeric', minute: '2-digit',
-  });
+  const at = new Date(next.scheduledFor);
+  const time = at.toLocaleTimeString('en-US', { timeZone: timeZone || 'UTC', hour: 'numeric', minute: '2-digit' });
+  const day = relativeInstant(at, timeZone);
+  // Today and tomorrow speak for themselves; later ones get the weekday too
+  const weekday = at.toLocaleDateString('en-US', { timeZone: timeZone || 'UTC', weekday: 'long' });
+  const when = day === 'today' || day === 'tomorrow' ? `${day} at ${time}` : `on ${weekday} (${day}) at ${time}`;
   return { name: next.routineName || next.exerciseName || 'a workout', kind: next.kind, when, count: rows.length };
 }
 
@@ -227,11 +263,14 @@ async function summariseMeals(userId, timeZone) {
   }
 
   if (byDay.size) {
-    const perDay = [...byDay.entries()].map(([date, meals]) => [date, Meal.totalsOf(meals.flatMap((m) => m.items)).caloriesKcal]);
+    // Newest first, each day in words ("yesterday"), never as a date
+    const perDay = [...byDay.entries()]
+      .sort(([a], [b]) => (a < b ? 1 : -1))
+      .map(([date, meals]) => [relativeDay(date, day), Meal.totalsOf(meals.flatMap((m) => m.items)).caloriesKcal]);
     const avg = Math.round(perDay.reduce((sum, [, kcal]) => sum + kcal, 0) / perDay.length);
     facts.push(
       `Calories logged, last 7 days: ${fmt(avg)}/day average over ${perDay.length} logged day(s) `
-      + `(${perDay.map(([date, kcal]) => `${date}: ${fmt(Math.round(kcal))}`).join(', ')})`,
+      + `(${perDay.map(([when, kcal]) => `${when}: ${fmt(Math.round(kcal))}`).join(', ')})`,
     );
   } else {
     facts.push('Meals: none logged in the last 7 days');
@@ -307,7 +346,7 @@ function subjectSection(subject, timeZone) {
       : `- ${i.foodName}${i.serving ? ` (${i.serving})` : ''}: ${macros(i)}`));
     return [
       '',
-      `IN FOCUS: the user opened this chat about a food scan from ${today(timeZone, new Date(doc.scannedAt))}.`,
+      `IN FOCUS: the user opened this chat about a food scan from ${relativeInstant(doc.scannedAt, timeZone)}.`,
       'Assume their questions are about it unless they say otherwise.',
       'It has not been logged as a meal. Values are for ONE serving of each food detected:',
       ...(lines.length ? lines : ['- No food was recognised in the photo']),
@@ -321,7 +360,7 @@ function subjectSection(subject, timeZone) {
   });
   return [
     '',
-    `IN FOCUS: the user opened this chat about their ${doc.mealType || 'meal'} logged on ${doc.mealDate}.`,
+    `IN FOCUS: the user opened this chat about their ${doc.mealType || 'meal'} logged ${relativeDay(doc.mealDate, today(timeZone))}.`,
     'Assume their questions are about it unless they say otherwise. Values below are for the portions they logged:',
     ...lines,
     `- Meal total: ${macros(doc.totals)}`,
@@ -345,7 +384,7 @@ async function buildCoachContext(userId, ref = {}) {
     User.getActiveGoal(userId),
     WeightLog.findLatestByUserId(userId),
     summariseSteps(userId, timeZone),
-    summariseWorkouts(userId),
+    summariseWorkouts(userId, timeZone),
     summariseWeightTrend(userId),
     summariseMeals(userId, timeZone),
     loadSubject(userId, ref),
@@ -360,14 +399,18 @@ async function buildCoachContext(userId, ref = {}) {
   const facts = [];
 
   const weekday = new Date().toLocaleDateString('en-US', { timeZone: timeZone || 'UTC', weekday: 'long' });
-  facts.push(`Today: ${weekday}, ${day}`);
+  // Weekday and time of day only: a full date invites the model to repeat it
+  facts.push(`Today: ${weekday}, ${timeOfDay(timeZone)}`);
   if (user?.firstName) facts.push(`First name: ${user.firstName}`);
 
   // Age band rather than exact age
   if (profile?.age) facts.push(`Age band: ${isMinor ? 'under 18' : '18 or over'}`);
   if (profile?.sex) facts.push(`Sex: ${profile.sex}`);
   if (profile?.heightCm) facts.push(`Height: ${profile.heightCm} cm`);
-  if (latestWeight?.weightKg) facts.push(`Latest weight: ${latestWeight.weightKg} kg`);
+  if (latestWeight?.weightKg) {
+    const logged = latestWeight.measuredAt ? ` (logged ${relativeInstant(latestWeight.measuredAt, timeZone)})` : '';
+    facts.push(`Latest weight: ${latestWeight.weightKg} kg${logged}`);
+  }
   if (profile?.activityLevel) facts.push(`Activity level: ${profile.activityLevel}`);
   if (profile?.dietPreference) facts.push(`Diet preference: ${profile.dietPreference}`);
   if (profile?.healthConditions) facts.push(`Health notes: ${profile.healthConditions}`);
@@ -404,7 +447,7 @@ async function buildCoachContext(userId, ref = {}) {
   }
 
   facts.push(workouts.completed > 0
-    ? `Workouts completed in the last 7 days: ${workouts.completed} (${workouts.minutes} min total)`
+    ? `Workouts completed in the last 7 days: ${workouts.completed} (${workouts.minutes} min total), the latest ${workouts.last}`
     : 'Workouts completed in the last 7 days: none');
   if (planned) {
     facts.push(`Next planned workout: ${planned.name} (${planned.kind}), ${planned.when}; ${planned.count} planned this week`);

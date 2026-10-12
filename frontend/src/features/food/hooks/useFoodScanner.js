@@ -173,7 +173,8 @@ function useScanner({ onMealLogged } = {}) {
    * web turns its blob:/data: URL back into bytes
    */
   const analyze = useCallback(async () => {
-    if (!staged) return false;
+    // Also the double-tap guard: the button itself stays enabled while it runs
+    if (!staged || busy) return false;
     setBusy("scanning");
     setError("");
     try {
@@ -195,7 +196,7 @@ function useScanner({ onMealLogged } = {}) {
     } finally {
       setBusy(null);
     }
-  }, [refreshRecent, showScan, staged]);
+  }, [busy, refreshRecent, showScan, staged]);
 
   // Reopens a saved scan (recent list or history)
   const openScan = useCallback(async (id) => {

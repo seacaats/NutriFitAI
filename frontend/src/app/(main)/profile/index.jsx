@@ -1,11 +1,11 @@
-import { joinedLabel, OverviewBoxes } from "@/features/user/components/ProfileWidgets";
 import { ProfileInput, ProfilePlanField, ProfileSelect, ProfileWorkoutPrefs } from "@/features/user/components/ProfileFields";
+import { joinedLabel, OverviewBoxes } from "@/features/user/components/ProfileWidgets";
 import { useProfileForm } from "@/features/user/hooks/useProfileForm";
 import { useWorkoutOptions } from "@/features/workouts/components/WorkoutPrefsPicker";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
 import Skeleton from "@/shared/components/Skeleton";
-import ServerImage from "@/shared/components/ui/ServerImage";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
+import ServerImage from "@/shared/components/ui/ServerImage";
 import {
   ACTIVITY_OPTIONS,
   DIET_PREFERENCES,
@@ -218,15 +218,15 @@ export default function ProfileScreen() {
       <View style={[styles.card, card]}>
         <Text style={[styles.cardTitle, textColor]}>Personal Information</Text>
 
-        <ProfileInput label="First Name" value={form.firstName} onChangeText={(v) => handleChange("firstName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput label="First Name" required value={form.firstName} onChangeText={(v) => handleChange("firstName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
         <ProfileInput label="Last Name" value={form.lastName} onChangeText={(v) => handleChange("lastName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
         {/* Email is read-only: changing it would invalidate email verification,
             so it needs its own re-verification flow rather than a silent edit. */}
         <ProfileInput label="Email" value={form.email} editing={false} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
 
-        <ProfileInput label="Age" value={String(form.age ?? "")} onChangeText={(v) => handleChange("age", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
-        <ProfileInput label="Height (cm)" value={String(form.height ?? "")} onChangeText={(v) => handleChange("height", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
-        <ProfileInput label="Weight (kg)" value={String(form.weight ?? "")} onChangeText={(v) => handleChange("weight", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput label="Age" required value={String(form.age ?? "")} onChangeText={(v) => handleChange("age", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput label="Height (cm)" required value={String(form.height ?? "")} onChangeText={(v) => handleChange("height", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput label="Weight (kg)" required value={String(form.weight ?? "")} onChangeText={(v) => handleChange("weight", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
 
         <ProfileSelect label="Sex" value={form.sex} options={SEXES} onSelect={(v) => handleChange("sex", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} loading={loading} />
       </View>
@@ -236,10 +236,10 @@ export default function ProfileScreen() {
         <Text style={[styles.cardTitle, textColor]}>Fitness Goals</Text>
 
         {/* Same dropdowns as registration; "Other" allows custom text */}
-        <ProfilePlanField label="Primary Goal" value={form.goal} options={GOAL_OPTIONS} icon="flag-outline" placeholder="Select your goal" otherPlaceholder="Your goal (e.g. Run a 10K)" onChange={(v) => handleChange("goal", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
-        <ProfilePlanField label="Activity Level" value={form.activity} options={ACTIVITY_OPTIONS} icon="pulse-outline" placeholder="Select your activity level" otherPlaceholder="Your activity (e.g. Shift work)" onChange={(v) => handleChange("activity", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
-        <ProfilePlanField label="Diet Preference" value={form.dietPreference} options={DIET_PREFERENCES} multiple exclusive={NO_DIET_PREFERENCE} icon="nutrition-outline" placeholder="Select any that apply" otherPlaceholder="Your diet (e.g. Intermittent Fasting)" onChange={(v) => handleChange("dietPreference", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
-        <ProfilePlanField label="Health Conditions" value={form.healthConditions} options={HEALTH_CONDITIONS} multiple icon="medkit-outline" placeholder="Select any that apply (or None)" otherPlaceholder="Your condition (e.g. Gout)" onChange={(v) => handleChange("healthConditions", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} note={HEALTH_CONDITIONS_NOTE} />
+        <ProfilePlanField label="Primary Goal" required value={form.goal} options={GOAL_OPTIONS} icon="flag-outline" placeholder="Select your goal" otherPlaceholder="Your goal (e.g. Run a 10K)" onChange={(v) => handleChange("goal", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
+        <ProfilePlanField label="Activity Level" required value={form.activity} options={ACTIVITY_OPTIONS} icon="pulse-outline" placeholder="Select your activity level" otherPlaceholder="Your activity (e.g. Shift work)" onChange={(v) => handleChange("activity", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
+        <ProfilePlanField label="Diet Preference" required value={form.dietPreference} options={DIET_PREFERENCES} multiple exclusive={NO_DIET_PREFERENCE} icon="nutrition-outline" placeholder="Select any that apply" otherPlaceholder="Your diet (e.g. Intermittent Fasting)" onChange={(v) => handleChange("dietPreference", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
+        <ProfilePlanField label="Health Conditions" required value={form.healthConditions} options={HEALTH_CONDITIONS} multiple icon="medkit-outline" placeholder="Select any that apply (or None)" otherPlaceholder="Your condition (e.g. Gout)" onChange={(v) => handleChange("healthConditions", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} note={HEALTH_CONDITIONS_NOTE} />
 
         <ProfileInput label="Target Weight (kg)" value={String(form.targetWeight ?? "")} onChangeText={(v) => handleChange("targetWeight", v)} editing={editing} keyboardType="numeric" placeholder="Not set" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
         <ProfileInput label="Weekly Pace (kg/week, 0.1–1)" value={String(form.weeklyPace ?? "")} onChangeText={(v) => handleChange("weeklyPace", v)} editing={editing} keyboardType="decimal-pad" placeholder="Not set" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />

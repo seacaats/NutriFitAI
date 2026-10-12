@@ -1,17 +1,21 @@
-const nodemailer = require('nodemailer');
 const env = require('../../config/env');
 
-// SMTP config check
-const isConfigured = Boolean(env.mail.host);
+const PROVIDER = env.mail.provider;
+const LABEL = PROVIDER === 'brevo' ? 'Brevo' : 'SMTP';
 
-const transporter = isConfigured
-  ? nodemailer.createTransport({
+// Provider config check
+const isConfigured = PROVIDER === 'brevo' ? Boolean(env.mail.brevoApiKey) : Boolean(env.mail.host);
+
+// Required lazily, so Brevo-only deploys never load nodemailer
+const transporter = PROVIDER === 'smtp' && isConfigured
+  ? require('nodemailer').createTransport({
       host: env.mail.host,
       port: env.mail.port,
       secure: env.mail.secure,
       auth: env.mail.user ? { user: env.mail.user, pass: env.mail.pass } : undefined,
     })
   : null;
+
 
 
 // Catch mail silently failing on health checks
@@ -26,17 +30,25 @@ const status = {
   lastSuccessAt: null,
 };
 
-// SMTP config validation on boot
+// Provider config validation on boot
 async function verifyMailer() {
   if (!isConfigured) {
     status.verified = false;
-    const message = 'SMTP is not configured (MAIL_HOST unset) — OTP codes will only appear in the server log';
+    const missing = PROVIDER === 'brevo' ? 'BREVO_API_KEY' : 'SMTP_HOST';
+    const message = `${LABEL} is not configured (${missing} unset)`;
     if (env.nodeEnv === 'production') {
       console.error(`[mailer] ${message}`);
     } else {
       console.warn(`[mailer] ${message}`);
     }
     return false;
+  } 
+
+  // Brevo has no verify call, the key is first checked on the first send
+  if (PROVIDER === 'brevo') {
+    status.verified = true;
+    console.log('[mailer] Brevo ready');
+    return true;
   }
 
   try {
@@ -125,13 +137,13 @@ async function deliver(to, subject, html, devLog) {
 
   if (!isConfigured) {
     if (env.nodeEnv === 'production') {
-      throw new Error('SMTP is not configured');
+      throw new Error(`${LABEL} is not configured`);
     }
     return { skipped: true };
   }
 
   try {
-    const result = await transporter.sendMail({ from: env.mail.from, to, subject, html });
+    const result = await send({ from: env.mail.from, to, subject, html });
     status.sent += 1;
     status.consecutiveFailures = 0;
     status.lastSuccessAt = new Date();
@@ -152,6 +164,30 @@ async function deliver(to, subject, html, devLog) {
 
     throw err; // callers in authController decide what to do about it
   }
+}
+
+// One send, whichever provider is selected
+async function send({ from, to, subject, html }) {
+  if (PROVIDER === 'brevo') {
+    // MAIL_FROM is "Name <address>", Brevo wants the two apart
+    const match = from.match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
+    const sender = match ? { name: match[1] || undefined, email: match[2] } : { email: from.trim() };
+
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': env.mail.brevoApiKey,
+        'Content-Type': 'application/json',
+        accept: 'application/json',
+      },
+      body: JSON.stringify({ sender, to: [{ email: to }], subject, htmlContent: html }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || `Brevo replied ${response.status}`);
+    return result;
+  }
+  return transporter.sendMail({ from, to, subject, html });
 }
 
 /**

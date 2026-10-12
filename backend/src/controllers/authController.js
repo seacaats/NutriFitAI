@@ -50,9 +50,12 @@ const INVALID_LOGIN_MESSAGE = 'Invalid email or password';
 // Identical body for every /register outcome (new, pending, already verified)
 const REGISTER_ACCEPTED_MESSAGE = 'Registration received. Check your email for a verification code.';
 
+// Shown only when the mail provider rejected the send, so the code never left.
+const EMAIL_FAILED_MESSAGE = "We couldn't send the email right now. Please try again in a moment.";
+
 // Register, resend and forgot-password all answer after at least this long,
 // so a fast path (unknown or verified email) can't be told apart by timing
-const MIN_RESPONSE_MS = 600;
+const MIN_RESPONSE_MS = 3000;
 
 // Waits out whatever is left of MIN_RESPONSE_MS since `startedAt`
 function padResponse(startedAt) {
@@ -212,14 +215,34 @@ const register = asyncHandler(async (req, res) => {
     await logAction(req, { action: 'auth.register.completed', targetType: 'user' }, { userId, role: 'user' });
   }
 
-  // Outside the transaction, non-fatal, and not awaited: the response must not
-  // differ from the verified-account branch in content OR timing (SMTP can
-  // take seconds). A failed send is logged; "Resend it" covers a lost email
-  deliverOtpEmail(normalizedEmail, otpCode, 'email_verification');
+  // Outside the transaction and non-fatal. Waits for the send only up to
+  // MIN_RESPONSE_MS, so a failed send is reported and a slow one isn't
+  // distinguishable by timing
+  const emailSent = await sendOtpWithinWait(normalizedEmail, otpCode, 'email_verification');
 
   await padResponse(startedAt);
+  if (!emailSent) throw emailFailed();
   return registerAcceptedResponse(res, normalizedEmail);
 });
+
+
+// Reported as a failure, 503 so the client shows the message as is
+const emailFailed = () => new ApiError(503, EMAIL_FAILED_MESSAGE, { code: 'EMAIL_SEND_FAILED' });
+
+/**
+ * Waits for the mail to be accepted, but never longer than MIN_RESPONSE_MS,
+ * the same floor every path already answers after. So a known email doesn't
+ * answer slower than an unknown one. A send still pending at that point is
+ * assumed fine and carries on in the background
+ *
+ * @returns {Promise<boolean>} false only when the send failed within the wait
+ */
+async function sendOtpWithinWait(email, code, purpose) {
+  const sent = deliverOtpEmail(email, code, purpose);
+  const stillPending = new Promise((resolve) => setTimeout(resolve, MIN_RESPONSE_MS, true));
+  return Promise.race([sent, stillPending]);
+}
+
 
 /**
  * Never throws as the underlying database action already
@@ -316,13 +339,15 @@ const resendRegistrationOtp = asyncHandler(async (req, res) => {
     issueOtpChallenge(user.id, 'email_verification', client),
   );
 
-  // Not awaited, so SMTP latency can't distinguish this path from the others
-  deliverOtpEmail(user.email, code, 'email_verification');
+  const emailSent = await sendOtpWithinWait(user.email, code, 'email_verification');
 
   await logAction(req, { action: 'auth.otp.resent', targetType: 'user' }, { userId: user.id, role: user.role });
 
-  // The response is identical whether or not the mail
-  // succeeded, and whether or not the account exists.
+  // Unknown and verified emails returned above, so only a real failed send ends up here
+  if (!emailSent) {
+    await padResponse(startedAt);
+    throw emailFailed();
+  }
   return genericResponse();
 });
 
@@ -547,14 +572,12 @@ const forgotPassword = asyncHandler(async (req, res) => {
   const { email } = req.body;
   const user = await User.findByEmail(email);
 
-  // Identical response whether or not the account exists. Nothing is sent for
-  // an unknown email; the code screen then fails with the generic OTP message
+  let emailSent = true;
   if (user) {
     const code = await withTransaction((client) =>
       issueOtpChallenge(user.id, 'password_reset', client),
     );
-    // Not awaited, so a known email doesn't answer measurably slower (SMTP)
-    deliverOtpEmail(user.email, code, 'password_reset');
+    emailSent = await sendOtpWithinWait(user.email, code, 'password_reset');
     await logAction(
       req,
       { action: 'auth.password.reset_requested', targetType: 'user' },
@@ -563,6 +586,7 @@ const forgotPassword = asyncHandler(async (req, res) => {
   }
 
   await padResponse(startedAt);
+  if (!emailSent) throw emailFailed();
   return sendSuccess(res, {
     message: 'If an account exists for this email, a reset code has been sent.',
   });

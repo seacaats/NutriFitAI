@@ -16,7 +16,13 @@ export default function FormInput({
   keyboardType = "default",
   autoCapitalize = "sentences",
   style,
+  // Style for the input box itself when a label wraps it (e.g. a tinted fill)
+  boxStyle,
   size = "md",
+  // Label above the box: a red * when required, "(Optional)" when optional
+  label,
+  required = false,
+  optional = false,
 }) {
   const { tokens } = useTheme();
   const { colors, radii } = tokens;
@@ -25,8 +31,10 @@ export default function FormInput({
   const [focused, setFocused] = useState(false);
   const iconSize = size === "sm" ? 14 : 16;
 
-  return (
-    <View style={[styles.wrapper, focused && styles.wrapperFocused, style]}>
+  // Without a label the box takes `style` itself; with one, `style` moves to
+  // the label + box wrapper so spacing and row widths still apply
+  const box = (
+    <View style={[styles.wrapper, focused && styles.wrapperFocused, boxStyle, !label && style]}>
       {icon && <Ionicons name={icon} size={iconSize} color={colors.green600} style={styles.leftIcon} />}
       <TextInput
         style={[styles.input, size === "sm" && styles.inputSm]}
@@ -53,7 +61,35 @@ export default function FormInput({
       )}
     </View>
   );
+
+  if (!label) return box;
+  return (
+    <View style={style}>
+      <FieldLabel label={label} required={required} optional={optional} />
+      {box}
+    </View>
+  );
 }
+
+/**
+ * Label for a field: a red asterisk marks it required, "(Optional)" marks
+ * it optional, and a field with neither gets no marker
+ */
+export function FieldLabel({ label, required = false, optional = false, style }) {
+  return (
+    <Text style={[labelStyles.label, style]}>
+      {label}
+      {required && <Text style={labelStyles.required}> *</Text>}
+      {optional && <Text style={labelStyles.optional}> (Optional)</Text>}
+    </Text>
+  );
+}
+
+const labelStyles = StyleSheet.create({
+  label: { ...typography.bodyBold, color: colors.textSecondary, marginBottom: 6 },
+  required: { color: colors.danger },
+  optional: { fontWeight: "400", color: colors.textMuted },
+});
 
 function createStyles(colors, radii) {
   return StyleSheet.create({
@@ -71,7 +107,7 @@ function createStyles(colors, radii) {
       ? { boxShadow: `0 0 0 2px ${colors.focusRing}` }
       : { borderColor: colors.focusRing, borderWidth: 2 },
     leftIcon: { marginRight: 8 },
-    input: { flex: 1, fontSize: 14, color: colors.textPrimary, ...(Platform.OS === "web" ? { outlineStyle: "none" } : null) },
+    input: { flex: 1, minWidth: 0, fontSize: 14, color: colors.textPrimary, ...(Platform.OS === "web" ? { outlineStyle: "none" } : null) },
     inputSm: { fontSize: 12 },
   });
 }

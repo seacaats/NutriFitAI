@@ -104,6 +104,7 @@ export default function WorkoutsScreen() {
       <View style={styles.headerRow}>
         <View>
           <Text style={[styles.pageTitle, textColor]}>Workouts</Text>
+          <Text style={[styles.pageSubtitle, mutedText]}>Stay active and reach your fitness goals.</Text>
         </View>
       </View>
 
@@ -713,9 +714,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 6,
+    marginBottom: 14,
   },
   pageTitle: { fontSize: 24, fontWeight: "800" },
+  pageSubtitle: { marginTop: 4, fontSize: 13 },
 
   // Top row (search + stats)
   topRow: {

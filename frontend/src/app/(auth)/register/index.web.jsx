@@ -27,11 +27,15 @@ import {
 } from "react-native";
 
 const BREAKPOINT = 1024;
+const COMPACT_FORM = 500;
 
 export default function RegisterScreen() {
   const form = useRegisterForm();
   const { width } = useWindowDimensions();
   const isWide = width >= BREAKPOINT;
+  // The form's own width: half the screen beside the brand panel. Under
+  // COMPACT_FORM the paired fields stack so their placeholders fit
+  const compact = (isWide ? width / 2 : width) < COMPACT_FORM;
 
   return (
     <View style={styles.root}>
@@ -54,23 +58,30 @@ export default function RegisterScreen() {
                 <Text style={styles.subtitle}>Start your healthy lifestyle today!</Text>
                 <FormAlert tone="info" message={form.notice} onDismiss={form.dismissNotice} />
 
-                <View style={[styles.row, styles.accountFieldSpacing]}>
+                {/* Stacked on small screens so each placeholder shows in full */}
+                <View style={[styles.row, styles.accountFieldSpacing, compact && styles.stackedRow]}>
                   <FormInput size="sm"
+                    label="First Name"
+                    required
                     icon="person-outline"
                     placeholder="First name (e.g. Juan)"
                     value={form.firstName}
                     onChangeText={form.setFirstName}
-                    style={styles.thirdField}
+                    style={!compact && styles.thirdField}
                   />
                   <FormInput size="sm"
+                    label="Last Name"
+                    optional
                     placeholder="Last name (e.g. Dela Cruz)"
                     value={form.lastName}
                     onChangeText={form.setLastName}
-                    style={styles.thirdField}
+                    style={!compact && styles.thirdField}
                   />
                 </View>
 
                 <FormInput size="sm"
+                  label="Email"
+                  required
                   icon="mail-outline"
                   placeholder="Email (e.g. name@example.com)"
                   value={form.email}
@@ -81,6 +92,8 @@ export default function RegisterScreen() {
                 />
 
                 <FormInput size="sm"
+                  label="Password"
+                  required
                   icon="lock-closed-outline"
                   placeholder="Password (min. 8 characters)"
                   value={form.password}
@@ -94,6 +107,8 @@ export default function RegisterScreen() {
 
 
                 <FormInput size="sm"
+                  label="Confirm Password"
+                  required
                   icon="lock-closed-outline"
                   placeholder="Re-enter password"
                   value={form.confirmPassword}
@@ -124,18 +139,28 @@ export default function RegisterScreen() {
                 </Pressable>
 
                 <Text style={styles.title}>About You</Text>
-                <Text style={styles.subtitle}>Help us tailor your plan. Pick "None" or "No Preference" if nothing applies, or "Other" to type your own.</Text>
+                <Text style={styles.subtitle}>Help us tailor your plan. You can update your details later from your profile page.</Text>
 
-                {/* Age / Height / Weight */}
-                <View style={[styles.row, styles.fieldSpacing]}>
-                  <FormInput size="sm" icon="calendar-outline" placeholder="Age" value={form.age} onChangeText={form.setAge} keyboardType="number-pad" style={styles.thirdField} />
-                  <FormInput size="sm" icon="resize-outline" placeholder="Height (cm)" value={form.height} onChangeText={form.setHeight} keyboardType="decimal-pad" style={styles.thirdField} />
-                  <FormInput size="sm" icon="barbell-outline" placeholder="Weight (kg)" value={form.weight} onChangeText={form.setWeight} keyboardType="decimal-pad" style={styles.thirdField} />
-                </View>
+                {/* Age / Height / Weight: one row, or on small screens age on its own row with height and weight below, like the phone */}
+                {compact ? (
+                  <>
+                    <FormInput size="sm" label="Age" required icon="calendar-outline" placeholder="Age" value={form.age} onChangeText={form.setAge} keyboardType="number-pad" style={styles.fieldSpacing} />
+                    <View style={[styles.row, styles.fieldSpacing]}>
+                      <FormInput size="sm" label="Height (cm)" required icon="resize-outline" placeholder="Height (cm)" value={form.height} onChangeText={form.setHeight} keyboardType="decimal-pad" style={styles.thirdField} />
+                      <FormInput size="sm" label="Weight (kg)" required icon="barbell-outline" placeholder="Weight (kg)" value={form.weight} onChangeText={form.setWeight} keyboardType="decimal-pad" style={styles.thirdField} />
+                    </View>
+                  </>
+                ) : (
+                  <View style={[styles.row, styles.fieldSpacing]}>
+                    <FormInput size="sm" label="Age" required icon="calendar-outline" placeholder="Age" value={form.age} onChangeText={form.setAge} keyboardType="number-pad" style={styles.thirdField} />
+                    <FormInput size="sm" label="Height (cm)" required icon="resize-outline" placeholder="Height (cm)" value={form.height} onChangeText={form.setHeight} keyboardType="decimal-pad" style={styles.thirdField} />
+                    <FormInput size="sm" label="Weight (kg)" required icon="barbell-outline" placeholder="Weight (kg)" value={form.weight} onChangeText={form.setWeight} keyboardType="decimal-pad" style={styles.thirdField} />
+                  </View>
+                )}
 
                 {/* Sex -- optional; tap again to clear */}
                 <Text style={styles.sectionLabel}>
-                  <Ionicons name="person-circle-outline" size={13} color={colors.green700} /> Sex <Text style={styles.optional}>(optional)</Text>
+                  <Ionicons name="person-circle-outline" size={13} color={colors.green700} /> Sex <Text style={styles.optional}>(Optional)</Text>
                 </Text>
                 <View style={[styles.genderRow, styles.fieldSpacing]}>
                   {SEXES.map((g) => (
@@ -146,7 +171,7 @@ export default function RegisterScreen() {
                 </View>
 
                 <Text style={styles.sectionLabel}>
-                  <Ionicons name="restaurant-outline" size={13} color={colors.green700} /> Diet Preference
+                  <Ionicons name="restaurant-outline" size={13} color={colors.green700} /> Diet Preference <Text style={styles.required}>*</Text>
                 </Text>
                 <OptionSelect
                   multiple
@@ -165,7 +190,7 @@ export default function RegisterScreen() {
                 />
 
                 <Text style={styles.sectionLabel}>
-                  <Ionicons name="medkit-outline" size={13} color={colors.green700} /> Health Conditions
+                  <Ionicons name="medkit-outline" size={13} color={colors.green700} /> Health Conditions <Text style={styles.required}>*</Text>
                 </Text>
                 <OptionSelect size="sm"
                   multiple
@@ -183,7 +208,7 @@ export default function RegisterScreen() {
                 />
 
                 <Text style={styles.sectionLabel}>
-                  <Ionicons name="pulse-outline" size={13} color={colors.green700} /> Activity Level
+                  <Ionicons name="pulse-outline" size={13} color={colors.green700} /> Activity Level <Text style={styles.required}>*</Text>
                 </Text>
                 <OptionSelect size="sm"
                   icon="pulse-outline"
@@ -200,7 +225,7 @@ export default function RegisterScreen() {
                 />
 
                 <Text style={styles.sectionLabel}>
-                  <Ionicons name="flag-outline" size={13} color={colors.green700} /> Fitness Goal
+                  <Ionicons name="flag-outline" size={13} color={colors.green700} /> Fitness Goal <Text style={styles.required}>*</Text>
                 </Text>
                 <OptionSelect size="sm"
                   icon="flag-outline"
@@ -284,7 +309,6 @@ const styles = StyleSheet.create({
   fieldNote: { marginTop: -8, marginBottom: 14, fontSize: 11, lineHeight: 16, color: colors.textSecondary },
   genderPill: { flex: 1, paddingVertical: 10, borderRadius: radii.sm, backgroundColor: colors.white, alignItems: "center" },
   hint: { ...typography.tiny, color: colors.textSecondary, marginTop: -4, marginBottom: 10 },
-  optional: { fontWeight: "400", color: colors.textMuted },
 
   checkbox: {
     width: 16,

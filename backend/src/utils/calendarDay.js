@@ -84,6 +84,14 @@ function addDays(day, n) {
   return d.toISOString().slice(0, 10);
 }
 
+// Whole days from `from` to `to`, both "YYYY-MM-DD" (negative when `to` is earlier).
+// Parsed at noon UTC, so neither the server's offset nor DST can shift the count
+function daysBetween(from, to) {
+  assertCalendarDay(from, 'from');
+  assertCalendarDay(to, 'to');
+  return Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86400000);
+}
+
 // The Sunday that starts the week holding `day`, the same week the
 // workouts summary counts against
 function weekStart(day) {
@@ -98,4 +106,4 @@ function monthStart(day, n = 0) {
   return new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 10);
 }
 
-module.exports = { CALENDAR_DAY_RE, today, assertCalendarDay, dayRangeToInstants, addDays, weekStart, monthStart };
+module.exports = { CALENDAR_DAY_RE, today, assertCalendarDay, dayRangeToInstants, addDays, daysBetween, weekStart, monthStart };

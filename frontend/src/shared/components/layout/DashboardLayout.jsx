@@ -66,10 +66,18 @@ export default function DashboardLayout({ children, hideTabBar = false, scrollab
   const [menuMounted, setMenuMounted] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
 
+  // A tap in the ☰ sheet navigates once the sheet has closed. Pushed while
+  // its Modal was still up, the new screen slid in underneath it (a native
+  // Modal sits above the whole app), so the slide was hidden or skipped
+  const pendingRoute = useRef(null);
+
   // Backdrop fades in place while only the sheet slides up, instead of the
   // whole dimmed overlay sliding in with it
   useEffect(() => {
-    if (menuOpen) setMenuMounted(true);
+    if (menuOpen) {
+      pendingRoute.current = null;
+      setMenuMounted(true);
+    }
     Animated.timing(anim, {
       toValue: menuOpen ? 1 : 0,
       duration: menuOpen ? 240 : 180,
@@ -79,6 +87,13 @@ export default function DashboardLayout({ children, hideTabBar = false, scrollab
       if (finished && !menuOpen) setMenuMounted(false);
     });
   }, [menuOpen, anim]);
+
+  useEffect(() => {
+    if (menuMounted || !pendingRoute.current) return;
+    const route = pendingRoute.current;
+    pendingRoute.current = null;
+    router.push(route);
+  }, [menuMounted, router]);
 
   // Same rules as the route guards, so nobody sees a link they'd be refused on
   const menuItems = MENU_ITEMS.filter((item) => canAccess(role, item.route));
@@ -96,6 +111,10 @@ export default function DashboardLayout({ children, hideTabBar = false, scrollab
     if (pathname === route) {
       scrollRef.current?.scrollTo?.({ y: 0, animated: true });
       pull?.refresh();
+      return;
+    }
+    if (menuMounted) {
+      pendingRoute.current = route;
       return;
     }
     router.push(route);

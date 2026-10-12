@@ -407,13 +407,13 @@ export function RoleGuard({ children }) {
     router.replace(target);
   }, [target, router]);
 
-  if (standingDown) return children;
-
   // The navigator below always stays mounted: expo-router needs the layout's
   // navigator to resolve the URL, and swapping it for a loading screen made
   // the production web build re-resolve the route endlessly (React #185,
   // blank page). Loading, the offline notice and an outgoing redirect cover
-  // it instead
+  // it instead. Standing down covers nothing but keeps the same tree:
+  // returning bare `children` remounted the whole stack (no slide, back
+  // history lost) whenever /terms or the landing page opened from the menu
   let cover = null;
   if (gate.pending) cover = <LoadingScreen visible={gate.visible} />;
   // Token held but the server can't be reached to confirm it
@@ -439,7 +439,7 @@ export function RoleGuard({ children }) {
   return (
     <View style={{ flex: 1 }}>
       {children}
-      {cover && <View style={StyleSheet.absoluteFill}>{cover}</View>}
+      {!standingDown && cover && <View style={StyleSheet.absoluteFill}>{cover}</View>}
     </View>
   );
 }

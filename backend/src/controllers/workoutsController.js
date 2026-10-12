@@ -43,13 +43,6 @@ const listWorkouts = asyncHandler(async (req, res) => {
   const limit = parseLimit(req.query.limit);
   const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
 
-  // The unfiltered first view: shuffled, the user's preferred exercises first.
-  // Any filter or search the user picks takes over, in A-Z order
-  if (shuffle && !category && !search && !equipment && !ids) {
-    const data = await listShuffled(req.userId, Number(shuffle), hasImage !== 'false', limit, offset);
-    return sendSuccess(res, { data });
-  }
-
   const filter = {};
 
   if (category) {
@@ -82,6 +75,13 @@ const listWorkouts = asyncHandler(async (req, res) => {
     filter.equipment = { $elemMatch: { name: { $not: NO_EQUIPMENT } } };
   } else if (equipment) {
     filter['equipment.id'] = Number(equipment);
+  }
+
+  // Browse: shuffled, within any category or equipment filter. Unfiltered, the
+  // user's preferred exercises come first. A search or an id list keeps its own order
+  if (shuffle && !search && !ids) {
+    const data = await listShuffled(req.userId, Number(shuffle), filter, !category && !equipment, limit, offset);
+    return sendSuccess(res, { data });
   }
 
   let query;
@@ -185,14 +185,14 @@ function shuffledPage(filter, multiplier, skip, limit) {
 }
 
 /**
- * One page of the unfiltered Browse list: the whole catalog, shuffled. With
- * workout preferences, matching exercises come first and everything else
- * after; preferences order the list, they never hide anything. `suggested`
- * is true only then, for the "Picked for you" title
+ * One page of the Browse list: `base` (the catalog, or a category/equipment
+ * filter of it), shuffled. Unfiltered with workout preferences, matching
+ * exercises come first and everything else after; preferences order the
+ * list, they never hide anything. `suggested` is true only then, for the
+ * "Picked for you" title
  */
-async function listShuffled(userId, shuffle, imagesOnly, limit, offset) {
-  const profile = await User.getProfile(userId);
-  const base = imagesOnly ? { hasRealImage: true } : {};
+async function listShuffled(userId, shuffle, base, usePrefs, limit, offset) {
+  const profile = usePrefs ? await User.getProfile(userId) : null;
   const preferred = preferenceFilter(profile?.workoutPrefs);
   const matching = preferred ? { ...base, ...preferred } : null;
   const rest = preferred ? { ...base, $nor: [preferred] } : base;

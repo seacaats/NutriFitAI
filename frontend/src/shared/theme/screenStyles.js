@@ -41,6 +41,10 @@ export const registerStyles = {
   // roomier gap; step 2's section labels already space it out
   accountFieldSpacing: { marginBottom: 20 },
   sectionLabel: { ...typography.bodyBold, color: colors.textSecondary, marginBottom: 6 },
+  required: { color: colors.danger },
+  optional: { fontWeight: "400", color: colors.textMuted },
+  // Two fields in a row stacked into one column on small screens
+  stackedRow: { flexDirection: "column", gap: 20 },
 
   genderRow: { flexDirection: "row", gap: 8 },
   genderPillActive: { borderWidth: 2, borderColor: colors.green600 },

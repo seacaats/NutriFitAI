@@ -24,7 +24,10 @@ export default function FoodScannerScreen() {
 
   return (
     <DashboardLayout>
-      <Text style={[styles.pageTitle, { color: c.sidebarText }]}>Food Scanner</Text>
+      <View style={styles.pageHeader}>
+        <Text style={[styles.pageTitle, { color: c.sidebarText }]}>Food Scanner</Text>
+        <Text style={[styles.pageSubtitle, mutedText]}>Scan your food and get personalized nutrition insights.</Text>
+      </View>
 
       {/* Recent first: Recent Meals | Recent Scans */}
       <View style={[styles.row, narrow && styles.stackRow]}>
@@ -105,7 +108,7 @@ export default function FoodScannerScreen() {
           {/* Staged: nothing has been sent yet, so the photo can still be swapped */}
           {!cameraOpen && scanner.staged && (
             <>
-              <Pressable onPress={scanner.analyze} disabled={scanning} style={[styles.cameraBtn, styles.analyzeBtn, scanning && styles.disabled]}>
+              <Pressable onPress={scanner.analyze} style={[styles.cameraBtn, styles.analyzeBtn, scanning && styles.disabled]}>
                 <Ionicons name="sparkles-outline" size={17} color={colors.white} />
                 <Text style={styles.cameraBtnText}>{scanning ? "Analyzing..." : "Analyze & Save"}</Text>
               </Pressable>
@@ -167,7 +170,9 @@ function SecondaryButton({ icon, label, onPress, disabled, card, darkMode }) {
 }
 
 const styles = StyleSheet.create({
-  pageTitle: { fontSize: 24, fontWeight: "800", marginBottom: 16 },
+  pageHeader: { marginBottom: 16 },
+  pageTitle: { fontSize: 24, fontWeight: "800" },
+  pageSubtitle: { marginTop: 4, fontSize: 13 },
   ...foodScannerStyles,
 
   row: { flexDirection: "row", gap: 16 },

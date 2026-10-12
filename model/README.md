@@ -6,7 +6,7 @@ NutriFitAI backend.
 - `GET /health`: class and food counts, plus model classes with no nutrition entry (`unmatched`)
 - `POST /detect`: multipart `image`, header `x-api-key`. Returns the detected foods with nutrition per serving, and the totals
 
-Run locally: `pip install -r requirements.txt`, then `uvicorn main:app --port 8000`
+Run locally: `pip install -r requirements.txt`, then `python -m uvicorn main:app --port 8000`
 
 Settings (environment variables):
 - `AI_API_KEY`: shared with the backend's `AI_DETECT_API_KEY`

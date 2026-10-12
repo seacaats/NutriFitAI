@@ -20,6 +20,7 @@ export default function ResetPasswordScreen() {
           </Text>
 
           <FormInput
+            label="New Password"
             placeholder="New password (min. 8 characters, no spaces)"
             value={form.password}
             onChangeText={form.setPassword}
@@ -27,10 +28,12 @@ export default function ResetPasswordScreen() {
             showToggle
             visible={form.showPassword}
             onToggleVisible={form.toggleShowPassword}
-            style={[styles.fieldSpacing, styles.grayInput]}
+            style={styles.fieldSpacing}
+            boxStyle={styles.grayInput}
           />
 
           <FormInput
+            label="Confirm New Password"
             placeholder="Re-enter new password"
             value={form.confirmPassword}
             onChangeText={form.setConfirmPassword}
@@ -38,7 +41,8 @@ export default function ResetPasswordScreen() {
             showToggle
             visible={form.showConfirmPassword}
             onToggleVisible={form.toggleShowConfirmPassword}
-            style={[styles.fieldSpacing, styles.grayInput]}
+            style={styles.fieldSpacing}
+            boxStyle={styles.grayInput}
           />
 
           <FormAlert message={form.error} onDismiss={form.dismissError} />

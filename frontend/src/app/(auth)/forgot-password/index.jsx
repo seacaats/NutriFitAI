@@ -38,8 +38,9 @@ export default function ForgotPasswordScreen() {
           </View>
 
           <FormInput
+            label="Email"
             icon="mail-outline"
-            placeholder="Email (e.g. name@example.com)"
+            placeholder="Enter your email address"
             value={form.email}
             onChangeText={form.setEmail}
             keyboardType="email-address"

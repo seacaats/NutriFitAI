@@ -20,13 +20,15 @@ export default function ForgotPasswordScreen() {
           <Text style={styles.subtitle}>Enter your account email and we'll send you a 4-digit reset code.</Text>
 
           <FormInput
+            label="Email"
             icon="mail-outline"
-            placeholder="Email (e.g. name@example.com)"
+            placeholder="Enter your email address"
             value={form.email}
             onChangeText={form.setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
-            style={[styles.fieldSpacing, styles.grayInput]}
+            style={styles.fieldSpacing}
+            boxStyle={styles.grayInput}
           />
 
           <FormAlert message={form.error} onDismiss={form.dismissError} />

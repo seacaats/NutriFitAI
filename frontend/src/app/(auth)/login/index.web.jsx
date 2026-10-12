@@ -57,8 +57,9 @@ export default function LoginScreen() {
             <Text style={styles.subtitle}>Login to continue your journey</Text>
 
             <FormInput
+              label="Email"
               icon="mail-outline"
-              placeholder="Email (e.g. name@example.com)"
+              placeholder="Email"
               value={form.email}
               onChangeText={form.setEmail}
               keyboardType="email-address"
@@ -67,6 +68,7 @@ export default function LoginScreen() {
             />
 
             <FormInput
+              label="Password"
               icon="lock-closed-outline"
               placeholder="Password"
               value={form.password}

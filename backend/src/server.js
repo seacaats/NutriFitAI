@@ -117,6 +117,7 @@ async function start() {
   // otherwise send the same window early (the dedupe key still stops repeats)
   reminderTimer = setInterval(runReminders, REMINDERS_EVERY_MS);
   reminderTimer.unref();
+
 }
 
 

@@ -29,6 +29,7 @@ export default function ResetPasswordScreen() {
           </View>
 
           <FormInput
+            label="New Password"
             icon="lock-closed-outline"
             placeholder="New password (min. 8 characters, no spaces)"
             value={form.password}
@@ -41,6 +42,7 @@ export default function ResetPasswordScreen() {
           />
 
           <FormInput
+            label="Confirm New Password"
             icon="lock-closed-outline"
             placeholder="Re-enter new password"
             value={form.confirmPassword}

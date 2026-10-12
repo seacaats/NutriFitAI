@@ -52,7 +52,10 @@ export default function DashboardScreen() {
 
   return (
     <DashboardLayout>
-      <Text style={[styles.pageTitle, { color: c.sidebarText }]}>Dashboard</Text>
+      <View style={styles.pageHeader}>
+        <Text style={[styles.pageTitle, { color: c.sidebarText }]}>Dashboard</Text>
+        <Text style={[styles.pageSubtitle, mutedText]}>Here&apos;s your overview for today.</Text>
+      </View>
       <ScreenError message={dash.error} />
       {/* Onboarding: first visit goes there, then a banner until it's filled in */}
       <OnboardingPrompt darkMode={darkMode} />
@@ -290,7 +293,9 @@ function LegendRow({ color, label, value, textColor }) {
 }
 
 const styles = StyleSheet.create({
-  pageTitle: { fontSize: 24, fontWeight: "800", marginBottom: 16 },
+  pageHeader: { marginBottom: 16 },
+  pageTitle: { fontSize: 24, fontWeight: "800" },
+  pageSubtitle: { marginTop: 4, fontSize: 13 },
   errorText: { fontSize: 12, fontWeight: "600", color: "#dc2626", marginBottom: 12 },
   ...dashboardStyles,
 

@@ -13,11 +13,11 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-n
 const isWeb = Platform.OS === "web";
 
 // A field without onChangeText (e.g. email) stays read-only while editing
-export function ProfileInput({ label, value, onChangeText, editing, card, textColor, inputBg, disabledBg, keyboardType = "default", placeholder, multiline = false, loading }) {
+export function ProfileInput({ label, required, value, onChangeText, editing, card, textColor, inputBg, disabledBg, keyboardType = "default", placeholder, multiline = false, loading }) {
   const editable = editing && !!onChangeText;
   return (
     <View style={styles.field}>
-      <Text style={[styles.fieldLabel, textColor]}>{label}</Text>
+      <Text style={[styles.fieldLabel, textColor]}>{label}{editable && required && <RequiredMark />}</Text>
       {loading ? <FieldSkeleton card={card} disabledBg={disabledBg} /> : (
       <RingInput
         value={value}
@@ -38,6 +38,11 @@ export function ProfileInput({ label, value, onChangeText, editing, card, textCo
       )}
     </View>
   );
+}
+
+// Red asterisk after a required field's label, shown only while editing
+function RequiredMark() {
+  return <Text style={styles.required}> *</Text>;
 }
 
 // A quiet one-line hint under a field (Health Conditions' allergies note)
@@ -90,13 +95,13 @@ export function ProfileSelect({ label, value, options, onSelect, editing, card, 
 }
 
 // Read-only shows the stored text; editing swaps in the registration dropdown
-export function ProfilePlanField({ label, value, options, multiple = false, exclusive, onChange, editing, card, textColor, disabledBg, palette, icon, placeholder, otherPlaceholder, loading, note }) {
+export function ProfilePlanField({ label, required, value, options, multiple = false, exclusive, onChange, editing, card, textColor, disabledBg, palette, icon, placeholder, otherPlaceholder, loading, note }) {
   if (!editing || loading) {
     return <ProfileSelect label={label} value={value} options={[]} editing={false} card={card} textColor={textColor} disabledBg={disabledBg} loading={loading} note={note} />;
   }
   return (
     <View style={styles.field}>
-      <Text style={[styles.fieldLabel, textColor]}>{label}</Text>
+      <Text style={[styles.fieldLabel, textColor]}>{label}{required && <RequiredMark />}</Text>
       <OptionField
         value={value}
         onChange={onChange}
@@ -161,6 +166,7 @@ const shared = {
   ...profileStyles,
   input: { borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12, paddingVertical: 10 },
   invisible: { opacity: 0 },
+  required: { color: colors.danger },
   // Spans the box's height and centers the bar in it. A percentage `top`
   // resolved against the wrong height on Android and left it at the top
   fieldSkeletonBar: { position: "absolute", left: 12, right: 12, top: 0, bottom: 0, justifyContent: "center" },

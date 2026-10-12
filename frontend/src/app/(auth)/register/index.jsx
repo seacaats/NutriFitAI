@@ -53,6 +53,8 @@ export default function RegisterScreen() {
               <FormAlert tone="info" message={form.notice} onDismiss={form.dismissNotice} />
 
               <FormInput
+                label="First Name"
+                required
                 icon="person-outline"
                 placeholder="First name (e.g. Juan)"
                 value={form.firstName}
@@ -60,6 +62,8 @@ export default function RegisterScreen() {
                 style={styles.accountFieldSpacing}
               />
               <FormInput
+                label="Last Name"
+                optional
                 icon="person-outline"
                 placeholder="Last name (e.g. Dela Cruz)"
                 value={form.lastName}
@@ -68,6 +72,8 @@ export default function RegisterScreen() {
               />
 
               <FormInput
+                label="Email"
+                required
                 icon="mail-outline"
                 placeholder="Email (e.g. name@example.com)"
                 value={form.email}
@@ -78,6 +84,8 @@ export default function RegisterScreen() {
               />
 
               <FormInput
+                label="Password"
+                required
                 icon="lock-closed-outline"
                 placeholder="Password (min. 8 characters)"
                 value={form.password}
@@ -90,6 +98,8 @@ export default function RegisterScreen() {
               />
 
               <FormInput
+                label="Confirm Password"
+                required
                 icon="lock-closed-outline"
                 placeholder="Re-enter password"
                 value={form.confirmPassword}
@@ -121,11 +131,13 @@ export default function RegisterScreen() {
 
               <View style={styles.headerBlock}>
                 <Text style={styles.title}>About You</Text>
-                <Text style={styles.subtitle}>Help us tailor your plan. Pick "None" or "No Preference" if nothing applies, or "Other" to type your own.</Text>
+                <Text style={styles.subtitle}>Help us tailor your plan. You can update your details later from your profile page.</Text>
               </View>
 
               {/* Age */}
               <FormInput
+                label="Age"
+                required
                 icon="calendar-outline"
                 placeholder="Age"
                 value={form.age}
@@ -136,13 +148,13 @@ export default function RegisterScreen() {
 
               {/* Height / Weight */}
               <View style={[styles.row, styles.fieldSpacing]}>
-                <FormInput icon="resize-outline" placeholder="Height (cm)" value={form.height} onChangeText={form.setHeight} keyboardType="decimal-pad" style={styles.thirdField} />
-                <FormInput icon="barbell-outline" placeholder="Weight (kg)" value={form.weight} onChangeText={form.setWeight} keyboardType="decimal-pad" style={styles.thirdField} />
+                <FormInput label="Height (cm)" required icon="resize-outline" placeholder="Height (cm)" value={form.height} onChangeText={form.setHeight} keyboardType="decimal-pad" style={styles.thirdField} />
+                <FormInput label="Weight (kg)" required icon="barbell-outline" placeholder="Weight (kg)" value={form.weight} onChangeText={form.setWeight} keyboardType="decimal-pad" style={styles.thirdField} />
               </View>
 
               {/* Sex -- optional; tap again to clear */}
               <Text style={styles.sectionLabel}>
-                <Ionicons name="person-circle-outline" size={13} color={colors.green700} /> Sex <Text style={styles.optional}>(optional)</Text>
+                <Ionicons name="person-circle-outline" size={13} color={colors.green700} /> Sex <Text style={styles.optional}>(Optional)</Text>
               </Text>
               <View style={[styles.genderRow, styles.fieldSpacing]}>
                 {SEXES.map((g) => (
@@ -154,7 +166,7 @@ export default function RegisterScreen() {
 
 
               <Text style={styles.sectionLabel}>
-                <Ionicons name="restaurant-outline" size={13} color={colors.green700} /> Diet Preference
+                <Ionicons name="restaurant-outline" size={13} color={colors.green700} /> Diet Preference <Text style={styles.required}>*</Text>
               </Text>
               <OptionSelect
                 multiple
@@ -172,7 +184,7 @@ export default function RegisterScreen() {
               />
 
               <Text style={styles.sectionLabel}>
-                <Ionicons name="medkit-outline" size={13} color={colors.green700} /> Health Conditions
+                <Ionicons name="medkit-outline" size={13} color={colors.green700} /> Health Conditions <Text style={styles.required}>*</Text>
               </Text>
               <OptionSelect
                 multiple
@@ -190,7 +202,7 @@ export default function RegisterScreen() {
               />
 
               <Text style={styles.sectionLabel}>
-                <Ionicons name="pulse-outline" size={13} color={colors.green700} /> Activity Level
+                <Ionicons name="pulse-outline" size={13} color={colors.green700} /> Activity Level <Text style={styles.required}>*</Text>
               </Text>
               <OptionSelect
                 icon="pulse-outline"
@@ -207,7 +219,7 @@ export default function RegisterScreen() {
               />
 
               <Text style={styles.sectionLabel}>
-                <Ionicons name="flag-outline" size={13} color={colors.green700} /> Fitness Goal
+                <Ionicons name="flag-outline" size={13} color={colors.green700} /> Fitness Goal <Text style={styles.required}>*</Text>
               </Text>
               <OptionSelect
                 icon="flag-outline"
@@ -266,7 +278,6 @@ const styles = StyleSheet.create({
   fieldNote: { marginTop: -8, marginBottom: 14, fontSize: 11, lineHeight: 16, color: colors.textSecondary },
   genderPill: { flex: 1, paddingVertical: 12, borderRadius: radii.sm, backgroundColor: colors.white, alignItems: "center", borderWidth: 1, borderColor: colors.border },
   hint: { ...typography.tiny, color: colors.textSecondary, marginTop: -4, marginBottom: 10 },
-  optional: { fontWeight: "400", color: colors.textMuted },
 
   checkbox: {
     width: 18,

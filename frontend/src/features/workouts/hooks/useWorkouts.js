@@ -29,6 +29,14 @@ const MODAL_FADE_MS = 350;
 // workoutsController.js; kept small since each is its own offline cache entry
 const SHUFFLE_VARIANTS = 8;
 
+// A new order, never the one already showing
+function rollShuffle(prev) {
+  let next;
+  do next = 1 + Math.floor(Math.random() * SHUFFLE_VARIANTS);
+  while (next === prev);
+  return next;
+}
+
 export function useWorkouts() {
   const [categories, setCategories] = useState([]);
   const [activeCategory, setActiveCategory] = useState(null);
@@ -37,8 +45,9 @@ export function useWorkouts() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedExercise, setSelectedExercise] = useState(null);
-  // A new shuffle each time the screen opens; paging keeps the same one
-  const [shuffle] = useState(() => 1 + Math.floor(Math.random() * SHUFFLE_VARIANTS));
+  // A ref, so a reload sees the new roll at once. Rolled again on every filter
+  // or preference change (and on refresh); paging keeps the same one
+  const shuffleRef = useRef(rollShuffle());
   // The grid leads with the user's preferred exercises ("Picked for you")
   const [suggested, setSuggested] = useState(false);
   // The "Preferences" dialog (WorkoutPrefsModal)
@@ -95,8 +104,9 @@ export function useWorkouts() {
       .catch(() => {});
   }, []);
 
-  // Load exercises when category changes
+  // Load exercises when a filter changes, with a fresh shuffle
   useEffect(() => {
+    shuffleRef.current = rollShuffle(shuffleRef.current);
     loadExercises(true);
   }, [activeCategory, equipment, source]);
 
@@ -118,9 +128,8 @@ export function useWorkouts() {
         // Favorites tab: only those ids, and nothing to fetch when there are none
         const favIds = source.startsWith("fav:") ? source.slice(4).split(",").filter(Boolean).map(Number) : null;
         if (favIds && !favIds.length) hasMore = false;
-        // Browse with no filter is shuffled, preferred exercises first
-        // ("Picked for you" when there are any)
-        const unfiltered = !favIds && !activeCategory && equipment == null;
+        // Browse is shuffled (preferred exercises first when unfiltered, for
+        // "Picked for you"); Favorites keeps its own order
         let pageSuggested = false;
 
         // Many wger exercises have no uploaded photo, so keep paging through the
@@ -131,7 +140,7 @@ export function useWorkouts() {
             category: activeCategory,
             equipment,
             ids: favIds || undefined,
-            shuffle: unfiltered ? shuffle : undefined,
+            shuffle: favIds ? undefined : shuffleRef.current,
             limit: PAGE_SIZE,
             offset,
           });
@@ -176,7 +185,7 @@ export function useWorkouts() {
         setLoadingMore(false);
       }
     },
-    [activeCategory, equipment, source, shuffle],
+    [activeCategory, equipment, source],
   );
 
   // Client-side search
@@ -284,8 +293,10 @@ export function useWorkouts() {
     });
   };
 
-  // Also after saving preferences, so "Picked for you" follows them
+  // Also after saving preferences, so "Picked for you" follows them (and
+  // reshuffles, like any other change)
   const reloadExercises = useCallback(() => {
+    shuffleRef.current = rollShuffle(shuffleRef.current);
     setExercises([]);
     return loadExercises(true);
   }, [loadExercises]);

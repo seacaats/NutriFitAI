@@ -109,7 +109,7 @@ export default function AdminAnalyticsScreen() {
           <Text style={[styles.eyebrow, { color: tone.muted }]}>ADMINISTRATION</Text>
           <Text style={[styles.pageTitle, { color: tone.text }]}>Analytics</Text>
           <Text style={[styles.pageSubtitle, { color: tone.muted }]}>
-            How NutriFitAI is being used. Counts only, no personal data. Days are in your time zone.
+            How NutriFitAI is being used. Counts only.
           </Text>
         </View>
         <Pressable onPress={refresh} disabled={loading} style={[styles.refreshBtn, loading && { opacity: 0.6 }]}>
