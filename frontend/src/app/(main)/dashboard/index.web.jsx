@@ -42,8 +42,15 @@ export default function DashboardScreen() {
   const phone = width < 620;
   const { darkMode, shell: c } = useTheme();
 
-  const { card, textColor, mutedText } = getScreenPalette(darkMode);
+  const { card, textColor } = getScreenPalette(darkMode);
+  // Darker muted text than the shared tone, for readability on this screen in light mode
+  const mutedText = { color: darkMode ? screenTones.dark.muted : "#4b5563" };
   const trackBg = { backgroundColor: card.borderColor }; // progress bar
+  // Readable green text on white; the brand green is too light for it in light mode
+  const accent = { color: c.activeNavText };
+  // Stacked rows: items size to their content instead of collapsing under flex: 1
+  const stack = (narrow && styles.stackItem);
+  const stackPhone = (phone && styles.stackItem);
   const statCard = [styles.card, styles.statCard, narrow && styles.statCardNarrow, phone && styles.fullWidth, card];
 
   const stepGoal = v?.goals.dailySteps ?? 0;
@@ -66,7 +73,7 @@ export default function DashboardScreen() {
         <Pressable onPress={() => router.push("/food-scanner")} style={statCard}>
           <View style={styles.rowBetween}>
             <Text style={[styles.cardLabel, textColor]}>Today&apos;s Calories</Text>
-            <Text style={styles.pctGreen}>{v ? `${v.mealsLogged}/4 meals` : DASH}</Text>
+            <Text style={[styles.pctGreen, accent]}>{v ? `${v.mealsLogged}/4 meals` : DASH}</Text>
           </View>
           <View style={styles.mt2}>
             <Text style={[styles.bigNum, textColor]}>
@@ -151,16 +158,16 @@ export default function DashboardScreen() {
 
       <View style={[styles.lowerRow, narrow && styles.stackRow]}>
         {/* Today's Plan: what's been eaten, and the next workout */}
-        <View style={[styles.card, card, styles.flexHalf]}>
+        <View style={[styles.card, card, styles.flexHalf, stack]}>
           <View style={styles.rowBetween}>
             <Text style={[styles.sectionTitle, textColor]}>Today&apos;s Plan</Text>
             <Pressable onPress={() => router.push("/workouts")}>
-              <Text style={styles.viewAll}>View All</Text>
+              <Text style={[styles.viewAll, accent]}>View All</Text>
             </Pressable>
           </View>
 
-          <Text style={[styles.subheading, textColor]}>Meals</Text>
-          <View style={[styles.mealsRow, phone && styles.wrapRow]}>
+          <Text style={[styles.subheading, textColor, narrow && styles.planHeading]}>Meals</Text>
+          <View style={[styles.mealsRow, phone && styles.wrapRow, narrow && styles.mealsRowNarrow]}>
             {(v?.meals || Object.keys(MEAL_LABELS).map((t) => ({ mealType: t, count: 0 }))).map((m) => (
               <Pressable
                 key={m.mealType}
@@ -174,7 +181,7 @@ export default function DashboardScreen() {
                   <Text style={[styles.mealTitle, textColor]}>{MEAL_LABELS[m.mealType]}</Text>
                   {/* Placeholder until today's meals arrive, not a premature "Not logged" */}
                   {v ? (
-                    <Text style={styles.mealCalories}>{m.count ? `${m.caloriesKcal} kcal` : "Not logged"}</Text>
+                    <Text style={[styles.mealCalories, mutedText]}>{m.count ? `${m.caloriesKcal} kcal` : "Not logged"}</Text>
                   ) : (
                     <Skeleton width="60%" height={9} style={styles.mealSkeleton} />
                   )}
@@ -183,7 +190,7 @@ export default function DashboardScreen() {
             ))}
           </View>
 
-          <Text style={[styles.subheading, textColor, { marginTop: 12 }]}>Workout</Text>
+          <Text style={[styles.subheading, textColor, { marginTop: narrow ? 20 : 12 }]}>Workout</Text>
           {/* The next few planned sessions, missed first, then the week's count */}
           <View style={styles.mt2}>
             <PlannedWorkouts view={v} summary={workoutSummary} darkMode={darkMode} onOpen={() => router.push("/workouts?tab=upcoming")} />
@@ -191,17 +198,17 @@ export default function DashboardScreen() {
         </View>
 
         {/* Insights */}
-        <View style={styles.flexHalf}>
+        <View style={[styles.flexHalf, stack]}>
           <View style={[styles.card, card]}>
             <View style={styles.rowBetween}>
               <Text style={[styles.sectionTitle, textColor]}>Insights</Text>
-              <Text style={styles.thisWeek}>Last 7 days</Text>
+              <Text style={[styles.thisWeek, mutedText]}>Last 7 days</Text>
             </View>
 
-            <View style={[styles.chartBox, { borderColor: darkMode ? screenTones.dark.border : "#f3f4f6" }]}>
+            <View style={[styles.chartBox, { borderColor: card.borderColor }]}>
               <View style={styles.rowBetween}>
                 <Text style={[styles.chartLabel, textColor]}>Calories Trend</Text>
-                <Text style={styles.chartAvg}>{v?.caloriesAverage ? `Average: ${v.caloriesAverage} kcal` : "No meals logged"}</Text>
+                <Text style={[styles.chartAvg, mutedText]}>{v?.caloriesAverage ? `Average: ${v.caloriesAverage} kcal` : "No meals logged"}</Text>
               </View>
               <View style={{ marginTop: 4 }}>
                 <AreaChartMini
@@ -222,7 +229,7 @@ export default function DashboardScreen() {
 
           <View style={[styles.insightCardsRow, phone && styles.stackRow]}>
             {/* Today's macro split, by calories */}
-            <View style={[styles.card, card, styles.flexHalf]}>
+            <View style={[styles.card, card, styles.flexHalf, styles.insightCard, stackPhone]}>
               <Text style={[styles.chartLabel, textColor]}>Macronutrient Distribution</Text>
               <View style={styles.donutWrap}>
                 <DonutChart
@@ -232,7 +239,7 @@ export default function DashboardScreen() {
                   segments={(v?.macros || []).map((m) => ({ value: m.percent, color: MACRO_COLORS[m.key] }))}
                 >
                   <Text style={[styles.donutCenterTitle, textColor]}>Today</Text>
-                  <Text style={styles.donutCenterSub}>{v ? `${v.nutrition.caloriesKcal} kcal` : DASH}</Text>
+                  <Text style={[styles.donutCenterSub, mutedText]}>{v ? `${v.nutrition.caloriesKcal} kcal` : DASH}</Text>
                 </DonutChart>
               </View>
               <View style={styles.legend}>
@@ -243,7 +250,7 @@ export default function DashboardScreen() {
             </View>
 
             {/* Weight over the last 30 days */}
-            <Pressable onPress={() => router.push("/progress")} style={[styles.card, card, styles.flexHalf]}>
+            <Pressable onPress={() => router.push("/progress")} style={[styles.card, card, styles.flexHalf, styles.insightCard, stackPhone]}>
               <Text style={[styles.chartLabel, textColor]}>Weight Progress</Text>
               <View style={styles.mt3}>
                 <Text style={[styles.weightNum, textColor]}>
@@ -255,7 +262,7 @@ export default function DashboardScreen() {
                   </Text>
                 )}
               </View>
-              <Text style={styles.weightSince}>Last 30 days</Text>
+              <Text style={[styles.weightSince, mutedText]}>Last 30 days</Text>
               {weights.length > 1 && (
                 <View style={{ marginTop: 16 }}>
                   <AreaChartMini
@@ -285,7 +292,7 @@ function LegendRow({ color, label, value, textColor }) {
     <View style={styles.legendRow}>
       <View style={styles.legendLeft}>
         <View style={[styles.legendDot, { backgroundColor: color }]} />
-        <Text style={[styles.legendLabel, textColor]}>{label}</Text>
+        <Text style={[styles.legendLabel, textColor]} numberOfLines={1}>{label}</Text>
       </View>
       <Text style={[styles.legendValue, textColor]}>{value}</Text>
     </View>
@@ -302,6 +309,7 @@ const styles = StyleSheet.create({
   card: { borderRadius: radii.sm, borderWidth: 1, padding: 12 },
   statCard: { flex: 1},
   statCardNarrow: { minWidth: 220 },
+  stackItem: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
   fullWidth: { width: "100%", minWidth: 0, flexBasis: "auto", boxSizing: "border-box" },
   wrapRow: { flexWrap: "wrap" },
   flex1: { flex: 1 },
@@ -328,16 +336,20 @@ const styles = StyleSheet.create({
   waterAction: { flexDirection: "row", justifyContent: "flex-end", marginTop: 10 },
   waterLineSkeleton: { marginTop: 6 },
 
-  lowerRow: { flexDirection: "row", gap: 12, marginTop: 12 },
+  // marginBottom keeps the last card clear of the page edge when stacked
+  lowerRow: { flexDirection: "row", gap: 12, marginTop: 12, marginBottom: 4 },
   sectionTitle: { fontSize: 22, fontWeight: "700" },
   subheading: { fontSize: 13, fontWeight: "600", marginTop: 4 },
   thisWeek: { fontSize: 10, fontWeight: "600", color: colors.textMuted },
 
   mealsRow: { flexDirection: "row", gap: 8, marginTop: 8 },
+  // Small screens: more air between the heading, the meal cards and the workout list
+  mealsRowNarrow: { gap: 10, marginTop: 10 },
+  planHeading: { marginTop: 12 },
   mealCard: { flex: 1, borderRadius: 6, borderWidth: 1, overflow: "hidden" },
   mealCardPhone: { minWidth: "47%" },
   mealIconBox: { height: 64, alignItems: "center", justifyContent: "center" },
-  mealInfo: { padding: 4 },
+  mealInfo: { padding: 6, gap: 2 },
   mealTitle: { fontSize: 10, fontWeight: "700" },
   mealCalories: { fontSize: 8, color: colors.textMuted },
   mealSkeleton: { marginTop: 2 },
@@ -349,13 +361,15 @@ const styles = StyleSheet.create({
   chartAvg: { fontSize: 9, fontWeight: "600", color: colors.textMuted },
 
   insightCardsRow: { flexDirection: "row", gap: 12, marginTop: 12 },
+  // minWidth 0 + overflow: the donut and legend can't spill past the card edge
+  insightCard: { minWidth: 0, overflow: "hidden" },
   donutWrap: { alignItems: "center", justifyContent: "center", marginTop: 12 },
   donutCenterTitle: { fontSize: 9, fontWeight: "700" },
   donutCenterSub: { fontSize: 8, color: colors.textMuted },
 
   legend: { marginTop: 12, gap: 4 },
   legendRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  legendLeft: { flexDirection: "row", alignItems: "center", gap: 4 },
+  legendLeft: { flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 1, minWidth: 0 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendLabel: { fontSize: 8 },
   legendValue: { fontSize: 8, fontWeight: "600" },

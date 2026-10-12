@@ -45,15 +45,15 @@ const MENU_ITEMS = [
     section: "Administration",
   },
   {
-    name: "Audit Logs",
-    icon: "document-text-outline",
-    route: "/audit-logs",
-    section: "Administration",
-  },
-  {
     name: "Admins",
     icon: "shield-checkmark-outline",
     route: "/admins",
+    section: "Administration",
+  },
+  {
+    name: "Audit Logs",
+    icon: "document-text-outline",
+    route: "/audit-logs",
     section: "Administration",
   },
 ];
@@ -79,7 +79,7 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { darkMode, toggleTheme, tokens, shell: c } = useTheme();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const { radii, spacing } = tokens;
   const styles = useMemo(() => createStyles(radii, spacing), [radii, spacing]);
   // Reads the session AuthContext already loaded for the route guards,
@@ -155,6 +155,8 @@ export default function DashboardLayout({
   // null = follow the width. Remembered per browser
   const [railPref, setRailPref] = useState(readRailPref);
   const isRail = !isMobile && (railPref ?? isCompact);
+  // Small screens: a phone width or a short window
+  const isTight = isMobile || height < 720;
 
   const toggleNav = () => {
     if (isMobile) {
@@ -223,7 +225,7 @@ export default function DashboardLayout({
             { backgroundColor: c.rightBg, borderRightColor: c.shellBorder },
           ]}
         >
-          <View style={[styles.logoRow, isRail && styles.logoRowCompact]}>
+          <View style={[styles.logoRow, isRail && styles.logoRowCompact, isTight && styles.logoRowTight]}>
             <Image source={logoSource} style={styles.logoImg} contentFit="contain" />
             {!isRail && <Text style={[styles.logoText, { color: c.primary }]}>NutriFitAI</Text>}
             {/* On phones the header's ☰ sits under the open nav, so the same
@@ -241,8 +243,9 @@ export default function DashboardLayout({
             )}
           </View>
 
-          {/* Scrolls on short windows, so Log Out never gets squeezed or cut off */}
-          <ScrollView style={styles.navScroll} contentContainerStyle={styles.nav} showsVerticalScrollIndicator={false}>
+          {/* Scrolls on short windows, so Log Out never gets squeezed or cut off.
+              The bar is the app's thin themed one (useWebScrollbar) */}
+          <ScrollView style={[styles.navScroll, isTight && styles.navScrollTight]} contentContainerStyle={styles.nav}>
             {navGroups.map((group) => (
               <View key={group.section || "__main"} style={styles.navGroup}>
                 {/* Compact Sidebar */}
@@ -272,11 +275,12 @@ export default function DashboardLayout({
                       ]}
                     >
                       <View>
-                        <Ionicons name={item.icon} size={20} color={active || hovered ? c.primary : c.inactiveNavText} />
+                        {/* Darker green than the brand one in light mode, for contrast */}
+                        <Ionicons name={item.icon} size={20} color={active || hovered ? c.activeNavText : c.inactiveNavText} />
                         {/* Same unread dot as the topbar bell */}
                         {item.route === "/notifications" && unread > 0 && <View style={[styles.navDot, { backgroundColor: c.danger }]} />}
                       </View>
-                      {!isRail && <Text style={[styles.navText, { color: active || hovered ? c.primary : c.inactiveNavText }]}>{item.name}</Text>}
+                      {!isRail && <Text style={[styles.navText, { color: active || hovered ? c.activeNavText : c.inactiveNavText }]}>{item.name}</Text>}
                     </Pressable>
                   );
                 })}
@@ -311,7 +315,7 @@ export default function DashboardLayout({
                 <Ionicons name="menu" size={22} color={c.sidebarText} />
               </Pressable>
               <View style={styles.headerText}>
-                <Text numberOfLines={1} style={[styles.greeting, isMobile && styles.greetingMobile, { color: c.sidebarText }]}>
+                <Text style={[styles.greeting, isMobile && styles.greetingMobile, { color: c.sidebarText }]}>
                   {greeting}, {loading ? "..." : firstName} 👋
                 </Text>
               </View>
@@ -521,6 +525,7 @@ function createStyles(radii, spacing) {
   sidebarMobileClosed: { transform: [{ translateX: -261 }], visibility: "hidden" },
   logoRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: 20, paddingVertical: 24 },
   logoRowCompact: { justifyContent: "center", paddingHorizontal: 12 },
+  logoRowTight: { paddingVertical: 14 },
   // Pushed to the far right of the logo row, like the old close button
   menuCloseBtn: { marginLeft: "auto", marginRight: -8 },
   logoImg: { width: 40, height: 40 },
@@ -529,6 +534,7 @@ function createStyles(radii, spacing) {
   // gap between GROUPS as well as between items is what separates a section
   // from the one above it without a second margin rule
   navScroll: { marginTop: 28, flex: 1, minHeight: 0 },
+  navScrollTight: { marginTop: 4 },
   nav: { gap: 12, paddingHorizontal: 12, paddingBottom: 12 },
   navGroup: { gap: 8 },
   navSection: { fontSize: 10, fontWeight: "800", letterSpacing: 0.8, textTransform: "uppercase", paddingHorizontal: 16, paddingTop: 8 },

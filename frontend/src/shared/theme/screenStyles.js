@@ -217,8 +217,9 @@ export const adminStyles = {
 
   statRow: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 20 },
 
-  controls: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" },
-  controlsNarrow: { flexDirection: "column", alignItems: "stretch" },
+  // A column at every width, like the Audit Logs filters: the search box, then the chips
+  controls: { gap: 12, marginBottom: 16 },
+  controlsNarrow: {},
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -226,12 +227,11 @@ export const adminStyles = {
     borderWidth: 1,
     borderRadius: radii.sm,
     paddingHorizontal: 12,
-    paddingVertical: 9,
-    // minWidth 0, not 240: a 320px phone minus the page gutters is narrower
-    // than 240 plus padding, and the box overflowed the screen
+    // Same as the Audit Logs "By User" box: fixed height, as wide as the
+    // screen allows up to 560, never past it
+    height: 40,
     minWidth: 0,
-    flexGrow: 1,
-    flexBasis: 240,
+    maxWidth: 560,
   },
 
   searchInput: { flex: 1, fontSize: 13, outlineStyle: "none" },

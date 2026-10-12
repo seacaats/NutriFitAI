@@ -62,9 +62,10 @@ const userListQuerySchema = z
   .strict();
 
 // Body for PATCH /admin/users/:id/role.
+// admin <-> superadmin only: ordinary users are never promoted or demoted here
 const updateRoleSchema = z
   .object({
-    role: z.enum(ROLES),
+    role: z.enum(['admin', 'superadmin']),
     reason: z.string().trim().min(3).max(300),
   })
   .strict();

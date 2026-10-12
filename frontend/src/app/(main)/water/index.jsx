@@ -9,7 +9,7 @@ export default function WaterScreen() {
   const { darkMode } = useTheme();
   return (
     <DashboardLayout hideTabBar>
-      <ScreenHeader title="Water" subtitle="Log drinks, hit your goal" />
+      <ScreenHeader title="Water" subtitle="Log drinks, hit your goal" description="Log your drinks and hit your daily hydration goal." />
       <WaterPanel darkMode={darkMode} />
     </DashboardLayout>
   );

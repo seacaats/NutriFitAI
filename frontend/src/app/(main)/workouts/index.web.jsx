@@ -129,7 +129,7 @@ export default function WorkoutsScreen() {
         </View>
 
         {/* Quick Stats */}
-        <View style={styles.statsRow}>
+        <View style={[styles.statsRow, narrow && styles.statsRowNarrow]}>
           <View
             style={[
               styles.statCard,
@@ -739,6 +739,8 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 14, padding: 0, outlineStyle: "none" },
   statsRow: { flexDirection: "row", gap: 10 },
+  // Small screens: the cards sit centred under the search bar
+  statsRowNarrow: { justifyContent: "center", flexWrap: "wrap" },
 
   lastPerformed: { marginTop: 16, borderWidth: 1, borderColor: colors.infoBorder, backgroundColor: colors.infoBg, borderRadius: radii.sm, padding: 11 },
 

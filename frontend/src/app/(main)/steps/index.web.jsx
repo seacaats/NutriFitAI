@@ -5,9 +5,9 @@ import ChartBox from "@/shared/components/charts/ChartBox.web";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
 import Skeleton from "@/shared/components/Skeleton";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { formatNumber, todayISO } from "@/shared/utils/dates";
 import { CHART_FONT, chipTints, colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { stepsStyles } from "@/shared/theme/screenStyles";
+import { formatNumber, todayISO } from "@/shared/utils/dates";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
@@ -76,16 +76,15 @@ export default function StepsScreen() {
   const challengeTotal = steps.range === "Week" ? steps.total : 0;
   const challengeRemaining = Math.max(CHALLENGE_TARGET - challengeTotal, 0);
 
-  // Same card/border/muted/soft/track tones every dashboard screen shares
-  // (see shared/theme/nutrifitai.js); `text` keeps its own light-mode value
-  // (#172015) rather than the usual #111111.
-  const palette = { ...getScreenTones(darkMode), text: darkMode ? colors.white : colors.deepGreenText };
+  // Same card/border/text/muted/soft/track tones every dashboard screen shares
+  // (see shared/theme/nutrifitai.js)
+  const palette = getScreenTones(darkMode);
   const ch = CHALLENGE_TONES[darkMode ? "dark" : "light"];
 
   return (
     <DashboardLayout>
       <View style={[styles.pageHeader, narrow && styles.pageHeaderNarrow]}>
-        <View>
+        <View style={styles.headerCopy}>
           <Text style={[styles.eyebrow, { color: palette.muted }]}>ACTIVITY</Text>
           <Text style={[styles.pageTitle, { color: palette.text }]}>Steps</Text>
           <Text style={[styles.pageSubtitle, { color: palette.muted }]}>Move more, build consistency, and make every step count.</Text>
@@ -281,12 +280,14 @@ const styles = StyleSheet.create({
 
   pageHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginBottom: 20 },
   pageHeaderNarrow: { flexWrap: "wrap", alignItems: "flex-start" },
+  // Shrinks to the row so the description wraps instead of running off
+  headerCopy: { flexShrink: 1, minWidth: 0 },
   stackRow: { flexDirection: "column" },
   // Stacked (narrow) children size to their content. With flex: n they get a
   // zero basis in a column, collapse, and the next card draws over them
   stackItem: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
   eyebrow: { fontSize: 10, fontWeight: "800", letterSpacing: 1.3 }, pageTitle: { marginTop: 2, fontSize: 28, fontWeight: "800" }, pageSubtitle: { marginTop: 4, fontSize: 13 },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 }, syncPill: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 }, syncText: { color: "#4f7150", fontSize: 10, fontWeight: "700" },
+  headerActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }, syncPill: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 }, syncText: { color: "#4f7150", fontSize: 10, fontWeight: "700" },
   startButton: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, backgroundColor: shellColors.primary }, startButtonText: { color: colors.white, fontSize: 11, fontWeight: "800" },
   rowGap: { flexDirection: "row", alignItems: "center", gap: 13 },
   heroRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 }, heroCard: { minWidth: 280, flex: 2.2, borderWidth: 1, borderRadius: radii.md, padding: 18 },

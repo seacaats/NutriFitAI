@@ -257,9 +257,10 @@ const styles = StyleSheet.create({
 
   onBanner: { backgroundColor: "rgba(255,255,255,0.25)" },
 
-  topBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-  pageTitle: { fontSize: 22, fontWeight: "800" },
-  topActions: { flexDirection: "row", alignItems: "center", gap: 14 },
+  // One row at every width: the title shrinks, the buttons keep their size, gap between them
+  topBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 },
+  pageTitle: { fontSize: 22, fontWeight: "800", flexShrink: 1 },
+  topActions: { flexDirection: "row", alignItems: "center", flexShrink: 0, gap: 14 },
   cancelText: { fontSize: 13, fontWeight: "700" },
   saveBtn: {
     flexDirection: "row",

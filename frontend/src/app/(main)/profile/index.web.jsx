@@ -40,6 +40,9 @@ export default function ProfileScreen() {
   const { width } = useWindowDimensions();
   const narrow = width < 900;
   const { darkMode } = useTheme();
+  // Admins and superadmins keep a name and an email; the body, goal and
+  // workout fields belong to ordinary users
+  const isUser = useAuth().role === "user";
   const {
     form: profile,
     serverData,
@@ -61,10 +64,9 @@ export default function ProfileScreen() {
     handleSave,
     startEditing,
     cancelEditing,
-  } = useProfileForm();
+  } = useProfileForm({ identityOnly: !isUser });
 
   // Workout preferences are user-only, like the Workouts screen they shape
-  const isUser = useAuth().role === "user";
   const workoutOptions = useWorkoutOptions(isUser);
 
   // Remembered per URL, so a new photo after a failed load gets shown
@@ -80,36 +82,68 @@ export default function ProfileScreen() {
   const disabledBg = { backgroundColor: getScreenTones(darkMode).surfaceMuted };
   const joined = joinedLabel(serverData?.createdAt);
 
+  // Same card wherever it sits; `extra` places it
+  const personalCard = (extra) => (
+    <View style={[styles.card, card, extra]}>
+      <Text style={[styles.sectionTitle, textColor]}>Personal Information</Text>
+      <Text style={styles.sectionSubtitle}>Your basic personal details</Text>
+
+      <View style={styles.fieldsGrid}>
+        <ProfileInput label="First Name" required value={profile.firstName} onChangeText={(v) => handleChange("firstName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput label="Last Name" value={profile.lastName} onChangeText={(v) => handleChange("lastName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        {/* Read-only: an email change invalidates email_verified_at and the OTP
+            challenges tied to the address, so it needs its own re-verification flow. */}
+        <ProfileInput label="Email" value={profile.email} editing={false} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} keyboardType="email-address" loading={loading} />
+        {isUser && <ProfileInput label="Age" required value={String(profile.age ?? "")} onChangeText={(v) => handleChange("age", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} keyboardType="numeric" loading={loading} />}
+        {isUser && <ProfileInput label="Height (cm)" required value={String(profile.height ?? "")} onChangeText={(v) => handleChange("height", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} keyboardType="numeric" loading={loading} />}
+        {isUser && <ProfileInput label="Weight (kg)" required value={String(profile.weight ?? "")} onChangeText={(v) => handleChange("weight", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} keyboardType="numeric" loading={loading} />}
+        {isUser && (
+          <ProfileSelect
+            label="Sex"
+            value={profile.sex}
+            options={SEXES}
+            onSelect={(v) => handleChange("sex", v)}
+            editing={editing}
+            card={card}
+            textColor={textColor}
+            disabledBg={disabledBg}
+            loading={loading}
+          />
+        )}
+      </View>
+    </View>
+  );
+
   // First load renders the real page with placeholders where the values go,
   // so nothing shifts once the profile arrives. Titles and labels render as is
   return (
     <DashboardLayout>
       {/* Page Header */}
-      <View style={[styles.pageHeader, narrow && styles.wrapRow]}>
+      <View style={[styles.pageHeader, narrow && styles.pageHeaderNarrow]}>
         <View style={styles.headerText}>
           <Text style={[styles.pageTitle, textColor]}>Profile</Text>
           <Text style={styles.pageSubtitle}>Manage your personal information and preferences.</Text>
         </View>
 
         {loading ? (
-          <Skeleton width={120} height={36} />
+          <Skeleton width={narrow ? 76 : 120} height={36} />
         ) : !editing ? (
-          <Pressable onPress={startEditing} style={styles.actionBtn}>
+          <Pressable onPress={startEditing} style={[styles.actionBtn, narrow && styles.actionBtnNarrow]}>
             <Ionicons name="create-outline" size={15} color={colors.white} />
-            <Text style={styles.actionBtnText}>Edit Profile</Text>
+            <Text style={styles.actionBtnText}>{narrow ? "Edit" : "Edit Profile"}</Text>
           </Pressable>
         ) : (
-          <View style={styles.headerActions}>
+          <View style={[styles.headerActions, narrow && styles.headerActionsNarrow]}>
             <Pressable onPress={cancelEditing} disabled={saving} style={styles.cancelBtn}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </Pressable>
-            <Pressable onPress={handleSave} disabled={saving} style={[styles.actionBtn, saving && styles.btnDisabled]}>
+            <Pressable onPress={handleSave} disabled={saving} style={[styles.actionBtn, narrow && styles.actionBtnNarrow, saving && styles.btnDisabled]}>
               {saving ? (
                 <ActivityIndicator size="small" color={colors.white} />
               ) : (
                 <>
                   <Ionicons name="save-outline" size={15} color={colors.white} />
-                  <Text style={styles.actionBtnText}>Save Changes</Text>
+                  <Text style={styles.actionBtnText}>{narrow ? "Save" : "Save Changes"}</Text>
                 </>
               )}
             </Pressable>
@@ -192,64 +226,45 @@ export default function ProfileScreen() {
         </View>
 
         {/* Overview: the body numbers at a glance, BMI worked out from them */}
-        <View style={[styles.card, card, styles.flex2, narrow && styles.stackItem]}>
-          <Text style={[styles.sectionTitle, textColor]}>Overview</Text>
-          <Text style={styles.sectionSubtitle}>Updates as you edit your details</Text>
-          <OverviewBoxes form={profile} bmi={bmi} bmiLabel={bmiLabel} card={card} textColor={textColor} loading={loading} large />
-        </View>
+        {isUser ? (
+          <View style={[styles.card, card, styles.flex2, narrow && styles.stackItem]}>
+            <Text style={[styles.sectionTitle, textColor]}>Overview</Text>
+            <Text style={styles.sectionSubtitle}>Updates as you edit your details</Text>
+            <OverviewBoxes form={profile} bmi={bmi} bmiLabel={bmiLabel} card={card} textColor={textColor} loading={loading} large />
+          </View>
+        ) : (
+          personalCard([styles.flex2, narrow && styles.stackItem])
+        )}
       </View>
 
-      {/* Personal Information */}
-      <View style={[styles.card, card, styles.sectionSpacing]}>
-        <Text style={[styles.sectionTitle, textColor]}>Personal Information</Text>
-        <Text style={styles.sectionSubtitle}>Your basic personal details</Text>
+      {/* Users get it as its own section; others beside the avatar card */}
+      {isUser && personalCard(styles.sectionSpacing)}
 
-        <View style={styles.fieldsGrid}>
-          <ProfileInput label="First Name" required value={profile.firstName} onChangeText={(v) => handleChange("firstName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
-          <ProfileInput label="Last Name" value={profile.lastName} onChangeText={(v) => handleChange("lastName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
-          {/* Read-only: an email change invalidates email_verified_at and the OTP
-              challenges tied to the address, so it needs its own re-verification flow. */}
-          <ProfileInput label="Email" value={profile.email} editing={false} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} keyboardType="email-address" loading={loading} />
-          <ProfileInput label="Age" required value={String(profile.age ?? "")} onChangeText={(v) => handleChange("age", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} keyboardType="numeric" loading={loading} />
-          <ProfileInput label="Height (cm)" required value={String(profile.height ?? "")} onChangeText={(v) => handleChange("height", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} keyboardType="numeric" loading={loading} />
-          <ProfileInput label="Weight (kg)" required value={String(profile.weight ?? "")} onChangeText={(v) => handleChange("weight", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} keyboardType="numeric" loading={loading} />
-          <ProfileSelect
-            label="Sex"
-            value={profile.sex}
-            options={SEXES}
-            onSelect={(v) => handleChange("sex", v)}
-            editing={editing}
-            card={card}
-            textColor={textColor}
-            disabledBg={disabledBg}
-            loading={loading}
-          />
-        </View>
-      </View>
+      {/* Fitness Goals: users only */}
+      {isUser && (
+        <View style={[styles.card, card, styles.sectionSpacing]}>
+          <View style={styles.rowGap}>
+            <Ionicons name="locate" size={21} color={shellColors.primary} />
+            <View>
+              <Text style={[styles.sectionTitle, textColor]}>Fitness Goals</Text>
+              <Text style={styles.sectionSubtitle}>Customize your fitness preferences</Text>
+            </View>
+          </View>
 
-      {/* Fitness Goals */}
-      <View style={[styles.card, card, styles.sectionSpacing]}>
-        <View style={styles.rowGap}>
-          <Ionicons name="locate" size={21} color={shellColors.primary} />
-          <View>
-            <Text style={[styles.sectionTitle, textColor]}>Fitness Goals</Text>
-            <Text style={styles.sectionSubtitle}>Customize your fitness preferences</Text>
+          <View style={styles.fieldsGrid}>
+            {/* Same dropdowns as registration; "Other" allows custom text */}
+            <ProfilePlanField label="Primary Goal" required value={profile.goal} options={GOAL_OPTIONS} icon="flag-outline" placeholder="Select your goal" otherPlaceholder="Your goal (e.g. Run a 10K)" onChange={(v) => handleChange("goal", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
+            <ProfilePlanField label="Activity Level" required value={profile.activity} options={ACTIVITY_OPTIONS} icon="pulse-outline" placeholder="Select your activity level" otherPlaceholder="Your activity (e.g. Shift work, on my feet)" onChange={(v) => handleChange("activity", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
+            <ProfilePlanField label="Diet Preference" required value={profile.dietPreference} options={DIET_PREFERENCES} multiple exclusive={NO_DIET_PREFERENCE} icon="nutrition-outline" placeholder="Select any that apply" otherPlaceholder="Your diet (e.g. Intermittent Fasting)" onChange={(v) => handleChange("dietPreference", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
+            <ProfilePlanField label="Health Conditions" required value={profile.healthConditions} options={HEALTH_CONDITIONS} multiple icon="medkit-outline" placeholder="Select any that apply (or None)" otherPlaceholder="Your condition (e.g. Gout)" onChange={(v) => handleChange("healthConditions", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} note={HEALTH_CONDITIONS_NOTE} />
+            <ProfileInput label="Target Weight (kg)" value={String(profile.targetWeight ?? "")} onChangeText={(v) => handleChange("targetWeight", v)} editing={editing} keyboardType="numeric" placeholder="Not set" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+            <ProfileInput label="Weekly Pace (kg/week, 0.1–1)" value={String(profile.weeklyPace ?? "")} onChangeText={(v) => handleChange("weeklyPace", v)} editing={editing} keyboardType="decimal-pad" placeholder="Not set" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+            {isUser && (
+              <ProfileWorkoutPrefs label="Workout Preferences" value={profile.workoutPrefs} onChange={(v) => handleChange("workoutPrefs", v)} options={workoutOptions} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} loading={loading} darkMode={darkMode} />
+            )}
           </View>
         </View>
-
-        <View style={styles.fieldsGrid}>
-          {/* Same dropdowns as registration; "Other" allows custom text */}
-          <ProfilePlanField label="Primary Goal" required value={profile.goal} options={GOAL_OPTIONS} icon="flag-outline" placeholder="Select your goal" otherPlaceholder="Your goal (e.g. Run a 10K)" onChange={(v) => handleChange("goal", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
-          <ProfilePlanField label="Activity Level" required value={profile.activity} options={ACTIVITY_OPTIONS} icon="pulse-outline" placeholder="Select your activity level" otherPlaceholder="Your activity (e.g. Shift work, on my feet)" onChange={(v) => handleChange("activity", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
-          <ProfilePlanField label="Diet Preference" required value={profile.dietPreference} options={DIET_PREFERENCES} multiple exclusive={NO_DIET_PREFERENCE} icon="nutrition-outline" placeholder="Select any that apply" otherPlaceholder="Your diet (e.g. Intermittent Fasting)" onChange={(v) => handleChange("dietPreference", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
-          <ProfilePlanField label="Health Conditions" required value={profile.healthConditions} options={HEALTH_CONDITIONS} multiple icon="medkit-outline" placeholder="Select any that apply (or None)" otherPlaceholder="Your condition (e.g. Gout)" onChange={(v) => handleChange("healthConditions", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} note={HEALTH_CONDITIONS_NOTE} />
-          <ProfileInput label="Target Weight (kg)" value={String(profile.targetWeight ?? "")} onChangeText={(v) => handleChange("targetWeight", v)} editing={editing} keyboardType="numeric" placeholder="Not set" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
-          <ProfileInput label="Weekly Pace (kg/week, 0.1–1)" value={String(profile.weeklyPace ?? "")} onChangeText={(v) => handleChange("weeklyPace", v)} editing={editing} keyboardType="decimal-pad" placeholder="Not set" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
-          {isUser && (
-            <ProfileWorkoutPrefs label="Workout Preferences" value={profile.workoutPrefs} onChange={(v) => handleChange("workoutPrefs", v)} options={workoutOptions} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} loading={loading} darkMode={darkMode} />
-          )}
-        </View>
-      </View>
+      )}
 
     </DashboardLayout>
   );
@@ -275,8 +290,14 @@ const styles = StyleSheet.create({
   stackItem: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
 
   // Header
-  pageHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }, // mb-5
-  headerText: { flexShrink: 1 },
+  // gap: the buttons keep a space under the title once the row wraps
+  pageHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 20 }, // mb-5
+  // Narrow: the same single row as the phone app (title left, buttons right),
+  // with the short labels, instead of the buttons dropping under the title
+  pageHeaderNarrow: { alignItems: "flex-start", marginBottom: 12 },
+  headerActionsNarrow: { gap: 14 },
+  actionBtnNarrow: { minWidth: 76, justifyContent: "center", paddingVertical: 8 },
+  headerText: { flexShrink: 1, minWidth: 0, flex: 1 },
   pageTitle: { fontSize: 24, fontWeight: "700" }, // text-2xl font-bold
   pageSubtitle: { marginTop: 4, fontSize: 13, color: colors.textMuted },
 

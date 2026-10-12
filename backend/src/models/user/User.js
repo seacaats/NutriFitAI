@@ -304,7 +304,8 @@ userSchema.statics.markEmailVerified = async function markEmailVerified(id, clie
   );
 };
 
-// Re-registration of an unverified account: new deadline and held weight
+// Re-registration of an unverified account: new deadline, held weight, and the
+// terms accepted again (createdAt stays the first sign-up)
 userSchema.statics.updatePendingRegistration = async function updatePendingRegistration(
   id,
   { unverifiedExpiresAt, pendingWeightKg },
@@ -312,7 +313,7 @@ userSchema.statics.updatePendingRegistration = async function updatePendingRegis
 ) {
   await this.updateOne(
     { _id: id, emailVerifiedAt: null },
-    { $set: { unverifiedExpiresAt, pendingWeightKg } },
+    { $set: { unverifiedExpiresAt, pendingWeightKg, termsAcceptedAt: new Date() } },
     opts(client),
   );
 };

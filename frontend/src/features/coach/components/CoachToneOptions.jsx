@@ -1,7 +1,9 @@
 import { PlanModal } from "@/features/workouts/components/PlanParts";
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
+import Skeleton from "@/shared/components/Skeleton";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import { COACH_TONES, DEFAULT_COACH_TONE } from "@/shared/constants/goalOptions";
+import { UntrackedSkeletons } from "@/shared/state/skeletonTracker";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
@@ -10,8 +12,19 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 // Coach tone: the three choices as tappable rows. Used by the onboarding
 // and the AI Coach screen's tone dialog; Settings has the compact switch.
 // Tapping the picked one again clears it (null), back to the default voice
-export default function CoachToneOptions({ value, onChange, disabled, darkMode }) {
+// `loading` shows placeholder rows until the saved tone arrives
+export default function CoachToneOptions({ value, onChange, disabled, darkMode, loading = false }) {
   const tone = getScreenTones(darkMode);
+  // Inside a dialog, so it doesn't hide the page's scrollbar
+  if (loading) {
+    return (
+      <UntrackedSkeletons>
+        <View style={styles.list}>
+          {COACH_TONES.map((o) => <Skeleton key={o.value} height={56} borderRadius={radii.md} />)}
+        </View>
+      </UntrackedSkeletons>
+    );
+  }
   return (
     <View style={styles.list} accessibilityRole="radiogroup">
       {COACH_TONES.map((o) => {
@@ -85,7 +98,7 @@ export function CoachToneButton({ color, darkMode }) {
         onClose={() => { setOpen(false); setError(""); }}
         darkMode={darkMode}
       >
-        <CoachToneOptions value={value} onChange={choose} disabled={saving || value === undefined} darkMode={darkMode} />
+        <CoachToneOptions value={value} onChange={choose} disabled={saving} loading={value === undefined} darkMode={darkMode} />
         <ScreenError message={error} onDismiss={() => setError("")} />
       </PlanModal>
     </>

@@ -124,15 +124,17 @@ export const shellColors = {
     sidebarText: "#222222",
     rightBg: "#f8faf7",
     activeNavBg: "#dcffcc",
-    inactiveNavText: "#8b9bb0",
+    inactiveNavText: "#5f6b7d", // darker than before, was too faint on white
+    // Active nav / accent text: the brand green is too light as text on white
+    activeNavText: "#2f7d17",
     inactiveNavHoverBg: "#f3f4f6", // gray-100
     logoutHoverBg: "#fef2f2", // red-50
-    headerDescText: "#6a7282", // gray-500
+    headerDescText: "#4b5563", // gray-600
     dropdownBg: "#ffffff",
     dropdownBorder: "#e5e7eb", // gray-200
     // Hairline between the web sidebar / topbar and the page
     shellBorder: "#e6ebe3",
-    notifIcon: "#99a1af", // gray-400
+    notifIcon: "#5f6b7d",
     notifHoverBg: "#f3f4f6", // gray-100
     notifGreenCard: "#f0faeb",
     notifBlueCard: "#eff6ff", // blue-50
@@ -148,6 +150,7 @@ export const shellColors = {
     rightBg: "#181818",
     activeNavBg: "#294b22",
     inactiveNavText: "#99a1af", // gray-400
+    activeNavText: "#4CAF2F",
     inactiveNavHoverBg: "#333333",
     logoutHoverBg: "#333333",
     headerDescText: "#99a1af", // gray-400

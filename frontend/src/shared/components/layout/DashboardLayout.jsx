@@ -1,11 +1,11 @@
 import { useNotifications } from "@/features/notifications/hooks/useNotifications";
-import { useSkeletonsShowing } from "@/shared/state/skeletonTracker";
 import OfflineBanner from "@/shared/components/ui/OfflineBanner";
 import { useReloadOnReconnect, useScrollToErrors, withScreenAlert } from "@/shared/components/ui/ScreenAlert";
 import { canAccess, useAuth } from "@/shared/context/AuthContext";
 import { usePullRefreshState } from "@/shared/context/PullRefreshContext";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { getChipTint } from "@/shared/theme/nutrifitai";
+import { useSkeletonsShowing } from "@/shared/state/skeletonTracker";
+import { getScreenTones } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { usePathname, useRouter } from "expo-router";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
@@ -25,14 +25,13 @@ const TABS_RIGHT = [
 ];
 
 // Everything else lives in the ☰ menu, same set as the web sidebar
-// `tint`: each tile's colour (chipTints in the theme)
 const MENU_ITEMS = [
-  { name: "Food Scanner", icon: "camera", route: "/food-scanner", tint: "green" },
-  { name: "Workouts", icon: "barbell", route: "/workouts", tint: "orange" },
-  { name: "Steps", icon: "footsteps", route: "/steps", tint: "blue" },
-  { name: "Water", icon: "water", route: "/water", tint: "cyan" },
-  { name: "Progress", icon: "bar-chart", route: "/progress", tint: "rose" },
-  { name: "AI Coach", icon: "hardware-chip", route: "/ai-coach", tint: "purple" },
+  { name: "Food Scanner", icon: "camera", route: "/food-scanner" },
+  { name: "Workouts", icon: "barbell", route: "/workouts" },
+  { name: "Steps", icon: "footsteps", route: "/steps" },
+  { name: "Water", icon: "water", route: "/water" },
+  { name: "Progress", icon: "bar-chart", route: "/progress" },
+  { name: "AI Coach", icon: "hardware-chip", route: "/ai-coach" },
 ];
 
 // Small links under the grid: the landing page and the terms
@@ -55,6 +54,7 @@ export default function DashboardLayout({ children, hideTabBar = false, scrollab
   const router = useRouter();
   const pathname = usePathname();
   const { shell: c, darkMode } = useTheme();
+  const tone = getScreenTones(darkMode);
   const { role } = useAuth();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -201,19 +201,21 @@ export default function DashboardLayout({ children, hideTabBar = false, scrollab
           <View style={styles.grid}>
             {menuItems.map((item) => {
               const active = isOn(pathname, item.route);
-              const tint = getChipTint(item.tint, darkMode);
               return (
                 <Pressable
                   key={item.route}
                   onPress={() => go(item.route)}
                   style={[
                     styles.menuItem,
-                    // Tinted tile, label in its colour; the open screen's gets a coloured border
-                    { backgroundColor: tint.backgroundColor, borderColor: active ? tint.icon : "transparent" },
+                    // One look for every tile, like the web sidebar; the open screen's gets the green highlight
+                    { backgroundColor: active ? c.activeNavBg : tone.card, borderColor: active ? c.primary : tone.border },
                   ]}
                 >
-                  <Ionicons name={item.icon} size={22} color={tint.icon} />
-                  <Text style={[styles.menuLabel, { color: tint.icon }]} numberOfLines={1}>
+                  {/* Green icon on a soft green disc: the colour accent, same on all tiles */}
+                  <View style={[styles.menuIcon, { backgroundColor: active ? tone.card : tone.soft }]}>
+                    <Ionicons name={item.icon} size={20} color={c.primary} />
+                  </View>
+                  <Text style={[styles.menuLabel, { color: active ? c.activeNavText : tone.text }]} numberOfLines={1}>
                     {item.name}
                   </Text>
                 </Pressable>
@@ -280,10 +282,11 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: "center",
     gap: 6,
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderWidth: 1,
     borderRadius: 14,
   },
+  menuIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   menuLabel: { fontSize: 12, fontWeight: "700" },
   infoRow: { flexDirection: "row", justifyContent: "center", gap: 20, marginTop: 14, paddingTop: 12, borderTopWidth: 1 },
   infoLink: { flexDirection: "row", alignItems: "center", gap: 6 },

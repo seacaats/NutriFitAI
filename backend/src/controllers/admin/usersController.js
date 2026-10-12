@@ -142,6 +142,14 @@ const updateUserRole = asyncHandler(async (req, res) => {
 
   const currentRole = target.role || 'user';
 
+  // Only admins and superadmins have a role to change. A user's isn't touched
+  // from here
+  if (currentRole === 'user') {
+    throw ApiError.badRequest("Only admins and superadmins can have their role changed.", {
+      code: 'USER_ROLE_PROTECTED',
+    });
+  }
+
   // 2. A no-op write would still produce a critical-severity audit entry,
   //    which is how an audit trail becomes noise nobody reads.
   if (currentRole === nextRole) {

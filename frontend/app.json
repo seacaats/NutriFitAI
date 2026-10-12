@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "NutriFitAI",
-    "slug": "nutrifit-ai-web",
+    "slug": "nutrifitai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -11,7 +11,8 @@
       "bundleIdentifier": "com.nutrifitai.app",
       "icon": "./assets/images/icon.png",
       "infoPlist": {
-        "NSMotionUsageDescription": "NutriFitAI reads your step count so it can track your daily activity against your goals."
+        "NSMotionUsageDescription": "NutriFitAI reads your step count so it can track your daily activity against your goals.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -24,7 +25,8 @@
       "package": "com.nutrifitai.app",
       "permissions": [
         "android.permission.ACTIVITY_RECOGNITION",
-        "android.permission.health.READ_STEPS"
+        "android.permission.health.READ_STEPS",
+        "android.permission.CAMERA"
       ]
     },
     "web": {
@@ -68,7 +70,11 @@
       "expo-web-browser",
       [
         "react-native-health-connect",
-        { "permissions": ["android.permission.health.READ_STEPS"] }
+        {
+          "permissions": [
+            "android.permission.health.READ_STEPS"
+          ]
+        }
       ],
       [
         "expo-build-properties",
@@ -88,8 +94,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "bb0cc26c-8a46-4de0-9e92-ec5b73643c77"
+        "projectId": "d3b71476-07f7-4db8-8c2e-4ac74bdacf5e"
       }
-    }
+    },
+    "owner": "nutrifitaiai"
   }
 }

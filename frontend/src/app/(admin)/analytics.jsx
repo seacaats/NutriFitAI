@@ -97,6 +97,9 @@ export default function AdminAnalyticsScreen() {
   // First load: the page's real layout with placeholders. A refresh keeps the old numbers
   const first = loading && !v;
 
+  // Stacked cards keep their natural height (flex: 1 would collapse them in a column)
+  const panelFlex = narrow ? styles.stackItem : styles.flex1;
+
   const activeTop = ceilTo(Math.max(0, ...(v?.activeSeries.map((d) => d.value) || [0])), 5);
   const signupTop = ceilTo(Math.max(0, ...(v?.signupSeries.map((d) => d.value) || [0])), 5);
   const green = getChipTint("green", darkMode);
@@ -150,7 +153,7 @@ export default function AdminAnalyticsScreen() {
 
       {/* Trends over the last 30 days */}
       <View style={[styles.row, narrow && styles.column]}>
-        <Panel title="Active users" note="Per day, last 30 days" tone={tone} style={styles.flex1}>
+        <Panel title="Active users" note="Per day, last 30 days" tone={tone} style={panelFlex}>
           {first ? (
             <Skeleton width="100%" height={170} />
           ) : (
@@ -167,7 +170,7 @@ export default function AdminAnalyticsScreen() {
             />
           )}
         </Panel>
-        <Panel title="Sign-ups" note="New user accounts per day" tone={tone} style={styles.flex1}>
+        <Panel title="Sign-ups" note="New user accounts per day" tone={tone} style={panelFlex}>
           {first ? (
             <Skeleton width="100%" height={170} />
           ) : (
@@ -188,7 +191,7 @@ export default function AdminAnalyticsScreen() {
 
       <View style={[styles.row, narrow && styles.column]}>
         {/* What people used this week */}
-        <Panel title="Feature use" note="Last 7 days" tone={tone} style={styles.flex1}>
+        <Panel title="Feature use" note="Last 7 days" tone={tone} style={panelFlex}>
           {USAGE_ROWS.map((r, i) => (
             <View key={r.key} style={[styles.usageRow, i > 0 && { borderTopWidth: 1, borderTopColor: tone.border }]}>
               <Ionicons name={r.icon} size={16} color={shellColors.primary} />
@@ -201,7 +204,7 @@ export default function AdminAnalyticsScreen() {
         </Panel>
 
         {/* Severity is the audit log's chain (Audit Logs page) */}
-        <Panel title="Audit events" note="Last 7 days, by severity" tone={tone} style={styles.flex1}>
+        <Panel title="Audit events" note="Last 7 days, by severity" tone={tone} style={panelFlex}>
           <Breakdown rows={AUDIT_ROWS} counts={v?.audit} tone={tone} centerLabel="events" loading={first} />
         </Panel>
       </View>
@@ -212,7 +215,8 @@ export default function AdminAnalyticsScreen() {
 const styles = StyleSheet.create({
   ...adminStyles,
 
-  refreshBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: shellColors.primary, borderRadius: radii.sm, paddingHorizontal: 14, paddingVertical: 9 },
+  // alignSelf: not stretched across the page when the header stacks
+  refreshBtn: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: shellColors.primary, borderRadius: radii.sm, paddingHorizontal: 14, paddingVertical: 9 },
   refreshText: { fontSize: 13, fontWeight: "700", color: colors.white },
 
   statCard: { flex: 1, minWidth: 150, borderWidth: 1, borderRadius: radii.md, padding: 16, gap: 4 },
@@ -222,6 +226,7 @@ const styles = StyleSheet.create({
 
   row: { flexDirection: "row", gap: 12, marginBottom: 12 },
   column: { flexDirection: "column" },
+  stackItem: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
 
   panel: { borderWidth: 1, borderRadius: radii.md, padding: 16, minWidth: 0 },
   panelHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 12, flexWrap: "wrap" },
@@ -229,7 +234,7 @@ const styles = StyleSheet.create({
   panelNote: { fontSize: 11, fontWeight: "600" },
 
   usageRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 },
-  usageLabel: { flex: 1, fontSize: 13, fontWeight: "600" },
+  usageLabel: { flex: 1, minWidth: 0, fontSize: 13, fontWeight: "600" },
   usageValue: { fontSize: 15, fontWeight: "800" },
 
   breakdown: { flexDirection: "row", alignItems: "center", gap: 16, flexWrap: "wrap" },

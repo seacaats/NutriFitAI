@@ -17,8 +17,27 @@ import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } fro
 // Both this route and the endpoint behind it are superadmin-gated. The route
 // guard (app/(main)/_layout.jsx) is the usability half; requireMinimumRole
 // on the server, reading a role refreshed from the database rather than from
-// the token, is the half that matters
+// the token, is the half that matters.
+//
+// The one place roles change: a superadmin promotes an admin to superadmin, or
+// demotes a superadmin to admin. Users are never promoted or demoted; the
+// server refuses it too
 
+// Confirm-card copy per action. Both need a reason (adminValidators)
+const ACTION_COPY = {
+  promote: {
+    title: (p) => `Promote ${p.name} to superadmin?`,
+    body: "They get full access, including changing roles and deleting accounts.",
+    button: "Promote",
+    busy: "Promoting…",
+  },
+  demote: {
+    title: (p) => `Demote ${p.name} to admin?`,
+    body: "They keep admin access but can no longer change roles or delete accounts.",
+    button: "Demote",
+    busy: "Demoting…",
+  },
+};
 
 function formatWhen(value) {
   if (!value) return "—";
@@ -41,18 +60,27 @@ export default function SuperadminAdminsScreen() {
 
   const [expandedId, setExpandedId] = useState(null);
   const [notice, setNotice] = useState(null);
-  const [pendingRevoke, setPendingRevoke] = useState(null);
+  // { kind: "promote" | "demote", id, name } while the confirm card is open
+  const [pending, setPending] = useState(null);
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const submitRevoke = async () => {
-    if (!pendingRevoke || reason.trim().length < 3) return;
+  const canSubmit = reason.trim().length >= 3;
+
+  const startAction = (kind, row) => {
+    setPending({ kind, id: row.id, name: row.fullName || row.email });
+    setReason("");
+    setNotice(null);
+  };
+
+  const submitAction = async () => {
+    if (!pending || !canSubmit) return;
     setSubmitting(true);
-    const result = await admins.changeRole(pendingRevoke.id, "user", reason.trim());
+    const result = await admins.changeRole(pending.id, pending.kind === "promote" ? "superadmin" : "admin", reason.trim());
     setSubmitting(false);
     setNotice({ ok: result.ok, message: result.message });
     if (result.ok) {
-      setPendingRevoke(null);
+      setPending(null);
       setReason("");
     }
   };
@@ -111,19 +139,23 @@ export default function SuperadminAdminsScreen() {
 
           {isSelf ? (
             <Text style={[styles.selfNote, { color: tone.muted }]}>
-              You can&apos;t revoke your own access.
+              You can&apos;t change your own role. Ask another superadmin.
             </Text>
+          ) : row.role === "admin" ? (
+            <Pressable
+              onPress={() => startAction("promote", row)}
+              style={[styles.secondaryBtn, { borderColor: tone.border, backgroundColor: tone.card }]}
+            >
+              <Ionicons name="arrow-up-circle-outline" size={14} color={tone.text} />
+              <Text style={[styles.secondaryBtnText, { color: tone.text }]}>Promote to superadmin</Text>
+            </Pressable>
           ) : (
             <Pressable
-              onPress={() => {
-                setPendingRevoke({ id: row.id, name: row.fullName || row.email, from: row.role });
-                setReason("");
-                setNotice(null);
-              }}
+              onPress={() => startAction("demote", row)}
               style={[styles.revokeBtn, { borderColor: colors.danger }]}
             >
-              <Ionicons name="remove-circle-outline" size={14} color={colors.danger} />
-              <Text style={styles.revokeBtnText}>Revoke access</Text>
+              <Ionicons name="arrow-down-circle-outline" size={14} color={colors.danger} />
+              <Text style={styles.revokeBtnText}>Demote to admin</Text>
             </Pressable>
           )}
         </View>
@@ -143,15 +175,6 @@ export default function SuperadminAdminsScreen() {
           </Text>
         </View>
         <View style={styles.headerActions}>
-          <Pressable
-            onPress={() => router.push("/users")}
-            style={[styles.secondaryBtn, { borderColor: tone.border, backgroundColor: tone.card }]}
-          >
-            <Ionicons name="person-add-outline" size={15} color={tone.text} />
-            {/* Promotion happens from the users table, where the person being
-                promoted can actually be found and read */}
-            <Text style={[styles.secondaryBtnText, { color: tone.text }]}>Grant access</Text>
-          </Pressable>
           <Pressable onPress={admins.refresh} disabled={admins.loading} style={[styles.refreshBtn, admins.loading && { opacity: 0.6 }]}>
             <Ionicons name="refresh" size={16} color={colors.white} />
             <Text style={styles.refreshText}>{admins.loading ? "Loading" : "Refresh"}</Text>
@@ -223,14 +246,11 @@ export default function SuperadminAdminsScreen() {
         </View>
       )}
 
-      {pendingRevoke && (
-        <View style={[styles.confirmCard, { backgroundColor: tone.card, borderColor: colors.danger }]}>
-          <Text style={[styles.confirmTitle, { color: tone.text }]}>
-            Revoke {pendingRevoke.from} access from {pendingRevoke.name}?
-          </Text>
+      {pending && (
+        <View style={[styles.confirmCard, { backgroundColor: tone.card, borderColor: pending.kind === "promote" ? shellColors.primary : colors.danger }]}>
+          <Text style={[styles.confirmTitle, { color: tone.text }]}>{ACTION_COPY[pending.kind].title(pending)}</Text>
           <Text style={[styles.confirmBody, { color: tone.muted }]}>
-            They keep their account and their own data, and lose every admin page immediately.
-            This is recorded in the audit log with your name and the reason below.
+            {ACTION_COPY[pending.kind].body} This is recorded in the audit log with your name and the reason below.
           </Text>
           <RingInput
             value={reason}
@@ -242,17 +262,17 @@ export default function SuperadminAdminsScreen() {
           />
           <View style={styles.confirmActions}>
             <Pressable
-              onPress={() => { setPendingRevoke(null); setReason(""); }}
+              onPress={() => { setPending(null); setReason(""); }}
               style={[styles.secondaryBtn, { borderColor: tone.border }]}
             >
               <Text style={[styles.secondaryBtnText, { color: tone.text }]}>Cancel</Text>
             </Pressable>
             <Pressable
-              onPress={submitRevoke}
-              disabled={submitting || reason.trim().length < 3}
-              style={[styles.dangerBtn, (submitting || reason.trim().length < 3) && styles.btnDisabled]}
+              onPress={submitAction}
+              disabled={submitting || !canSubmit}
+              style={[pending.kind === "promote" ? styles.primaryBtn : styles.dangerBtn, (submitting || !canSubmit) && styles.btnDisabled]}
             >
-              <Text style={styles.dangerBtnText}>{submitting ? "Revoking…" : "Revoke access"}</Text>
+              <Text style={styles.dangerBtnText}>{submitting ? ACTION_COPY[pending.kind].busy : ACTION_COPY[pending.kind].button}</Text>
             </Pressable>
           </View>
         </View>
@@ -269,7 +289,7 @@ export default function SuperadminAdminsScreen() {
         emptyBody={
           admins.search
             ? `Nothing matches "${admins.search}".`
-            : "Promote someone from the users page to give them admin access."
+            : "Admin accounts are created outside the app."
         }
         expandedRowId={expandedId}
         onToggleRow={setExpandedId}
@@ -333,6 +353,7 @@ const styles = StyleSheet.create({
   reasonInput: { borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, minHeight: 64, textAlignVertical: "top" },
   confirmActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
   dangerBtn: { backgroundColor: colors.danger, borderRadius: radii.sm, paddingHorizontal: 16, paddingVertical: 10 },
+  primaryBtn: { backgroundColor: shellColors.primary, borderRadius: radii.sm, paddingHorizontal: 16, paddingVertical: 10 },
   dangerBtnText: { fontSize: 13, fontWeight: "700", color: colors.white },
   btnDisabled: { opacity: 0.5 },
 

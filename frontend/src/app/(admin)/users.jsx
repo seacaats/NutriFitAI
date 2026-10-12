@@ -20,10 +20,9 @@ import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } fro
  * width-dependent column count, so a split would create exactly the
  * hand-synced duplicate that screenStyles.js exists to undo.
  *
- * WHAT A SUPERADMIN SEES THAT AN ADMIN DOES NOT: the role column is
- * actionable. Promotion and demotion go through PATCH
- * /admin/users/:id/role, which is superadmin-only server-side -- this screen
- * hides the control for an admin as a courtesy, not as the enforcement.
+ * Roles are not changed here: a superadmin grants and revokes admin access
+ * from the Admins screen (app/(superadmin)/admins.jsx), where the people
+ * holding it are listed.
  */
 
 const ROLE_FILTERS = [
@@ -52,7 +51,6 @@ function formatWhen(value) {
 
 // Confirm-card copy per action. Every action needs a reason (adminValidators)
 const ACTION_COPY = {
-  role: { button: "Confirm change" },
   rename: { title: (p) => `Rename ${p.name}?`, button: "Save name" },
   suspend: { title: (p) => `Suspend ${p.name}?`, body: "They are signed out within 15 minutes and can't sign in until reinstated.", button: "Suspend" },
   reinstate: { title: (p) => `Reinstate ${p.name}?`, body: "They can sign in again right away.", button: "Reinstate" },
@@ -79,7 +77,6 @@ export default function AdminUsersScreen() {
   const narrow = width < 900;
 
   const { user, hasRole, role: myRole } = useAuth();
-  const canChangeRoles = hasRole("superadmin");
   const canDelete = hasRole("superadmin");
 
   // Mirrors loadManageableTarget: never yourself, only a strictly lower role.
@@ -91,10 +88,10 @@ export default function AdminUsersScreen() {
   const [notice, setNotice] = useState(null);
 
   /**
-   * A role change is irreversible-ish and high-consequence, so it is a
-   * two-step interaction: pick the new role, then confirm with a reason. The
-   * reason is REQUIRED by the API (adminValidators) rather than optional --
-   * it is the one part of the audit entry nothing else can reconstruct later
+   * Account actions are high-consequence, so each is a two-step interaction:
+   * pick it, then confirm with a reason. The reason is REQUIRED by the API
+   * (adminValidators) rather than optional -- it is the one part of the audit
+   * entry nothing else can reconstruct later
    */
   const [pendingChange, setPendingChange] = useState(null);
   const [reason, setReason] = useState("");
@@ -110,7 +107,7 @@ export default function AdminUsersScreen() {
     setNotice(null);
   };
 
-  const submitRoleChange = async () => {
+  const submitAction = async () => {
     if (!pendingChange || !canSubmit) return;
     setSubmitting(true);
     const { kind, id } = pendingChange;
@@ -123,7 +120,10 @@ export default function AdminUsersScreen() {
     else if (kind === "reset") result = await users.forcePasswordReset(id, why);
     else if (kind === "cancelReset") result = await users.cancelPasswordReset(id, why);
     else if (kind === "delete") result = await users.deleteUser(id, why);
-    else result = await users.changeRole(id, pendingChange.nextRole, why);
+    else {
+      setSubmitting(false);
+      return;
+    }
     setSubmitting(false);
     setNotice({ ok: result.ok, message: result.message });
     if (result.ok) {
@@ -178,12 +178,6 @@ export default function AdminUsersScreen() {
   ];
 
   const renderExpanded = (row) => {
-    // A superadmin may not change their OWN role (the API refuses it too --
-    // privilege should only ever flow from another account, so there is
-    // always a second party in the audit trail)
-    const isSelf = row.id === user?.id;
-    const roleOptions = ["user", "admin", "superadmin"].filter((r) => r !== row.role);
-
     return (
       <View style={styles.expandedWrap}>
         <DetailGrid
@@ -240,28 +234,6 @@ export default function AdminUsersScreen() {
           </View>
         )}
 
-        {canChangeRoles && !isSelf && (
-          <View style={[styles.roleActions, { borderTopColor: tone.border }]}>
-            <Text style={[styles.roleActionsLabel, { color: tone.muted }]}>Change role to</Text>
-            <View style={styles.roleBtnRow}>
-              {roleOptions.map((nextRole) => (
-                <Pressable
-                  key={nextRole}
-                  onPress={() => startAction("role", row, { from: row.role, nextRole })}
-                  style={[styles.roleBtn, { borderColor: tone.border, backgroundColor: tone.card }]}
-                >
-                  <Text style={[styles.roleBtnText, { color: tone.text }]}>{nextRole}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {canChangeRoles && isSelf && (
-          <Text style={[styles.selfNote, { color: tone.muted }]}>
-            You can&apos;t change your own role. Ask another superadmin.
-          </Text>
-        )}
       </View>
     );
   };
@@ -334,9 +306,7 @@ export default function AdminUsersScreen() {
       {pendingChange && (
         <View style={[styles.confirmCard, { backgroundColor: tone.card, borderColor: colors.danger }]}>
           <Text style={[styles.confirmTitle, { color: tone.text }]}>
-            {pendingChange.kind === "role"
-              ? `Change ${pendingChange.name} from ${pendingChange.from} to ${pendingChange.nextRole}?`
-              : ACTION_COPY[pendingChange.kind].title(pendingChange)}
+            {ACTION_COPY[pendingChange.kind].title(pendingChange)}
           </Text>
           <Text style={[styles.confirmBody, { color: tone.muted }]}>
             {ACTION_COPY[pendingChange.kind].body ? `${ACTION_COPY[pendingChange.kind].body} ` : ""}
@@ -376,7 +346,7 @@ export default function AdminUsersScreen() {
               <Text style={[styles.secondaryBtnText, { color: tone.text }]}>Cancel</Text>
             </Pressable>
             <Pressable
-              onPress={submitRoleChange}
+              onPress={submitAction}
               disabled={submitting || !canSubmit}
               style={[styles.dangerBtn, (submitting || !canSubmit) && styles.btnDisabled]}
             >
@@ -432,7 +402,6 @@ const styles = StyleSheet.create({
   roleBtnRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   roleBtn: { borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 14, paddingVertical: 8 },
   roleBtnText: { fontSize: 12, fontWeight: "700", textTransform: "capitalize" },
-  selfNote: { fontSize: 12, fontStyle: "italic" },
 
   confirmCard: { borderWidth: 1, borderRadius: radii.md, padding: 16, gap: 10, marginBottom: 16 },
   confirmTitle: { fontSize: 15, fontWeight: "700" },
@@ -447,7 +416,9 @@ const styles = StyleSheet.create({
   dangerBtnText: { fontSize: 13, fontWeight: "700", color: colors.white },
   btnDisabled: { opacity: 0.5 },
 
+  // alignSelf: not stretched across the page when the header stacks
   refreshBtn: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 7,

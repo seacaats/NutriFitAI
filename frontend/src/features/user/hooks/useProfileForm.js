@@ -1,4 +1,5 @@
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
+import { NO_WORKOUT_PREFS, weightTargetProblem } from "@/shared/constants/goalOptions";
 import {
   activityLabelToValue,
   activityValueToLabel,
@@ -9,7 +10,6 @@ import {
   sexLabelToValue,
   sexValueToLabel,
 } from "@/shared/constants/profileOptions";
-import { NO_WORKOUT_PREFS, weightTargetProblem } from "@/shared/constants/goalOptions";
 import { useAuth } from "@/shared/context/AuthContext";
 import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { resolveMediaUrl } from "@/shared/services/mediaUrl";
@@ -73,7 +73,9 @@ function numberOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-export function useProfileForm() {
+// identityOnly: name and email are all the screen shows (admins), so the body,
+// goal and diet fields aren't required to save
+export function useProfileForm({ identityOnly = false } = {}) {
   const { refresh: refreshAuth } = useAuth();
   const [serverData, setServerData] = useState(null);
   const [form, setForm] = useState(EMPTY);
@@ -133,6 +135,7 @@ export function useProfileForm() {
     if (form.email && !isValidEmail(form.email)) {
       return "Please enter a valid email address.";
     }
+    if (identityOnly) return "";
     // Required: an age can be changed but not cleared
     const ageError = validateNumber(form.age, { label: "Age", min: AGE_MIN, max: AGE_MAX, integer: true, required: true });
     if (ageError) return ageError;
