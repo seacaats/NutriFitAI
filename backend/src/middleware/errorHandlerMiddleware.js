@@ -22,7 +22,7 @@ function errorHandler(err, req, res, next) {
   // Without this they surfaced as a 500 (avatars included)
   if (err && err.name === 'MulterError') {
     error = err.code === 'LIMIT_FILE_SIZE'
-      ? new ApiError(413, 'That image is too large.', { code: 'FILE_TOO_LARGE' })
+      ? new ApiError(413, err.field === 'audio' ? 'That recording is too long. Try a shorter one.' : 'That image is too large.', { code: 'FILE_TOO_LARGE' })
       : ApiError.badRequest('That upload could not be read.', { code: 'BAD_UPLOAD' });
   }
 

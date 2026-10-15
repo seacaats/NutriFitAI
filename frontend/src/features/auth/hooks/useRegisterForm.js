@@ -10,6 +10,7 @@ import {
   GOAL_OPTIONS,
   goalLabelToValue,
   HEALTH_CONDITIONS,
+  healthConditionsFor,
   NO_DIET_PREFERENCE,
   NO_HEALTH_CONDITIONS,
   OTHER_OPTION,
@@ -98,7 +99,13 @@ export function useRegisterForm() {
   const dismissNotice = () => setNotice("");
 
   // Sex is optional, so tapping the active pill clears it
-  const selectSex = (label) => setSex((current) => (current === label ? "" : label));
+  // Conditions that no longer fit the new sex are dropped
+  const selectSex = (label) => {
+    const next = sex === label ? "" : label;
+    const allowed = healthConditionsFor(next);
+    setSex(next);
+    setHealthConditions((current) => current.filter((c) => allowed.includes(c)));
+  };
 
   const togglePicker = (key) => setOpenPicker((current) => (current === key ? null : key));
 
@@ -302,6 +309,7 @@ export function useRegisterForm() {
     setWeight,
     sex,
     selectSex,
+    healthOptions: healthConditionsFor(sex),
 
     detailsOpen,
     continueToDetails,

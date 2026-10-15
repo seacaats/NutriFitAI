@@ -29,7 +29,7 @@ function auditedHandler(limiter) {
 const loginLimiter = rateLimit({
   handler: auditedHandler('login'),
   windowMs: 5 * 60 * 1000,
-  limit: 10,
+  limit: 5,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => `${req.ip}:${(req.body && req.body.email) || ''}`,
@@ -40,7 +40,7 @@ const loginLimiter = rateLimit({
 const registerLimiter = rateLimit({
   handler: auditedHandler('registration'),
   windowMs: 5 * 60 * 1000,
-  limit: 20,
+  limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many registration attempts. Please try again in 5 minutes.' },
@@ -90,6 +90,20 @@ const aiChatLimiter = rateLimit({
   },
 });
 
+// Voice clips per user, they spend a shared free-tier allowance too
+const voiceTranscribeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.userId || req.ip,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: 'Too many voice messages in a row. Give it a moment.',
+  },
+});
+
 /**
  * Step sync fires on every app foreground, so this is a runaway guard rather
  * than a usage policy: normal use is a handful of calls an hour, and anything
@@ -135,6 +149,7 @@ module.exports = {
   otpVerifyLimiter,
   refreshLimiter,
   aiChatLimiter,
+  voiceTranscribeLimiter,
   stepSyncLimiter,
   foodScanLimiter,
 };

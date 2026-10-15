@@ -87,20 +87,12 @@ chatConversationSchema.statics.removeAllOwned = async function removeAllOwned(in
 };
 
 // Update a conversation's timestamp
-chatConversationSchema.statics.touch = async function touch(id, client) {
-  await this.updateOne({ _id: id }, { $set: { updatedAt: new Date() } }, opts(client));
-};
-
-// Auto-generate titles from a user's first message, scanning
-// only conversations with empty titles
-chatConversationSchema.statics.setTitleIfEmpty = async function setTitleIfEmpty(id, title, client) {
-  return withId(
-    await this.findOneAndUpdate(
-      { _id: id, title: null },
-      { $set: { title: title.slice(0, 150) } },
-      { new: true, runValidators: true, ...opts(client) },
-    ).lean(),
-  );
+// Bumps the thread to the top of the history. With a `title`, it also becomes
+// the thread's title, so the history shows the last message sent
+chatConversationSchema.statics.touch = async function touch(id, title, client) {
+  const set = { updatedAt: new Date() };
+  if (title) set.title = title.slice(0, 150);
+  await this.updateOne({ _id: id }, { $set: set }, opts(client));
 };
 
 // Deletes the conversation and its messages, the latter first.

@@ -25,12 +25,15 @@ const notificationPrefsSchema = new Schema(
 // Same shape as the Workouts filters, but multi-select. wger ids, not checked
 // against the catalog: an id that disappears in a sync just matches nothing.
 // equipment: null (no preference) | "none" (bodyweight) | "any" (needs some,
-// narrowed to equipmentIds when there are any)
+// narrowed to equipmentIds when there are any). muscleIds / secondaryMuscleIds:
+// muscles worked as main / secondary (a muscle is never in both)
 const workoutPrefsSchema = new Schema(
   {
     categoryIds: { type: [Number], default: [] },
     equipment: { type: String, enum: ['none', 'any', null], default: null },
     equipmentIds: { type: [Number], default: [] },
+    muscleIds: { type: [Number], default: [] },
+    secondaryMuscleIds: { type: [Number], default: [] },
   },
   { _id: false },
 );
@@ -488,7 +491,8 @@ userSchema.statics.setGoalTarget = async function setGoalTarget(userId, field, v
 // dashboard's "Finish setting up" banner
 userSchema.statics.isSetupPending = function isSetupPending(profile, goal) {
   const prefs = profile?.workoutPrefs;
-  const hasPrefs = Boolean(prefs?.categoryIds?.length || prefs?.equipment || prefs?.equipmentIds?.length);
+  const hasPrefs = Boolean(prefs?.categoryIds?.length || prefs?.equipment || prefs?.equipmentIds?.length
+    || prefs?.muscleIds?.length || prefs?.secondaryMuscleIds?.length);
   const hasTargets = GOAL_TARGETS.some((key) => goal?.[key] != null);
   return !hasPrefs && !hasTargets && profile?.targetWeightKg == null && !profile?.coachTone;
 };

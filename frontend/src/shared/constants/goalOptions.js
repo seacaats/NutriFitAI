@@ -72,7 +72,7 @@ export const COACH_TONES = [
 // No choice saved = the coach's usual voice
 export const DEFAULT_COACH_TONE = "friendly";
 
-export const NO_WORKOUT_PREFS = { categoryIds: [], equipment: null, equipmentIds: [] };
+export const NO_WORKOUT_PREFS = { categoryIds: [], equipment: null, equipmentIds: [], muscleIds: [], secondaryMuscleIds: [] };
 
 // Rough daily calories (Mifflin-St Jeor x activity, nudged by the goal) to
 // start the Calories field from. null when something it needs is missing,

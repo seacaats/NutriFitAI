@@ -16,7 +16,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 // Steps are edit-only: a saved day becomes "manual", which phone syncs never
 // overwrite. Setting 0 records a day with no steps
 
-export const MAX_STEPS = 200000;
+export const MAX_STEPS = 20000;
 
 // "Today" / "Yesterday" / "Mon, Sep 28"
 export function dayLabel(day) {
@@ -117,7 +117,11 @@ export function TodayStepsCard({ todaySteps, onSaved, onEdit, style, loading = f
       <View style={styles.quickRow}>
         <RingInput
           value={custom}
-          onChangeText={(v) => setCustom(v.replace(/[^0-9]/g, ""))}
+          onChangeText={(v) => {
+            const digits = v.replace(/\D/g, "").slice(0, 5);
+            if (digits === "") return setCustom("");
+            setCustom(String(Math.min(Number(digits), 20000)));
+          }}
           placeholder="Other amount"
           placeholderTextColor="#9ca3af"
           keyboardType="number-pad"

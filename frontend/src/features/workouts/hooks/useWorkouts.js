@@ -1,15 +1,20 @@
 import { useWorkoutTab } from "@/features/workouts/components/PlanParts";
 import {
+  createWorkout,
+  deleteWorkout,
   fetchCategories,
   fetchEquipment,
   fetchExerciseInfo,
   fetchExerciseInfoPage,
+  fetchMuscles,
   getEnglishTranslation,
   getExerciseImage,
   getExerciseImages,
   getMuscleNames,
+  getWorkoutFallbackImage,
   hasEnglishTranslation,
   isBlockedLocalizedExercise,
+  uploadWorkoutPhoto,
 } from "@/features/workouts/hooks/useWorkoutApi";
 import { useWorkoutPlan, useWorkoutSessions } from "@/features/workouts/hooks/useWorkoutSessions";
 import { requireOnline } from "@/shared/api/apiClient";
@@ -52,6 +57,8 @@ export function useWorkouts() {
   const [suggested, setSuggested] = useState(false);
   // The "Preferences" dialog (WorkoutPrefsModal)
   const [prefsOpen, setPrefsOpen] = useState(false);
+  // The "Add workout" dialog (AddWorkoutModal)
+  const [addOpen, setAddOpen] = useState(false);
 
   // logSession never throws: the user has already done the exercise, so a
   // failed write must not surface as an error on their screen.
@@ -66,6 +73,12 @@ export function useWorkouts() {
   // Equipment filter: null (all) | "none" | "any" | an equipment id
   const [equipment, setEquipment] = useState(null);
   const [equipmentList, setEquipmentList] = useState([]);
+  const [muscleList, setMuscleList] = useState([]);
+  // Muscle filters, as muscle ids. A muscle is main or secondary, never both
+  const [muscles, setMuscles] = useState([]);
+  const [musclesSecondary, setMusclesSecondary] = useState([]);
+  // Whose workouts: null (all) | "wger" (the catalog) | "user" (their own)
+  const [workoutSource, setWorkoutSource] = useState(null);
 
   // Favorites reuses the Browse grid, limited to favorited exercises. Other
   // tabs keep whatever the grid last showed, so coming back doesn't reload it
@@ -102,13 +115,16 @@ export function useWorkouts() {
     fetchEquipment()
       .then((list) => setEquipmentList(list || []))
       .catch(() => {});
+    fetchMuscles()
+      .then((list) => setMuscleList(list || []))
+      .catch(() => {});
   }, []);
 
   // Load exercises when a filter changes, with a fresh shuffle
   useEffect(() => {
     shuffleRef.current = rollShuffle(shuffleRef.current);
     loadExercises(true);
-  }, [activeCategory, equipment, source]);
+  }, [activeCategory, equipment, muscles, musclesSecondary, workoutSource, source]);
 
   const loadExercises = useCallback(
     async (reset = false) => {
@@ -139,6 +155,9 @@ export function useWorkouts() {
           const infoPage = await fetchExerciseInfoPage({
             category: activeCategory,
             equipment,
+            muscles,
+            musclesSecondary,
+            source: workoutSource || undefined,
             ids: favIds || undefined,
             shuffle: favIds ? undefined : shuffleRef.current,
             limit: PAGE_SIZE,
@@ -149,12 +168,15 @@ export function useWorkouts() {
 
           for (const info of results) {
             if (!hasEnglishTranslation(info)) continue;
-            const realImage = getExerciseImages(info)[0];
+            // The user's own workouts have no photo, they get the category's
+            const realImage = getExerciseImages(info)[0]
+              || (info.source === "user" ? getWorkoutFallbackImage(info.category?.name) : null);
             if (!realImage) continue; // skip exercises without a real image
             const { name, description } = getEnglishTranslation(info);
             if (isBlockedLocalizedExercise(name)) continue;
             collected.push({
               id: info.id,
+              source: info.source,
               name,
               description,
               image: realImage,
@@ -185,7 +207,7 @@ export function useWorkouts() {
         setLoadingMore(false);
       }
     },
-    [activeCategory, equipment, source],
+    [activeCategory, equipment, muscles, musclesSecondary, workoutSource, source],
   );
 
   // Client-side search
@@ -244,6 +266,7 @@ export function useWorkouts() {
       const muscles = getMuscleNames(info);
       setSelectedExercise({
         id: info.id,
+        source: info.source,
         name,
         description,
         image,
@@ -303,8 +326,40 @@ export function useWorkouts() {
 
   usePullRefresh(reloadExercises);
 
+  // Throws with the server's message, for the dialog to show inline. The grid
+  // reloads so the new workout is in it. The photo goes up after the workout
+  // exists: if it fails the workout stays, and the dialog is told
+  const addWorkout = useCallback(async (body, photo) => {
+    if (!requireOnline()) throw new Error("You're offline. Connect to add a workout.");
+    const created = await createWorkout(body);
+    let photoFailed = false;
+    if (photo) {
+      try {
+        await uploadWorkoutPhoto(created.id, photo);
+      } catch {
+        photoFailed = true;
+      }
+    }
+    reloadExercises();
+    return { photoFailed };
+  }, [reloadExercises]);
+
+  // Deletes one of the user's own workouts. The server removes every trace, so
+  // what showed it is reloaded: the grid, favorites/routines/schedule, history.
+  // Throws with the server's message, for the confirmation dialog
+  const removeWorkout = useCallback(async (id) => {
+    if (!requireOnline()) throw new Error("You're offline. Connect to delete a workout.");
+    await deleteWorkout(id);
+    closeDetail();
+    reloadExercises();
+    plan.refresh();
+    refreshSessions();
+  }, [closeDetail, reloadExercises, plan.refresh, refreshSessions]);
+
   return {
     activeCategory,
+    addOpen,
+    addWorkout,
     categories,
     closeDetail,
     detailLoading,
@@ -318,6 +373,9 @@ export function useWorkouts() {
     loadExercises,
     loading,
     loadingMore,
+    muscleList,
+    muscles,
+    musclesSecondary,
     hasMoreRef,
     logFromDetail,
     logRoutineRun,
@@ -327,25 +385,31 @@ export function useWorkouts() {
     prefsOpen,
     recent,
     reloadExercises,
+    removeWorkout,
     refreshSessions,
     scheduleTarget,
     searchQuery,
     selectedExercise,
     sessionsLoading,
     setActiveCategory,
+    setAddOpen,
     setDetailLoading,
     setDetailPlan,
     setEditor,
     setEquipment,
+    setMuscles,
+    setMusclesSecondary,
     setPlayer,
     setPrefsOpen,
     setScheduleTarget,
     setSearchQuery,
     setSelectedExercise,
     setTab,
+    setWorkoutSource,
     startScheduled,
     suggested,
     summary,
     tab,
+    workoutSource,
   };
 }

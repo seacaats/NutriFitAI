@@ -614,7 +614,9 @@ function createStyles(radii, spacing) {
   toggleThumb: { width: 16, height: 16, borderRadius: 8, backgroundColor: colors.white, marginLeft: 2 },
   toggleThumbOn: { marginLeft: 18 },
 
-  main: { flex: 1, minHeight: 0 },
+  // The gutter stays reserved, so a section with a scrollbar and one without
+  // lay out at the same width (centered content no longer shifts between them)
+  main: { flex: 1, minHeight: 0, scrollbarGutter: "stable" },
 
   mainNonScrollable: { flexDirection: "column" },
   // paddingTop keeps page content clear of the header (topbar) above it --

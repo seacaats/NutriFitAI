@@ -170,7 +170,7 @@ export function WaterCard({ darkMode, style }) {
           <ProgressBar value={0} darkMode={darkMode} />
           <View style={styles.cardActions}>
             <PlanButton compact label="1 glass" disabled darkMode={darkMode} />
-          </View>
+          </View> 
         </>
       ) : (
         <>
@@ -277,7 +277,11 @@ export function WaterPanel({ darkMode }) {
               <TextInput
                 {...ring.handlers}
                 value={custom}
-                onChangeText={(v) => setCustom(v.replace(/\D/g, "").slice(0, 4))}
+                onChangeText={(v) => {
+                  const digits = v.replace(/\D/g, "").slice(0, 4);
+                  if (digits === "") return setCustom("");
+                  setCustom(String(Math.min(Number(digits), 5000)));
+                }}
                 onSubmitEditing={addCustom}
                 keyboardType="number-pad"
                 placeholder="Custom"

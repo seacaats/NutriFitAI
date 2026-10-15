@@ -392,6 +392,34 @@ workoutSessionSchema.statics.removePlannedForRoutine = async function removePlan
   await this.deleteMany({ routineId, userId, status: 'planned' }, opts(client));
 };
 
+// A deleted workout leaves nothing in the user's sessions: its single-exercise
+// ones (logged and planned) go, and routine sessions lose its entry, with the
+// totals and status following from what's left. A routine session left with
+// no exercises goes too
+workoutSessionSchema.statics.removeExercise = async function removeExercise(userId, exerciseRef, client) {
+  await this.deleteMany({ userId, kind: 'exercise', exerciseRef }, opts(client));
+
+  const sessions = await this.find(
+    { userId, kind: 'routine', 'exercises.exerciseRef': exerciseRef },
+    'exercises targetSets status',
+    opts(client),
+  ).lean();
+  for (const s of sessions) {
+    const left = s.exercises.filter((e) => e.exerciseRef !== exerciseRef);
+    if (!left.length) {
+      await this.deleteOne({ _id: s._id }, opts(client));
+      continue;
+    }
+    const completedSets = left.filter((e) => e.done).length;
+    const $set = { exercises: left, completedSets };
+    if (s.targetSets != null) $set.targetSets = left.length;
+    if (s.status === 'completed' || s.status === 'skipped') {
+      $set.status = this.deriveStatus(completedSets, left.length);
+    }
+    await this.updateOne({ _id: s._id }, { $set }, opts(client));
+  }
+};
+
 // Turns a planned row into the logged session, so starting a scheduled
 // workout doesn't leave the plan behind as a duplicate
 workoutSessionSchema.statics.completePlanned = async function completePlanned(

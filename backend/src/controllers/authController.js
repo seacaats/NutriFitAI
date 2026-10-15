@@ -777,6 +777,8 @@ const me = asyncHandler(async (req, res) => {
       dietPreference: profile?.dietPreference ?? null,
       healthConditions: profile?.healthConditions ?? null,
       notificationsEnabled: profile?.notificationsEnabled ?? true,
+      // The account's theme, which the app applies on login
+      theme: profile?.theme ?? 'system',
       avatarUrl: await toPublicAvatarUrl(profile?.avatarStorageKey),
       weightKg: latestWeight?.weightKg ?? null,
       fitnessGoal: goal?.fitnessGoal ?? null,

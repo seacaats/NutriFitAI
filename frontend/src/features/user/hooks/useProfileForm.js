@@ -7,6 +7,7 @@ import {
   DIET_PREFERENCES_MAX,
   goalLabelToValue,
   goalValueToLabel,
+  pruneHealthConditions,
   sexLabelToValue,
   sexValueToLabel,
 } from "@/shared/constants/profileOptions";
@@ -107,7 +108,12 @@ export function useProfileForm({ identityOnly = false } = {}) {
   }, [load]);
 
   const handleChange = useCallback((name, value) => {
-    setForm((current) => ({ ...current, [name]: value }));
+    // A new sex drops the conditions that don't apply to it
+    setForm((current) => ({
+      ...current,
+      [name]: value,
+      ...(name === "sex" && { healthConditions: pruneHealthConditions(current.healthConditions, value) }),
+    }));
     setSaved(false);
     setError("");
   }, []);

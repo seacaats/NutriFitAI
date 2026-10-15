@@ -460,18 +460,13 @@ export default function SettingsPanel() {
   const timeZone = profile.timezone || deviceTimeZone();
   const googleLinked = (profile.linkedProviders || []).includes("google");
 
-  const changeTheme = (dark) => {
-    setDarkMode(dark);
-    settings.saveTheme(dark ? "dark" : "light");
-  };
-
   return (
     <View style={styles.page}>
       <ScreenError message={settings.error} onDismiss={settings.clearError} />
 
       <Section icon="color-palette-outline" title="Appearance" darkMode={darkMode}>
         <Row label="Theme" hint="How NutriFitAI looks on this device." darkMode={darkMode} last>
-          <ThemeSwitch darkMode={darkMode} onChange={changeTheme} />
+          <ThemeSwitch darkMode={darkMode} onChange={setDarkMode} />
         </Row>
       </Section>
 

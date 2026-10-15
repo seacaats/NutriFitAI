@@ -188,6 +188,13 @@ module.exports = {
       // A ceiling under AI_MAX_OUTPUT_TOKENS: the length rule in
       // contextBuilder keeps replies short, this stops a runaway one
       maxOutputTokens: parseInt(process.env.GROQ_MAX_OUTPUT_TOKENS || '450', 10),
+      // Voice input: Whisper turns a short recording into text (coachController.transcribe)
+      transcribeModel: process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3-turbo',
+      // Empty = Whisper detects the language. The voice picker sends its own choice, this is only the fallback
+      transcribeLanguage: process.env.GROQ_TRANSCRIBE_LANGUAGE || '',
+      transcribeTimeoutMs: parseInt(process.env.GROQ_TRANSCRIBE_TIMEOUT_MS || '30000', 10),
+      // A 60 s clip is far under this; Groq itself accepts up to 25 MB
+      transcribeMaxBytes: parseInt(process.env.GROQ_TRANSCRIBE_MAX_BYTES || String(4 * 1024 * 1024), 10),
     },
 
     // Cerebras' free tier, the next fallback after Groq

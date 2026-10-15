@@ -3,7 +3,6 @@ import {
   ACTIVITY_OPTIONS,
   DIET_PREFERENCES,
   GOAL_OPTIONS,
-  HEALTH_CONDITIONS,
   SEXES,
   useRegisterForm,
 } from "@/features/auth/hooks/useRegisterForm";
@@ -190,7 +189,7 @@ export default function RegisterScreen() {
                 multiple
                 icon="medkit-outline"
                 placeholder="Select any that apply (or None)"
-                options={HEALTH_CONDITIONS}
+                options={form.healthOptions}
                 value={form.healthConditions}
                 open={form.openPicker === "health"}
                 onToggle={() => form.togglePicker("health")}

@@ -9,6 +9,7 @@ const Meal = require('../models/food/Meal');
 const ChatConversation = require('../models/chat/ChatConversation');
 const ChatMessage = require('../models/chat/ChatMessage');
 const DailySteps = require('../models/steps/DailySteps');
+const Workout = require('../models/workouts/Workout');
 const FavoriteWorkout = require('../models/workouts/FavoriteWorkout');
 const WorkoutSession = require('../models/workouts/WorkoutSession');
 const WorkoutRoutine = require('../models/workouts/WorkoutRoutine');
@@ -53,6 +54,8 @@ async function deleteUserAccount(userId) {
     }
     // Routines use ownerId. Shared routines (ownerId null) are untouched
     result.workoutRoutines = (await WorkoutRoutine.deleteMany({ ownerId: userId }, session)).deletedCount;
+    // Their own catalog workouts, wger's are untouched
+    result.workouts = (await Workout.deleteMany({ createdBy: userId }, session)).deletedCount;
 
     result.users = (await User.deleteOne({ _id: userId }, session)).deletedCount;
     return result;
@@ -61,6 +64,7 @@ async function deleteUserAccount(userId) {
   // Neither throws, see localStore
   await clearStoredAvatar(userId);
   await storage.removePrefix(storage.keys.userScanPrefix(userId));
+  await storage.removePrefix(storage.keys.userWorkoutPrefix(userId));
 
   return counts;
 }

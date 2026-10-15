@@ -4,6 +4,7 @@ const ChatMessage = require('../models/chat/ChatMessage');
 const User = require('../models/user/User');
 const { coachReply, toPlainText, HISTORY_TURNS } = require('../services/ai/chatProvider');
 const { describeSubject } = require('../services/ai/contextBuilder');
+const { transcribeAudio } = require('../services/ai/transcribe');
 const { health } = require('../services/ai/router');
 const { sendSuccess, ApiError, asyncHandler } = require('../utils/httpResponse');
 const { notify } = require('../services/notifications/notify');
@@ -32,7 +33,7 @@ function toClientMessage(row) {
   };
 }
 
-// First line sent by user, used as conversation title
+// First line of the latest message sent by the user, used as conversation title
 function deriveTitle(message) {
   const firstLine = message.split('\n')[0].trim();
   return firstLine.length > 60 ? `${firstLine.slice(0, 57)}...` : firstLine;
@@ -116,8 +117,7 @@ const sendMessage = asyncHandler(async (req, res) => {
     // User messages are persisted even when generation fails, but
     // failed assistant turns aren't stored
     await saveUserMessage();
-    await ChatConversation.setTitleIfEmpty(conversation.id, deriveTitle(message));
-    await ChatConversation.touch(conversation.id);
+    await ChatConversation.touch(conversation.id, deriveTitle(message));
 
     // Hand the conversation id back so the client keeps using this thread.
     // Replaces any provider details, which should never reach the client
@@ -136,8 +136,7 @@ const sendMessage = asyncHandler(async (req, res) => {
     provider: reply.provider,
   });
 
-  await ChatConversation.setTitleIfEmpty(conversation.id, deriveTitle(message));
-  await ChatConversation.touch(conversation.id);
+  await ChatConversation.touch(conversation.id, deriveTitle(message));
 
   // Not awaited: notify never throws, and the reply shouldn't wait on Expo
   if (Date.now() - startedAt >= COACH_PUSH_AFTER_MS) {
@@ -220,8 +219,34 @@ const getHealth = asyncHandler(async (req, res) => {
   return sendSuccess(res, { data: health() });
 });
 
+// Languages the voice picker offers: national languages Whisper supports (keep in step with
+// VOICE_LANGUAGES in useCoachChat). 'auto' sends no language so Whisper detects it
+const VOICE_LANGUAGES = new Set([
+  'af', 'sq', 'am', 'ar', 'hy', 'az', 'be', 'bn', 'bs', 'bg', 'my', 'zh', 'hr', 'cs', 'da', 'nl', 'en', 'et', 'fi', 'fr',
+  'ka', 'de', 'el', 'ht', 'ha', 'he', 'hi', 'hu', 'is', 'id', 'it', 'ja', 'kk', 'km', 'ko', 'lo', 'lv', 'ln', 'lt', 'lb',
+  'mk', 'mg', 'ms', 'mt', 'mi', 'mn', 'ne', 'no', 'ps', 'fa', 'pl', 'pt', 'ro', 'ru', 'sr', 'sn', 'si', 'sk', 'sl', 'so',
+  'es', 'sw', 'sv', 'tl', 'tg', 'ta', 'th', 'tr', 'tk', 'uk', 'ur', 'uz', 'vi', 'yo',
+]);
+
+// Voice input: one short recording in, its text out. Nothing is saved, the
+// text goes into the message box and is only stored once the user sends it
+const transcribe = asyncHandler(async (req, res) => {
+  const file = req.file;
+  if (!file || !file.mimetype.startsWith('audio/')) throw ApiError.badRequest('Send a short audio recording.');
+
+  // Anything not on the list falls back to the env default
+  const asked = req.query.language;
+  let language;
+  if (asked === 'auto') language = '';
+  else if (VOICE_LANGUAGES.has(asked)) language = asked;
+
+  const text = await transcribeAudio({ buffer: file.buffer, mimetype: file.mimetype, language });
+  return sendSuccess(res, { data: { text } });
+});
+
 module.exports = {
   sendMessage,
+  transcribe,
   deleteAllConversations,
   listConversations,
   getConversation,

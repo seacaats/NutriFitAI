@@ -126,6 +126,23 @@ export const HEALTH_CONDITIONS = [
   OTHER_OPTION,
 ];
 
+// Conditions that only apply to one sex (by SEXES label)
+const SEX_SPECIFIC_CONDITIONS = { PCOS: "Female", "Pregnant / Breastfeeding": "Female" };
+
+// Options for a given sex. No sex given shows only the ones that apply to anyone
+export function healthConditionsFor(sex) {
+  return HEALTH_CONDITIONS.filter((c) => !SEX_SPECIFIC_CONDITIONS[c] || SEX_SPECIFIC_CONDITIONS[c] === sex);
+}
+
+// Drops stored conditions that don't apply to this sex ("A, B, custom" string)
+export function pruneHealthConditions(value, sex) {
+  const allowed = healthConditionsFor(sex);
+  return String(value || "")
+    .split(/\s*,\s*/)
+    .filter((p) => p && (allowed.includes(p) || !HEALTH_CONDITIONS.includes(p)))
+    .join(", ");
+}
+
 // Shown under Health Conditions (register and profile). Allergies and
 // injuries have no fields of their own, so they're asked for here
 export const HEALTH_CONDITIONS_NOTE = "Have a food allergy or an injury? Add it here so your coach knows. Pick Other to name it.";

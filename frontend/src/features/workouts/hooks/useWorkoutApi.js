@@ -1,4 +1,5 @@
 import { apiClient } from "@/shared/api/apiClient";
+import { resolveMediaUrl } from "@/shared/services/mediaUrl";
 
 /**
  * Workout catalog client.
@@ -15,6 +16,11 @@ const LANG = 2; // English. Kept for the helpers' legacy shape checks
 /** Categories (Abs, Arms, Back, Chest, Legs, …). */
 export async function fetchCategories() {
   return apiClient.get("/workouts/categories", { auth: true });
+}
+
+// Every muscle the catalog lists, for the Add workout dialog
+export async function fetchMuscles() {
+  return apiClient.get("/workouts/muscles", { auth: true });
 }
 
 // Every piece of equipment the catalog uses, bodyweight excluded
@@ -34,6 +40,9 @@ export async function fetchExerciseInfoPage({
   offset = 0,
   search,
   equipment,
+  muscles,
+  musclesSecondary,
+  source,
   ids,
   shuffle,
   includeImageless = false,
@@ -47,6 +56,11 @@ export async function fetchExerciseInfoPage({
   if (search) params.set("search", search);
   // "none" | "any" | an equipment id
   if (equipment != null) params.set("equipment", String(equipment));
+  // Muscle ids, main and secondary (a workout matching any of them)
+  if (muscles?.length) params.set("muscles", muscles.join(","));
+  if (musclesSecondary?.length) params.set("musclesSecondary", musclesSecondary.join(","));
+  // "wger" | "user": the catalog, or only the user's own workouts
+  if (source) params.set("source", source);
   // Only these exercises (the Favorites tab)
   if (ids) params.set("ids", ids.join(","));
 
@@ -73,6 +87,31 @@ export async function fetchExerciseInfoPage({
  */
 export async function fetchExerciseInfo(id, { signal } = {}) {
   return apiClient.get(`/workouts/${id}`, { auth: true, wait: false, signal });
+}
+
+// The workout this user can see under that name (wger's or their own), or
+// null. For the "Add workout" field while typing: gives back the saved copy
+// or fails at once while offline, never waits
+export async function findWorkoutByName(name, { signal } = {}) {
+  const params = new URLSearchParams({ name });
+  const data = await apiClient.get(`/workouts/match?${params.toString()}`, { auth: true, wait: false, signal });
+  return data.match || null;
+}
+
+// Adds a workout of the user's own. confirmDuplicate: a wger workout has the
+// same name and they were asked. Throws with the server's message
+export function createWorkout(body) {
+  return apiClient.post("/workouts", body, { auth: true });
+}
+
+// Deletes one of the user's own workouts and everything that referenced it
+export function deleteWorkout(id) {
+  return apiClient.delete(`/workouts/${id}`, { auth: true });
+}
+
+// A photo for one of the user's own workouts. file: { uri, name, type }
+export function uploadWorkoutPhoto(id, file) {
+  return apiClient.uploadFile(`/workouts/${id}/photo`, file, { field: "photo", auth: true });
 }
 
 /* ------------------------------------------------- routines, favorites, schedule */
@@ -205,7 +244,9 @@ export function getExerciseImage(info) {
  */
 export function getExerciseImages(info) {
   if (Array.isArray(info?.images) && info.images.every((i) => typeof i === "string")) {
-    return info.images;
+    // wger's are absolute already. A user's own photo is a path on the API
+    // with the local storage driver
+    return info.images.map(resolveMediaUrl);
   }
 
   return [

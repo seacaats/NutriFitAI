@@ -83,6 +83,8 @@ function workoutPrefsOf(profile) {
     categoryIds: profile?.workoutPrefs?.categoryIds ?? [],
     equipment: profile?.workoutPrefs?.equipment ?? null,
     equipmentIds: profile?.workoutPrefs?.equipmentIds ?? [],
+    muscleIds: profile?.workoutPrefs?.muscleIds ?? [],
+    secondaryMuscleIds: profile?.workoutPrefs?.secondaryMuscleIds ?? [],
   };
 }
 

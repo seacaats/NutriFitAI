@@ -21,7 +21,7 @@ export default function ResetPasswordScreen() {
 
           <FormInput
             label="New Password"
-            placeholder="New password (min. 8 characters, no spaces)"
+            placeholder="New password"
             value={form.password}
             onChangeText={form.setPassword}
             secureTextEntry

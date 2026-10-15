@@ -3,11 +3,9 @@ import {
   ACTIVITY_OPTIONS,
   DIET_PREFERENCES,
   GOAL_OPTIONS,
-  HEALTH_CONDITIONS,
   SEXES,
   useRegisterForm,
 } from "@/features/auth/hooks/useRegisterForm";
-import { AuthBackLink } from "@/shared/components/layout/PublicHeader";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
 import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
@@ -41,8 +39,6 @@ export default function RegisterScreen() {
     <View style={styles.root}>
       <KeyboardAvoidingView style={styles.leftPanel} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.container}>
-          {/* Step 1 only; step 2 has its own Back to step 1 */}
-          {!form.detailsOpen && <AuthBackLink style={styles.pageBackLink} fallback={form.backTo} />}
           {!isWide && (
             <Pressable style={styles.mobileBrandWrap} onPress={() => router.push("/")} hitSlop={8}>
               <Image source={require("@/assets/images/nutrifit-logo.png")} style={styles.mobileLogo} contentFit="contain" />
@@ -196,7 +192,7 @@ export default function RegisterScreen() {
                   multiple
                   icon="medkit-outline"
                   placeholder="Select any that apply (or None)"
-                  options={HEALTH_CONDITIONS}
+                  options={form.healthOptions}
                   value={form.healthConditions}
                   open={form.openPicker === "health"}
                   onToggle={() => form.togglePicker("health")}
@@ -296,7 +292,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  pageBackLink: { marginBottom: spacing.md },
   mobileBrandWrap: { alignItems: "center", marginBottom: spacing.lg },
   mobileLogo: { width: 80, height: 80 },
   mobileHeading: { ...typography.h2, fontSize: 24, color: colors.brandDark },

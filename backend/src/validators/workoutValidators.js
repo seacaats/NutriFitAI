@@ -7,6 +7,11 @@ const listQuerySchema = z.object({
   hasImage: z.enum(['true', 'false']).optional(),
   // "none" (bodyweight), "any" (needs equipment), or an equipment id
   equipment: z.string().regex(/^(none|any|\d+)$/, 'expected none, any or an equipment id').optional(),
+  // Comma-separated muscle ids, main and secondary
+  muscles: z.string().regex(/^\d+(,\d+){0,29}$/, 'expected comma-separated muscle ids').optional(),
+  musclesSecondary: z.string().regex(/^\d+(,\d+){0,29}$/, 'expected comma-separated muscle ids').optional(),
+  // wger's catalog, or the user's own workouts. Unset = both
+  source: z.enum(['wger', 'user']).optional(),
   // Comma-separated exercise ids, for the Favorites tab
   ids: z.string().regex(/^\d+(,\d+){0,199}$/, 'expected comma-separated ids').optional(),
   limit: z.coerce.number().int().positive().max(60).optional(),
@@ -14,6 +19,24 @@ const listQuerySchema = z.object({
   // Which of the few shuffled orders to use for the "Picked for you" list.
   // Mirrors SHUFFLE_VARIANTS in workoutsController.js
   shuffle: z.coerce.number().int().min(1).max(8).optional(),
+}).strict();
+
+// The name typed in "Add workout", checked against the catalog
+const matchQuerySchema = z.object({
+  name: z.string().trim().min(1).max(150),
+}).strict();
+
+// A workout the user adds. Category and equipment are catalog ids, the server
+// fills in their names. confirmDuplicate: they were asked, and want it anyway
+// despite a wger workout of the same name
+const createWorkoutSchema = z.object({
+  name: z.string().trim().min(1, 'Please give the workout a name.').max(150, 'Workout name is too long.'),
+  description: z.string().trim().max(1500, 'Description is too long.').nullable().optional(),
+  categoryId: z.coerce.number().int().positive().optional(),
+  equipmentIds: z.array(z.coerce.number().int().positive()).max(10).optional(),
+  muscleIds: z.array(z.coerce.number().int().positive()).max(15).optional(),
+  secondaryMuscleIds: z.array(z.coerce.number().int().positive()).max(15).optional(),
+  confirmDuplicate: z.boolean().optional(),
 }).strict();
 
 const CALENDAR_DAY = z.string().regex(CALENDAR_DAY_RE, 'expected YYYY-MM-DD');
@@ -167,6 +190,8 @@ module.exports = {
   sessionRangeSchema,
   logSessionSchema,
   listQuerySchema,
+  matchQuerySchema,
+  createWorkoutSchema,
   CALENDAR_DAY,
   createRoutineSchema,
   updateRoutineSchema,

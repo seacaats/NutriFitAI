@@ -231,9 +231,16 @@ const EQUIPMENT_MODES = [
   { key: "any", label: "Needs equipment" },
 ];
 
+// Whose workouts, matching the server's `source`
+const SOURCE_MODES = [
+  { key: "wger", label: "Wger Catalog" },
+  { key: "user", label: "My workouts" },
+];
+
 // One "Filters" button instead of every option on screen. Active filters
 // show as removable chips next to it, the full options only once opened.
 // category: a category id or null. equipment: null | "none" | "any" | an id.
+// muscles / musclesSecondary: arrays of muscle ids, shown only when onMuscles is given
 // onPreferences, when given, adds a "Preferences" button (WorkoutPrefsModal)
 export function WorkoutFilters({
   categories = [],
@@ -242,6 +249,13 @@ export function WorkoutFilters({
   equipment,
   onEquipment,
   equipmentList = [],
+  muscleList = [],
+  muscles = [],
+  onMuscles,
+  musclesSecondary = [],
+  onMusclesSecondary,
+  workoutSource,
+  onWorkoutSource,
   onPreferences,
   darkMode,
 }) {
@@ -257,7 +271,29 @@ export function WorkoutFilters({
   const active = [
     categoryName && { key: "category", label: categoryName, clear: () => onCategory(null) },
     equipmentName && { key: "equipment", label: equipmentName, clear: () => onEquipment(null) },
+    // Muscles, only where the screen offers them (not the routine editor's search)
+    ...(onMuscles ? muscles.map((id) => ({
+      key: `muscle-${id}`,
+      label: muscleList.find((m) => m.id === id)?.name || "Muscle",
+      clear: () => onMuscles(muscles.filter((i) => i !== id)),
+    })) : []),
+    ...(onMusclesSecondary ? musclesSecondary.map((id) => ({
+      key: `muscle2-${id}`,
+      label: `${muscleList.find((m) => m.id === id)?.name || "Muscle"} (secondary)`,
+      clear: () => onMusclesSecondary(musclesSecondary.filter((i) => i !== id)),
+    })) : []),
+    // Only where the screen offers it (not the routine editor's search)
+    onWorkoutSource && workoutSource && {
+      key: "source",
+      label: SOURCE_MODES.find((m) => m.key === workoutSource)?.label,
+      clear: () => onWorkoutSource(null),
+    },
   ].filter(Boolean);
+  // A muscle is main or secondary, never both: picking one clears the other
+  const toggleMuscle = (id, mine, setMine, setOther, other) => {
+    setMine(mine.includes(id) ? mine.filter((i) => i !== id) : [...mine, id]);
+    if (other.includes(id)) setOther(other.filter((i) => i !== id));
+  };
   const needs = equipment === "any" || typeof equipment === "number";
 
   return (
@@ -302,7 +338,7 @@ export function WorkoutFilters({
           </Pressable>
         ))}
         {active.length > 1 && (
-          <Pressable onPress={() => { onCategory(null); onEquipment(null); }} hitSlop={6}>
+          <Pressable onPress={() => { onCategory(null); onEquipment(null); onMuscles?.([]); onMusclesSecondary?.([]); onWorkoutSource?.(null); }} hitSlop={6}>
             <Text style={[filterStyles.clear, { color: tone.muted }]}>Clear all</Text>
           </Pressable>
         )}
@@ -347,6 +383,47 @@ export function WorkoutFilters({
             </View>
           )}
 
+          {onMuscles && muscleList.length > 0 && (
+            <>
+              <SectionLabel darkMode={darkMode}>Muscles worked</SectionLabel>
+              <View style={filterStyles.chips}>
+                {muscleList.map((m) => (
+                  <Chip
+                    key={m.id}
+                    label={m.name}
+                    active={muscles.includes(m.id)}
+                    onPress={() => toggleMuscle(m.id, muscles, onMuscles, onMusclesSecondary, musclesSecondary)}
+                    darkMode={darkMode}
+                  />
+                ))}
+              </View>
+
+              <SectionLabel darkMode={darkMode}>Secondary muscles</SectionLabel>
+              <View style={filterStyles.chips}>
+                {muscleList.map((m) => (
+                  <Chip
+                    key={m.id}
+                    label={m.name}
+                    active={musclesSecondary.includes(m.id)}
+                    onPress={() => toggleMuscle(m.id, musclesSecondary, onMusclesSecondary, onMuscles, muscles)}
+                    darkMode={darkMode}
+                  />
+                ))}
+              </View>
+            </>
+          )}
+
+          {onWorkoutSource && (
+            <>
+              <SectionLabel darkMode={darkMode}>Source</SectionLabel>
+              <View style={filterStyles.chips}>
+                <Chip label="All" active={workoutSource == null} onPress={() => onWorkoutSource(null)} darkMode={darkMode} />
+                {SOURCE_MODES.map((m) => (
+                  <Chip key={m.key} label={m.label} active={workoutSource === m.key} onPress={() => onWorkoutSource(m.key)} darkMode={darkMode} />
+                ))}
+              </View>
+            </>
+          )}
         </View>
       )}
     </View>

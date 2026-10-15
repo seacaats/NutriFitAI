@@ -1,6 +1,5 @@
 import GoogleIcon from "@/features/auth/components/GoogleIcon";
 import { useLoginForm } from "@/features/auth/hooks/useLoginForm";
-import { AuthBackLink } from "@/shared/components/layout/PublicHeader";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
 import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
@@ -43,8 +42,6 @@ export default function LoginScreen() {
 
       <KeyboardAvoidingView style={styles.rightPanel} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.container}>
-          {/* Back to the landing page (or wherever they came from) */}
-          <AuthBackLink style={styles.backLink} />
           {!isWide && (
             <Pressable style={styles.mobileBrandWrap} onPress={() => router.push("/")} hitSlop={8}>
               <Image source={require("@/assets/images/nutrifit-logo.png")} style={styles.mobileLogo} contentFit="contain" />
@@ -106,7 +103,7 @@ export default function LoginScreen() {
 
             <View style={styles.socialRow}>
               <Pressable
-                style={[styles.socialBtn, form.googleLoading && { opacity: 0.6 }]}
+                style={({ hovered }) => [styles.socialBtn, hovered && !form.googleLoading && styles.socialBtnHover, form.googleLoading && { opacity: 0.6 }]}
                 onPress={form.handleGoogleLogin}
                 disabled={form.googleLoading}
               >
@@ -152,9 +149,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  backLink: { marginBottom: spacing.md },
   mobileBrandWrap: { alignItems: "center", marginBottom: spacing.xl },
-  mobileLogo: { width: 160, height: 160 },
+  mobileLogo: { width: 80, height: 80 },
   mobileHeading: { ...typography.h2, fontSize: 24, color: colors.brandDark, marginTop: 4 },
 
   card: { backgroundColor: colors.authCard, borderRadius: radii.lg, padding: spacing.xl },
@@ -184,6 +180,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
     paddingVertical: 12,
   },
+  socialBtnHover: { backgroundColor: colors.mintTint },
   footerRow: { flexDirection: "row", justifyContent: "center", marginTop: spacing.lg },
 
   alert: { marginTop: spacing.md, marginBottom: 0 },

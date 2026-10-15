@@ -75,9 +75,11 @@ function bucketsFor(period, from, to) {
 /**
  * Weight inside the period, one point per day (the day's last reading), and
  * the change from the last reading before the period, or from its first
- * reading when there's nothing earlier
+ * reading when there's nothing earlier. With `vsPrevious` (the dashboard) the
+ * change is instead from the reading right before the latest one, so each new
+ * log is compared with the one before it, not with the first of the window
  */
-async function weightFor(userId, from, to, timeZone) {
+async function weightFor(userId, from, to, timeZone, { vsPrevious = false } = {}) {
   const { start, end } = dayRangeToInstants(from, to, timeZone);
   const [rows, before] = await Promise.all([
     WeightLog.findBetween(userId, start, end),
@@ -88,7 +90,10 @@ async function weightFor(userId, from, to, timeZone) {
   rows.forEach((r) => byDay.set(today(timeZone, r.measuredAt), Number(r.weightKg)));
   const points = [...byDay].map(([date, weightKg]) => ({ date, weightKg }));
 
-  const startKg = before ? Number(before.weightKg) : points[0]?.weightKg ?? null;
+  const previous = rows.length > 1 ? rows[rows.length - 2] : before;
+  const startKg = vsPrevious
+    ? (previous ? Number(previous.weightKg) : null)
+    : before ? Number(before.weightKg) : points[0]?.weightKg ?? null;
   const currentKg = points.length ? points[points.length - 1].weightKg : startKg;
   const changeKg = points.length && startKg !== null
     ? Math.round((currentKg - startKg) * 10) / 10
@@ -209,7 +214,7 @@ const getToday = asyncHandler(async (req, res) => {
     Meal.dailyTotals(req.userId, weekFrom, day),
     Meal.listSince(req.userId, day),
     DailySteps.findRange({ userId: req.userId, from: weekFrom, to: day }),
-    weightFor(req.userId, addDays(day, -29), day, timeZone),
+    weightFor(req.userId, addDays(day, -29), day, timeZone, { vsPrevious: true }),
     activityStreak(req.userId, day, timeZone),
     User.getActiveGoal(req.userId),
     WorkoutSession.listUpcoming(req.userId, { until: new Date(Date.now() + 7 * 86400000) }),

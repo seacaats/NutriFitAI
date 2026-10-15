@@ -1,10 +1,10 @@
 import ChatMessages from "@/features/coach/components/ChatMessages";
+import CoachInputBox from "@/features/coach/components/CoachInputBox";
 import { CoachToneButton } from "@/features/coach/components/CoachToneOptions";
 import CoachWelcome, { SubjectChip } from "@/features/coach/components/CoachWelcome";
 import ConversationHistoryDrawer from "@/features/coach/components/ConversationHistoryDrawer";
 import { COUNTER_FROM, MAX_MESSAGE_LENGTH, useCoach } from "@/features/coach/hooks/useCoachChat";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
-import { useFocusRing } from "@/shared/components/ui/FormInput";
 import { ScreenAlert } from "@/shared/components/ui/ScreenAlert";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { colors, getScreenPalette, getScreenTones, screenTones, shellColors } from "@/shared/theme/nutrifitai";
@@ -13,11 +13,10 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -31,14 +30,19 @@ import {
  * (and the way it already does on the native/mobile screen).
  */
 export default function AICoachScreen() {
-  const ring = useFocusRing();
   const { darkMode } = useTheme();
+  const { width, height } = useWindowDimensions();
+  // Same breakpoints as DashboardLayout: phones are under 720 wide, short windows under 720 tall.
+  // Small screens get slimmer bars and gutters, so the messages keep the room
+  const compact = width < 720;
+  const tight = compact || height < 720;
+  const gutter = compact ? 16 : 24;
 
   const {
     messages, sending, error, retry, reset,
     conversations, historyLoading, conversationId, loadConversation,
     deleteConversation, deleteAllConversations, atLimit, subject,
-    scrollRef, message, setMessage, loadingThread, empty, sendMessage,
+    scrollRef, message, setMessage, loadingThread, empty, sendMessage, voice,
   } = useCoach();
 
   const { card, textColor } = getScreenPalette(darkMode);
@@ -59,14 +63,14 @@ export default function AICoachScreen() {
         keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
         {/* Header */}
-        <View style={[styles.chatHeader, { borderBottomColor: card.borderColor }]}>
-          <View style={styles.botIcon}>
+        <View style={[styles.chatHeader, tight && styles.chatHeaderTight, { borderBottomColor: card.borderColor, paddingHorizontal: gutter }]}>
+          <View style={[styles.botIcon, tight && styles.botIconTight]}>
             <Ionicons name="hardware-chip" size={20} color={shellColors.primary} />
           </View>
 
-          <View style={styles.flex1}>
-            <Text style={[styles.chatTitle, textColor]}>Nori</Text>
-            <Text style={styles.chatSubtitle}>Your NutriFitAI coach</Text>
+          <View style={styles.headerText}>
+            <Text numberOfLines={1} style={[styles.chatTitle, textColor]}>Nori</Text>
+            {!compact && <Text style={styles.chatSubtitle}>Your NutriFitAI coach</Text>}
           </View>
 
           {/* Coach tone, also in Settings */}
@@ -85,11 +89,11 @@ export default function AICoachScreen() {
         </View>
 
         {/* Under the header, like every screen */}
-        <ScreenAlert style={{ marginHorizontal: 12, marginTop: 8 }} />
+        <ScreenAlert style={{ marginHorizontal: gutter, marginTop: 8 }} />
 
         {/* What this thread is about, when opened from a scan or meal */}
         {!!subject && (
-          <View style={styles.subjectWrap}>
+          <View style={[styles.subjectWrap, { paddingHorizontal: gutter }]}>
             <View style={styles.messagesColumn}>
               <SubjectChip subject={subject} darkMode={darkMode} />
             </View>
@@ -102,10 +106,10 @@ export default function AICoachScreen() {
         <ScrollView
           ref={scrollRef}
           style={styles.flex1}
-          contentContainerStyle={[styles.messagesContent, empty && styles.grow]}
+          contentContainerStyle={[styles.messagesContent, { paddingHorizontal: gutter, paddingVertical: tight ? 12 : 20 }, empty && styles.grow]}
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
         >
-          <View style={[styles.messagesColumn, empty && styles.grow]}>
+          <View style={[styles.messagesColumn, compact && styles.messagesColumnCompact, empty && styles.grow]}>
             {empty && <CoachWelcome darkMode={darkMode} atLimit={atLimit} onPick={sendMessage} subject={subject} />}
             <ChatMessages messages={messages} loadingThread={loadingThread} error={error} onRetry={retry} darkMode={darkMode} wide />
           </View>
@@ -114,36 +118,14 @@ export default function AICoachScreen() {
         {/* Input -- pinned to the bottom of the content pane, same as the
             native screen, because this whole column is no longer wrapped in
             an outer ScrollView that could push it out of view. */}
-        <View style={styles.inputBar}>
+        <View style={[styles.inputBar, { paddingHorizontal: gutter, paddingBottom: tight ? 12 : 16 }]}>
           <View style={styles.inputColumn}>
-            <View style={[styles.inputPill, styles.inputBox, { borderColor: darkMode ? "#4b5563" : colors.border }, ring.style]}>
-              <TextInput
-                {...ring.handlers}
-                value={message}
-                onChangeText={setMessage}
-                placeholder={atLimit ? "Delete a conversation to start a new one" : "Type your message..."}
-                placeholderTextColor={screenTones.dark.muted}
-                style={[ring.input, styles.textInput, textColor]}
-                // Enter sends, Shift+Enter adds a line
-                multiline
-                onKeyPress={(e) => {
-                  if (e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                  }
-                }}
-                maxLength={MAX_MESSAGE_LENGTH}
-                editable={!sending && !atLimit}
-              />
-
-              <Pressable
-                onPress={sendMessage}
-                disabled={sending || atLimit || !message.trim()}
-                style={[styles.sendBtn, (sending || !message.trim()) && styles.sendBtnDisabled]}
-              >
-                <Ionicons name="send" size={14} color={colors.white} />
-              </Pressable>
-            </View>
+            <CoachInputBox
+              voice={voice} message={message} setMessage={setMessage} sendMessage={sendMessage} sending={sending} atLimit={atLimit}
+              textColor={textColor} borderColor={darkMode ? "#4b5563" : colors.border}
+              placeholder={atLimit ? "Delete a conversation to start a new one" : "Type your message..."} web compact={compact} maxInputHeight={Math.min(180, Math.round(height * 0.25))}
+            />
+            {voice.error ? <Text style={[styles.counter, styles.counterFull]}>{voice.error}</Text> : null}
             {/* Only near the limit, so it doesn't clutter normal typing */}
             {message.length >= COUNTER_FROM && (
               <Text style={[styles.counter, message.length >= MAX_MESSAGE_LENGTH && styles.counterFull]}>
@@ -151,7 +133,7 @@ export default function AICoachScreen() {
               </Text>
             )}
             {/* Always under the input, whatever's in the chat */}
-            <Text style={styles.disclaimer}>Not medical advice. For symptoms or injuries, see a professional.</Text>
+            <Text style={[styles.disclaimer, tight && styles.disclaimerTight]}>Not medical advice. For symptoms or injuries, see a professional.</Text>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -164,6 +146,9 @@ const styles = StyleSheet.create({
 
   // Header
   chatHeader: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 24, paddingVertical: 16, borderBottomWidth: 1 },
+  chatHeaderTight: { paddingVertical: 10 },
+  headerText: { flex: 1, minWidth: 0 },
+  botIconTight: { width: 32, height: 32, borderRadius: 16 },
   botIcon: {
     width: 40,
     height: 40,
@@ -184,21 +169,10 @@ const styles = StyleSheet.create({
   counterFull: { color: colors.danger, fontWeight: "700" },
   disclaimer: { fontSize: 11, color: colors.textMuted, textAlign: "center", marginTop: 8 },
   messagesColumn: { width: "100%", maxWidth: 900, alignSelf: "center", gap: 16 },
+  messagesColumnCompact: { gap: 12 },
+  disclaimerTight: { marginTop: 4 },
 
-  sendBtnDisabled: { opacity: 0.45 },
-
-  // Input
+  // Input, the box itself is in CoachInputBox
   inputBar: { paddingTop: 8, paddingBottom: 16, paddingHorizontal: 24 },
-  // A rounded box rather than a pill, since it grows over several lines
-  inputBox: { alignItems: "flex-end", borderRadius: 16, paddingVertical: 10 },
   inputColumn: { width: "100%", maxWidth: 900, alignSelf: "center" },
-  textInput: { flex: 1, fontSize: 14, paddingVertical: 6, outlineStyle: "none", minHeight: 64, maxHeight: 180 },
-  sendBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: shellColors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
 });

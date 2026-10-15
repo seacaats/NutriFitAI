@@ -46,6 +46,16 @@ function userScanPrefix(userId) {
   return `scans/${userId}/`;
 }
 
+// A photo on one of the user's own workouts. Per-user prefix, like scans, so
+// account deletion can sweep them
+function workoutImageKey(userId, contentType) {
+  return assertSafeKey(`workouts/${userId}/${crypto.randomUUID()}.${extensionFor(contentType)}`);
+}
+
+function userWorkoutPrefix(userId) {
+  return `workouts/${userId}/`;
+}
+
 // Magic-number check for accepted formats (.jpg, .png, .webp). Here beside
 // EXT_BY_TYPE since it's about file types, not avatars: the avatar upload
 // and the food scanner both use it
@@ -71,4 +81,6 @@ module.exports = {
   uploadedAvatarKey,
   scanKey,
   userScanPrefix,
+  workoutImageKey,
+  userWorkoutPrefix,
 };

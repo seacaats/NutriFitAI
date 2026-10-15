@@ -1,14 +1,14 @@
 import ChatMessages from "@/features/coach/components/ChatMessages";
+import CoachInputBox from "@/features/coach/components/CoachInputBox";
 import { CoachToneButton } from "@/features/coach/components/CoachToneOptions";
 import CoachWelcome, { SubjectChip } from "@/features/coach/components/CoachWelcome";
 import ConversationHistoryDrawer from "@/features/coach/components/ConversationHistoryDrawer";
 import { COUNTER_FROM, MAX_MESSAGE_LENGTH, useCoach } from "@/features/coach/hooks/useCoachChat";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
-import { useFocusRing } from "@/shared/components/ui/FormInput";
 import { ScreenAlert } from "@/shared/components/ui/ScreenAlert";
 import { usePullRefreshState } from "@/shared/context/PullRefreshContext";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { colors, screenTones, shellColors } from "@/shared/theme/nutrifitai";
+import { colors, shellColors } from "@/shared/theme/nutrifitai";
 import { aiCoachStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -20,7 +20,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,7 +27,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const HEADER_HEIGHT = 56;
 
 export default function AICoachScreen() {
-  const ring = useFocusRing();
   const { shell: c, darkMode } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -37,7 +35,7 @@ export default function AICoachScreen() {
     messages, sending, error, retry, reset,
     conversations, historyLoading, conversationId, loadConversation,
     deleteConversation, deleteAllConversations, atLimit, subject,
-    scrollRef, message, setMessage, loadingThread, empty, sendMessage,
+    scrollRef, message, setMessage, loadingThread, empty, sendMessage, voice,
   } = useCoach();
   // The chat has its own scroller, so it carries the pull-to-refresh
   const pull = usePullRefreshState();
@@ -113,25 +111,12 @@ export default function AICoachScreen() {
 
         {/* Message Input */}
         <View style={[styles.inputBar, { paddingBottom: 12 + insets.bottom }]}>
-          <View style={[styles.inputPill, styles.inputBox, { borderColor: c.dropdownBorder }, ring.style]}>
-            <TextInput
-              {...ring.handlers}
-              value={message}
-              onChangeText={setMessage}
-              placeholder={atLimit ? "Delete a conversation to start a new one" : "Type a message..."}
-              placeholderTextColor={screenTones.dark.muted}
-              style={[ring.input, styles.textInput, textColor]}
-              // Grows with the message; Return adds a line, the arrow sends
-              multiline
-              textAlignVertical="top"
-              maxLength={MAX_MESSAGE_LENGTH}
-              editable={!sending && !atLimit}
-            />
-
-            <Pressable onPress={sendMessage} hitSlop={8} disabled={sending || atLimit || !message.trim()}>
-              <Ionicons name="send" size={18} color={sending || !message.trim() ? screenTones.dark.muted : shellColors.primary} />
-            </Pressable>
-          </View>
+          <CoachInputBox
+            voice={voice} message={message} setMessage={setMessage} sendMessage={sendMessage} sending={sending} atLimit={atLimit}
+            textColor={textColor} borderColor={c.dropdownBorder}
+            placeholder={atLimit ? "Delete a conversation to start a new one" : "Type a message..."}
+          />
+          {voice.error ? <Text style={[styles.counter, styles.counterFull]}>{voice.error}</Text> : null}
           {/* Only near the limit, so it doesn't clutter normal typing */}
           {message.length >= COUNTER_FROM && (
             <Text style={[styles.counter, message.length >= MAX_MESSAGE_LENGTH && styles.counterFull]}>
@@ -175,7 +160,4 @@ const styles = StyleSheet.create({
 
   // Input
   inputBar: { paddingTop: 8, paddingHorizontal: 16 },
-  // A rounded box rather than a pill, since it grows over several lines
-  inputBox: { alignItems: "flex-end", borderRadius: 16, paddingVertical: 10 },
-  textInput: { flex: 1, fontSize: 14, paddingVertical: 6, minHeight: 56, maxHeight: 140 },
 });

@@ -1,11 +1,38 @@
 const env = require('../../../config/env');
 const router = require('./router');
 const { buildCoachContext } = require('./contextBuilder');
+const { detectConcerns, fallbackReply } = require('./safetyRules');
 
 // Boundary layer (module) for coachController.js
 
 // The set conversation limit for each user
 const HISTORY_TURNS = env.ai.historyTurns;
+
+// One pasted wall of text must not crowd the rest of the thread out of the context
+const MAX_HISTORY_CHARS = 1500;
+
+// Shown instead of storing an empty reply, which would poison the later turns
+const EMPTY_REPLY = 'Sorry, I could not put that into words. Could you ask again?';
+
+/**
+ * Turns stored messages into what the model can take: only user/assistant
+ * turns with text, same-role neighbours merged, and starting on a user turn
+ * (some providers reject a thread that opens with the assistant). The cut at
+ * HISTORY_TURNS can land mid-exchange, which is why the start is fixed here
+ */
+function cleanMessages(messages) {
+  const out = [];
+  for (const m of messages) {
+    if (m.role !== 'user' && m.role !== 'assistant') continue;
+    const content = String(m.content || '').trim();
+    if (!content) continue;
+    const prev = out[out.length - 1];
+    if (prev && prev.role === m.role) prev.content += `\n${content}`;
+    else out.push({ role: m.role, content });
+  }
+  while (out.length && out[0].role !== 'user') out.shift();
+  return out;
+}
 
 /**
  * The app shows replies as plain text, so Markdown the model adds anyway
@@ -47,18 +74,31 @@ function toPlainText(text) {
  * @returns {Promise<{ text: string, provider: string, model: string }>}
  */
 async function coachReply(input) {
-  const { system } = await buildCoachContext(input.userId, input.ref);
+  // Concerns come from this message and the user's recent ones, so a distress
+  // message keeps shaping the replies after it
+  const recent = input.history.filter((m) => m.role === 'user').map((m) => m.content);
+  const concerns = detectConcerns(input.message, recent);
 
-  const messages = [
+  const { system, timeZone } = await buildCoachContext(input.userId, input.ref, concerns);
+
+  const messages = cleanMessages([
     ...input.history
       .slice(-HISTORY_TURNS)
-      .map((m) => ({ role: m.role, content: m.content })),
+      .map((m) => ({ role: m.role, content: String(m.content || '').slice(0, MAX_HISTORY_CHARS) })),
     { role: 'user', content: input.message },
-  ];
+  ]);
 
-  const reply = await router.chat({ system, messages, signal: input.signal });
+  let reply;
+  try {
+    reply = await router.chat({ system, messages, signal: input.signal });
+  } catch (err) {
+    // Someone in distress never gets a bare error. A cancelled request stays one
+    if (!concerns.includes('selfHarm') || input.signal?.aborted) throw err;
+    return { text: fallbackReply(timeZone), provider: 'safety', model: 'static' };
+  }
+
   // Normalised before it's stored or shown
-  return { ...reply, text: toPlainText(reply.text) };
+  return { ...reply, text: toPlainText(reply.text) || EMPTY_REPLY };
 }
 
 module.exports = { coachReply, toPlainText, health: router.health, HISTORY_TURNS };

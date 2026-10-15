@@ -35,6 +35,9 @@ const workoutPrefsSchema = z
     categoryIds: wgerIds,
     equipment: z.enum(['none', 'any']).nullable(),
     equipmentIds: wgerIds,
+    // Optional, so a client from before muscle preferences can still save
+    muscleIds: wgerIds.optional(),
+    secondaryMuscleIds: wgerIds.optional(),
   })
   .strict();
 

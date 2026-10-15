@@ -1,13 +1,16 @@
 import ExerciseWorkoutTracker from "@/features/workouts/components/ExerciseWorkoutTracker";
-import { fetchCategories, fetchEquipment, fetchExerciseInfoPage, getEnglishTranslation } from "@/features/workouts/hooks/useWorkoutApi";
+import { fetchCategories, fetchEquipment, fetchExerciseInfoPage, findWorkoutByName, getEnglishTranslation } from "@/features/workouts/hooks/useWorkoutApi";
+import ConfirmModal from "@/shared/components/ui/ConfirmModal";
 import { FormAlert, RingInput, useFocusRing } from "@/shared/components/ui/FormInput";
 import PlanButton from "@/shared/components/ui/PlanButton";
 import Stepper from "@/shared/components/ui/Stepper";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -254,6 +257,258 @@ const scheduleStyles = StyleSheet.create({
   period: { flexDirection: "row", borderWidth: 1, borderRadius: 10, overflow: "hidden", marginLeft: 4 },
   periodBtn: { paddingHorizontal: 14, height: 42, justifyContent: "center" },
   periodText: { fontSize: 14, fontWeight: "800" },
+});
+
+// Add a workout of your own to the catalog: same fields as a synced one. The
+// name is checked against the catalog as it's typed, and a match with a wger
+// workout asks before creating it anyway
+
+const NAME_CHECK_MS = 350;
+const WARN = "#d97706";
+
+export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmentList, muscleList = [], darkMode }) {
+  const tone = getScreenTones(darkMode);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [categoryId, setCategoryId] = useState(null);
+  const [equipmentIds, setEquipmentIds] = useState([]);
+  const [muscleIds, setMuscleIds] = useState([]);
+  const [secondaryIds, setSecondaryIds] = useState([]);
+  // The catalog's workout with this name: { id, name, source } or null
+  const [match, setMatch] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  // Optional photo, { uri, name, type }. Uploaded once the workout is added
+  const [photo, setPhoto] = useState(null);
+  // Added, but the photo didn't make it: the button turns into Done
+  const [added, setAdded] = useState(false);
+
+  // Blank on every open
+  useEffect(() => {
+    if (!visible) return;
+    setName("");
+    setDescription("");
+    setCategoryId(null);
+    setEquipmentIds([]);
+    setMuscleIds([]);
+    setSecondaryIds([]);
+    setPhoto(null);
+    setAdded(false);
+    setMatch(null);
+    setConfirming(false);
+    setError("");
+  }, [visible]);
+
+  async function pickPhoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return setError("Photo library access is needed to add a photo.");
+    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, aspect: [4, 3], quality: 0.8 });
+    if (picked.canceled || !picked.assets?.length) return undefined;
+    const asset = picked.assets[0];
+    return setPhoto({ uri: asset.uri, name: asset.fileName || "workout.jpg", type: asset.mimeType || "image/jpeg" });
+  }
+
+  // Debounced match while typing. A failed check just shows no prompt: the
+  // server checks again on save
+  useEffect(() => {
+    const query = name.trim();
+    if (!visible || !query) {
+      setMatch(null);
+      return undefined;
+    }
+    const abort = new AbortController();
+    const timer = setTimeout(() => {
+      findWorkoutByName(query, { signal: abort.signal })
+        .then((found) => !abort.signal.aborted && setMatch(found))
+        .catch(() => !abort.signal.aborted && setMatch(null));
+    }, NAME_CHECK_MS);
+    return () => {
+      abort.abort();
+      clearTimeout(timer);
+    };
+  }, [name, visible]);
+
+  const own = match?.source === "user";
+
+  async function save(confirmDuplicate = false) {
+    setSaving(true);
+    setError("");
+    try {
+      const result = await onSave({
+        name: name.trim(),
+        ...(description.trim() ? { description: description.trim() } : {}),
+        ...(categoryId ? { categoryId } : {}),
+        ...(equipmentIds.length ? { equipmentIds } : {}),
+        ...(muscleIds.length ? { muscleIds } : {}),
+        ...(secondaryIds.length ? { secondaryMuscleIds: secondaryIds } : {}),
+        ...(confirmDuplicate ? { confirmDuplicate: true } : {}),
+      }, photo);
+      setConfirming(false);
+      if (result?.photoFailed) {
+        setAdded(true);
+        setError("Workout added, but its photo couldn't be uploaded.");
+        return;
+      }
+      onClose();
+    } catch (err) {
+      // The check hadn't finished when they pressed Add: ask now
+      if (err?.code === "DUPLICATE_WGER") setMatch({ name: name.trim(), source: "wger" });
+      else setError(err?.message || "Couldn't add the workout.");
+      setConfirming(err?.code === "DUPLICATE_WGER");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function submit() {
+    if (added) return onClose();
+    if (!name.trim()) return setError("Please give the workout a name.");
+    if (own) return setError("You already have a workout with that name.");
+    if (match) return setConfirming(true);
+    return save();
+  }
+
+  // A muscle is main or secondary, never both: picking one clears the other
+  const toggleMuscle = (id, setMine, setOther) => {
+    setMine((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
+    setOther((ids) => ids.filter((i) => i !== id));
+  };
+  const toggleEquipment = (id) => setEquipmentIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
+  const inputStyle = [editorStyles.input, { borderColor: tone.border, color: tone.text }];
+
+  return (
+    <PlanModal
+      visible={visible}
+      onClose={onClose}
+      darkMode={darkMode}
+      title="Add workout"
+      subtitle="Your own, shown with the rest of the catalog"
+      footer={(
+        <>
+          <PlanButton label="Cancel" variant="secondary" onPress={onClose} darkMode={darkMode} />
+          <PlanButton label={added ? "Done" : "Add workout"} onPress={submit} loading={saving && !confirming} darkMode={darkMode} />
+        </>
+      )}
+    >
+      <SectionLabel darkMode={darkMode}>Name</SectionLabel>
+      <RingInput
+        value={name}
+        onChangeText={setName}
+        maxLength={150}
+        placeholder="e.g. Sled Push"
+        placeholderTextColor={tone.muted}
+        style={inputStyle}
+      />
+      {!!match && (
+        <View style={addStyles.prompt}>
+          <Ionicons name={own ? "alert-circle" : "information-circle"} size={16} color={own ? "#e5484d" : WARN} />
+          <Text style={[addStyles.promptText, { color: own ? "#e5484d" : WARN }]}>
+            {own
+              ? `You already have a workout named "${match.name}".`
+              : `"${match.name}" is already in the catalog.`}
+          </Text>
+        </View>
+      )}
+
+      <SectionLabel darkMode={darkMode}>Category (optional)</SectionLabel>
+      <View style={scheduleStyles.wrapRow}>
+        {categories.map((c) => (
+          <Chip
+            key={c.id}
+            label={c.name}
+            active={categoryId === c.id}
+            onPress={() => setCategoryId((current) => (current === c.id ? null : c.id))}
+            darkMode={darkMode}
+          />
+        ))}
+      </View>
+
+      <SectionLabel darkMode={darkMode}>Equipment (none = no equipment)</SectionLabel>
+      <View style={scheduleStyles.wrapRow}>
+        {equipmentList.map((e) => (
+          <Chip
+            key={e.id}
+            label={e.name}
+            active={equipmentIds.includes(e.id)}
+            onPress={() => toggleEquipment(e.id)}
+            darkMode={darkMode}
+          />
+        ))}
+      </View>
+
+      {muscleList.length > 0 && (
+        <>
+          <SectionLabel darkMode={darkMode}>Muscles worked (optional)</SectionLabel>
+          <View style={scheduleStyles.wrapRow}>
+            {muscleList.map((m) => (
+              <Chip
+                key={m.id}
+                label={m.name}
+                active={muscleIds.includes(m.id)}
+                onPress={() => toggleMuscle(m.id, setMuscleIds, setSecondaryIds)}
+                darkMode={darkMode}
+              />
+            ))}
+          </View>
+
+          <SectionLabel darkMode={darkMode}>Secondary muscles (optional)</SectionLabel>
+          <View style={scheduleStyles.wrapRow}>
+            {muscleList.map((m) => (
+              <Chip
+                key={m.id}
+                label={m.name}
+                active={secondaryIds.includes(m.id)}
+                onPress={() => toggleMuscle(m.id, setSecondaryIds, setMuscleIds)}
+                darkMode={darkMode}
+              />
+            ))}
+          </View>
+        </>
+      )}
+
+      <SectionLabel darkMode={darkMode}>Photo (optional)</SectionLabel>
+      {photo ? (
+        <View style={addStyles.photoRow}>
+          <Image source={{ uri: photo.uri }} style={addStyles.photo} />
+          <PlanButton compact variant="secondary" label="Remove" onPress={() => setPhoto(null)} darkMode={darkMode} />
+        </View>
+      ) : (
+        <PlanButton compact variant="secondary" label="Choose a photo" onPress={pickPhoto} darkMode={darkMode} />
+      )}
+
+      <SectionLabel darkMode={darkMode}>Description (optional)</SectionLabel>
+      <RingInput
+        value={description}
+        onChangeText={setDescription}
+        maxLength={1500}
+        multiline
+        placeholder="How it's done"
+        placeholderTextColor={tone.muted}
+        style={[inputStyle, editorStyles.multiline]}
+      />
+
+      <FormAlert message={error} onDismiss={() => setError("")} />
+
+      {/* Inside the dialog, so it opens over it rather than beside it */}
+      <ConfirmModal
+        visible={confirming}
+        title="Add this workout?"
+        message={`"${match?.name || name.trim()}" is already in the wger catalog. Do you still want to create your own?`}
+        confirmLabel="Create"
+        loading={saving}
+        onConfirm={() => save(true)}
+        onCancel={() => setConfirming(false)}
+      />
+    </PlanModal>
+  );
+}
+
+const addStyles = StyleSheet.create({
+  prompt: { flexDirection: "row", alignItems: "center", gap: 6 },
+  promptText: { flex: 1, fontSize: 12, fontWeight: "600" },
+  photoRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  photo: { width: 96, height: 72, borderRadius: radii.sm },
 });
 
 // Create or edit a routine: name, optional description, and an ordered list

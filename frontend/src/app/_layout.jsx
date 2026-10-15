@@ -4,7 +4,7 @@ import { PullRefreshProvider } from "@/shared/context/PullRefreshContext";
 import { ThemeProvider, useTheme } from "@/shared/context/ThemeContext";
 import { useLandingOnResume } from "@/shared/hooks/useLandingOnResume";
 import { useWebScrollbar } from "@/shared/hooks/useWebScrollbar";
-import { colors } from "@/shared/theme/nutrifitai";
+import { colors, getPublicTones } from "@/shared/theme/nutrifitai";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 
@@ -25,7 +25,8 @@ function RootLayoutInner() {
         {/* The theme's background behind every screen, so a screen change
             never flashes white (or black). Public and auth pages are mint */}
         <Stack screenOptions={{ headerShown: false, animation: "fade", contentStyle: { backgroundColor: shell.shellBg } }}>
-          <Stack.Screen name="(public)" options={{ contentStyle: { backgroundColor: colors.bgMint } }} />
+          {/* Public pages follow the theme, the auth pages stay mint */}
+          <Stack.Screen name="(public)" options={{ contentStyle: { backgroundColor: getPublicTones(darkMode).bg } }} />
           <Stack.Screen name="(auth)" options={{ contentStyle: { backgroundColor: colors.bgMint } }} />
           <Stack.Screen name="(superadmin)" />
           <Stack.Screen name="(admin)" />

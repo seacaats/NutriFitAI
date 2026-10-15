@@ -10,8 +10,8 @@ import {
   ACTIVITY_OPTIONS,
   DIET_PREFERENCES,
   GOAL_OPTIONS,
-  HEALTH_CONDITIONS,
   HEALTH_CONDITIONS_NOTE,
+  healthConditionsFor,
   NO_DIET_PREFERENCE,
   SEXES,
 } from "@/shared/constants/profileOptions";
@@ -239,7 +239,7 @@ export default function ProfileScreen() {
         <ProfilePlanField label="Primary Goal" required value={form.goal} options={GOAL_OPTIONS} icon="flag-outline" placeholder="Select your goal" otherPlaceholder="Your goal (e.g. Run a 10K)" onChange={(v) => handleChange("goal", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
         <ProfilePlanField label="Activity Level" required value={form.activity} options={ACTIVITY_OPTIONS} icon="pulse-outline" placeholder="Select your activity level" otherPlaceholder="Your activity (e.g. Shift work)" onChange={(v) => handleChange("activity", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
         <ProfilePlanField label="Diet Preference" required value={form.dietPreference} options={DIET_PREFERENCES} multiple exclusive={NO_DIET_PREFERENCE} icon="nutrition-outline" placeholder="Select any that apply" otherPlaceholder="Your diet (e.g. Intermittent Fasting)" onChange={(v) => handleChange("dietPreference", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
-        <ProfilePlanField label="Health Conditions" required value={form.healthConditions} options={HEALTH_CONDITIONS} multiple icon="medkit-outline" placeholder="Select any that apply (or None)" otherPlaceholder="Your condition (e.g. Gout)" onChange={(v) => handleChange("healthConditions", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} note={HEALTH_CONDITIONS_NOTE} />
+        <ProfilePlanField label="Health Conditions" required value={form.healthConditions} options={healthConditionsFor(form.sex)} multiple icon="medkit-outline" placeholder="Select any that apply (or None)" otherPlaceholder="Your condition (e.g. Gout)" onChange={(v) => handleChange("healthConditions", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} note={HEALTH_CONDITIONS_NOTE} />
 
         <ProfileInput label="Target Weight (kg)" value={String(form.targetWeight ?? "")} onChangeText={(v) => handleChange("targetWeight", v)} editing={editing} keyboardType="numeric" placeholder="Not set" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
         <ProfileInput label="Weekly Pace (kg/week, 0.1–1)" value={String(form.weeklyPace ?? "")} onChangeText={(v) => handleChange("weeklyPace", v)} editing={editing} keyboardType="decimal-pad" placeholder="Not set" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />

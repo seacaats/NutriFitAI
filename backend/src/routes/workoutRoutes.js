@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const multer = require('multer');
 
 const controller = require('../controllers/workoutsController');
 const { validateBody, validateQuery, validateParams } = require('../middleware/validateMiddleware');
@@ -6,10 +7,16 @@ const { requireAuth } = require('../middleware/authMiddleware');
 const {
   sessionRangeSchema, logSessionSchema, listQuerySchema, createRoutineSchema, updateRoutineSchema,
   logRoutineSessionSchema, favoriteSchema, favoriteParamsSchema, scheduleSchema, idParamSchema,
-  rescheduleSchema, dayParamSchema,
+  rescheduleSchema, dayParamSchema, matchQuerySchema, createWorkoutSchema,
 } = require('../validators/workoutValidators');
 
 const router = Router();
+
+// Upload to memory first as a buffer, like avatars
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+});
 
 /**
  * Catalog reads are behind requireAuth even though nothing in them is
@@ -25,6 +32,8 @@ router.get(
   controller.listCategories
 );
 router.get('/equipment', requireAuth, controller.listEquipment);
+router.get('/muscles', requireAuth, controller.listMuscles);
+router.get('/match', requireAuth, validateQuery(matchQuerySchema), controller.matchWorkout);
 
 router.post(
   '/sessions', 
@@ -148,10 +157,27 @@ router.get(
   validateQuery(listQuerySchema),
    controller.listWorkouts
   );
+router.post(
+  '/', 
+  requireAuth, 
+  validateBody(createWorkoutSchema), 
+  controller.createWorkout
+);
+router.post(
+  '/:id/photo',
+  requireAuth,
+  photoUpload.single('photo'),
+  controller.uploadWorkoutPhoto
+);
 router.get(
   '/:id', 
   requireAuth, 
   controller.getWorkout
+);
+router.delete(
+  '/:id',
+  requireAuth,
+  controller.deleteWorkout
 );
 
 module.exports = router;

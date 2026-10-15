@@ -12,7 +12,7 @@ from PIL import Image, ImageOps
 
 MODEL_PATH = os.getenv("MODEL_PATH", "yolov8n_new_nutrifit_167/weights/best.onnx")
 NUTRITION_PATH = os.getenv("NUTRITION_PATH", "nutrition_data.json")
-CONF = float(os.getenv("CONF_THRESHOLD", "0.40"))
+CONF = float(os.getenv("CONF_THRESHOLD", "0.25"))
 IOU = 0.7  # ultralytics' default for removing overlapping boxes of one class
 API_KEY = os.getenv("AI_API_KEY")  # shared secret with Express (AI_DETECT_API_KEY)
 MAX_BYTES = 8 * 1024 * 1024
@@ -50,6 +50,7 @@ _options.intra_op_num_threads = 1
 _options.inter_op_num_threads = 1
 _options.enable_cpu_mem_arena = False
 session = ort.InferenceSession(MODEL_PATH, sess_options=_options, providers=["CPUExecutionProvider"])
+print(f"Loaded {MODEL_PATH} (ONNX Runtime, no PyTorch)", flush=True)
 INPUT = session.get_inputs()[0]
 SIZE = INPUT.shape[2] if isinstance(INPUT.shape[2], int) else 640
 # The export stores the class names in the file: "{0: 'apple', 1: 'banana'}"
@@ -178,5 +179,6 @@ def detect(image: UploadFile = File(...), x_api_key: str | None = Header(None)):
         if n:
             for k in totals:
                 totals[k] += item[k]
-    return {"items": items, "totals": {k: round(v, 1) for k, v in totals.items()},
+    # Boxes are in the pixel space of width x height (the processed photo)
+    return {"width": img.width, "height": img.height, "items": items, "totals": {k: round(v, 1) for k, v in totals.items()},
             "missing": sorted({i["foodName"] for i in items if i["caloriesKcal"] is None})}

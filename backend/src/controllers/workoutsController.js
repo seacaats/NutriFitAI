@@ -1,3 +1,4 @@
+const { withTransaction } = require('../../config/mongo');
 const Workout = require('../models/workouts/Workout');
 const WorkoutCategory = require('../models/workouts/WorkoutCategory');
 const WorkoutSession = require('../models/workouts/WorkoutSession');
@@ -6,26 +7,33 @@ const FavoriteWorkout = require('../models/workouts/FavoriteWorkout');
 const User = require('../models/user/User');
 const { asyncHandler, sendSuccess, ApiError } = require('../utils/httpResponse');
 const { today } = require('../utils/calendarDay');
+const storage = require('../utils/storage');
+const { looksLikeImage, EXT_BY_TYPE } = require('../utils/storage/keys');
 
 // ===========================================================================
-// CATALOG -- read-only, served from the locally synced wger data
+// CATALOG -- the locally synced wger data, plus each user's own workouts
 // ===========================================================================
 
 /**
  * Serves the locally synced wger catalog.
  *
- * Read-only: the only writer is scripts/sync-workouts.js. Nothing here creates
- * or edits an exercise, so there is no ownership to check and no transaction to
- * wrap — but the endpoints still sit behind requireAuth, because an open,
- * unauthenticated list endpoint is free bandwidth for anyone who finds it.
+ * Read-only apart from createWorkout: wger's side is written by
+ * scripts/sync-workouts.js alone, and a user only ever adds their own workout
+ * (source 'user'), and deletes them again. The endpoints sit behind requireAuth,
+ * because an open, unauthenticated list endpoint is free bandwidth for anyone
+ * who finds it.
  */
+
+// What a user may see: the wger catalog and their own workouts, never
+// someone else's. In the query, like the model filters further down
+const visibleTo = (userId) => ({ $or: [{ source: 'wger' }, { createdBy: userId }] });
 
 /** 60 is generous for a grid; the cap stops a client asking for the lot. */
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 60;
 
 /** Fields the client actually renders. Excludes syncedAt and secondary muscles. */
-const LIST_PROJECTION = 'name description category muscles equipment images hasRealImage';
+const LIST_PROJECTION = 'name description category muscles equipment images hasRealImage source imageKey';
 
 function parseLimit(raw) {
   const n = parseInt(raw, 10);
@@ -36,14 +44,15 @@ function parseLimit(raw) {
 /**
  * GET /api/workouts
  *
- * Query: category, search, hasImage, equipment, ids, limit, offset, shuffle
+ * Query: category, search, hasImage, equipment, muscles, musclesSecondary, ids, limit, offset, shuffle
  */
 const listWorkouts = asyncHandler(async (req, res) => {
-  const { category, search, hasImage, equipment, ids, shuffle } = req.query;
+  const { category, search, hasImage, equipment, muscles, musclesSecondary, source, ids, shuffle } = req.query;
   const limit = parseLimit(req.query.limit);
   const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
 
-  const filter = {};
+  // $and, so it can't clash with the $or of the equipment filter
+  const filter = { $and: [visibleTo(req.userId)] };
 
   if (category) {
     const categoryId = parseInt(category, 10);
@@ -62,10 +71,15 @@ const listWorkouts = asyncHandler(async (req, res) => {
    * flag can, from an index. Pass hasImage=false to include the rest.
    */
   if (hasImage !== 'false') {
-    filter.hasRealImage = true;
+    // User workouts have no photo of their own, the client shows a fallback
+    filter.$and.push({ $or: [{ hasRealImage: true }, { source: 'user' }] });
   }
 
   if (ids) filter._id = { $in: ids.split(',').map(Number) };
+
+  // wger's or the user's own. Their own are still only ever theirs: the
+  // visibility clause above is in the same $and
+  if (source) filter.$and.push({ source });
 
   // "none" = bodyweight: no equipment listed, or wger's own "none" entry.
   // "any" = needs something. A number = that piece of equipment
@@ -77,10 +91,15 @@ const listWorkouts = asyncHandler(async (req, res) => {
     filter['equipment.id'] = Number(equipment);
   }
 
+  // Muscles: a workout working any of the chosen ones, as main or as secondary
+  if (muscles) filter['muscles.id'] = { $in: muscles.split(',').map(Number) };
+  if (musclesSecondary) filter['musclesSecondary.id'] = { $in: musclesSecondary.split(',').map(Number) };
+
   // Browse: shuffled, within any category or equipment filter. Unfiltered, the
-  // user's preferred exercises come first. A search or an id list keeps its own order
-  if (shuffle && !search && !ids) {
-    const data = await listShuffled(req.userId, Number(shuffle), filter, !category && !equipment, limit, offset);
+  // user's preferred exercises come first. A search or an id list keeps its own
+  // order, and so do the user's own workouts (alphabetical, a short list)
+  if (shuffle && !search && !ids && source !== 'user') {
+    const data = await listShuffled(req.userId, Number(shuffle), filter, !category && !equipment && !muscles && !musclesSecondary && !source, limit, offset);
     return sendSuccess(res, { data });
   }
 
@@ -121,7 +140,7 @@ const listWorkouts = asyncHandler(async (req, res) => {
 
   return sendSuccess(res, {
     data: {
-      items: items.map(shapeWorkout),
+      items: await Promise.all(items.map(shapeWorkout)),
       total,
       limit,
       offset,
@@ -141,10 +160,11 @@ function projectionObject() {
  * The client treats `id` as canonical everywhere; _id here is wger's numeric id
  * rather than an ObjectId, so this is a rename, not a conversion.
  */
-function shapeWorkout(doc) {
+// A user's own photo becomes a signed link here, wger's images are links already
+async function shapeWorkout(doc) {
   if (!doc) return null;
-  const { _id, score, ...rest } = doc;
-  return { id: _id, ...rest };
+  const { _id, score, createdBy, imageKey, ...rest } = doc;
+  return { id: _id, ...rest, ...(imageKey && { images: [await storage.urlFor(imageKey)] }) };
 }
 
 // Shuffled orders the client picks from at random. Few on purpose: each one
@@ -165,6 +185,8 @@ function preferenceFilter(prefs) {
       ? { $elemMatch: { id: { $in: prefs.equipmentIds } } }
       : { $elemMatch: { name: { $not: NO_EQUIPMENT } } };
   }
+  if (prefs?.muscleIds?.length) filter['muscles.id'] = { $in: prefs.muscleIds };
+  if (prefs?.secondaryMuscleIds?.length) filter['musclesSecondary.id'] = { $in: prefs.secondaryMuscleIds };
   return Object.keys(filter).length ? filter : null;
 }
 
@@ -213,7 +235,7 @@ async function listShuffled(userId, shuffle, base, usePrefs, limit, offset) {
   const total = matchCount + restCount;
 
   return {
-    items: items.map(shapeWorkout),
+    items: await Promise.all(items.map(shapeWorkout)),
     total,
     limit,
     offset,
@@ -229,12 +251,150 @@ const getWorkout = asyncHandler(async (req, res) => {
     throw ApiError.badRequest('Invalid exercise id');
   }
 
-  const doc = await Workout.findById(id).lean();
+  const doc = await Workout.findOne({ _id: id, ...visibleTo(req.userId) }).lean();
   if (!doc) {
     throw ApiError.notFound('Exercise not found');
   }
 
-  return sendSuccess(res, { data: shapeWorkout(doc) });
+  return sendSuccess(res, { data: await shapeWorkout(doc) });
+});
+
+// The workout this user can see under that name, ignoring case. Their own
+// wins over wger's, since a copy of their own is what blocks a second one
+async function findByName(name, userId) {
+  const rows = await Workout.find({ name, ...visibleTo(userId) }, 'name source')
+    .collation({ locale: 'en', strength: 1 })
+    .limit(5)
+    .lean();
+  return rows.find((r) => r.source === 'user') || rows[0] || null;
+}
+
+// GET /api/workouts/match?name= -- what the "Add workout" field checks while typing
+const matchWorkout = asyncHandler(async (req, res) => {
+  const match = await findByName(req.query.name, req.userId);
+  return sendSuccess(res, {
+    data: { match: match ? { id: match._id, name: match.name, source: match.source } : null },
+  });
+});
+
+// The catalog's own muscle objects for these ids, in the shape workouts store
+// them, so a user's workout matches a synced one
+async function lookupMuscles(ids) {
+  if (!ids.length) return new Map();
+  const rows = await Workout.aggregate([
+    { $project: { m: { $concatArrays: ['$muscles', '$musclesSecondary'] } } },
+    { $unwind: '$m' },
+    { $match: { 'm.id': { $in: ids } } },
+    { $group: { _id: '$m.id', muscle: { $first: '$m' } } },
+  ]);
+  return new Map(rows.map((r) => [r._id, r.muscle]));
+}
+
+/**
+ * POST /api/workouts -- adds a workout of the user's own, shaped like a synced
+ * one. A name already in their own workouts is refused; one that matches
+ * wger's needs confirmDuplicate, which the client sends after asking
+ */
+const createWorkout = asyncHandler(async (req, res) => {
+  const { name, description, categoryId, equipmentIds, muscleIds = [], secondaryMuscleIds = [], confirmDuplicate } = req.body;
+
+  const match = await findByName(name, req.userId);
+  if (match?.source === 'user') {
+    throw ApiError.conflict('You already have a workout with that name.', { code: 'DUPLICATE_OWN' });
+  }
+  if (match && !confirmDuplicate) {
+    throw ApiError.conflict('A workout with that name is already in the catalog.', { code: 'DUPLICATE_WGER' });
+  }
+
+  // Names come from the catalog, not the client
+  const category = categoryId ? await WorkoutCategory.findById(categoryId, 'name').lean() : null;
+  if (categoryId && !category) throw ApiError.badRequest('Unknown category');
+  const equipment = equipmentIds?.length
+    ? await Workout.aggregate([
+      { $unwind: '$equipment' },
+      { $match: { 'equipment.id': { $in: equipmentIds } } },
+      { $group: { _id: '$equipment.id', name: { $first: '$equipment.name' } } },
+    ])
+    : [];
+
+  // A muscle chosen as main is not also secondary
+  const found = await lookupMuscles([...new Set([...muscleIds, ...secondaryMuscleIds])]);
+  const pick = (ids) => ids.map((id) => found.get(id)).filter(Boolean);
+
+  const created = await Workout.createForUser(req.userId, {
+    name,
+    description: description || null,
+    category: category ? { id: category._id, name: category.name } : null,
+    muscles: pick(muscleIds),
+    musclesSecondary: pick(secondaryMuscleIds.filter((id) => !muscleIds.includes(id))),
+    equipment: equipment.map((e) => ({ id: e._id, name: e.name })),
+  });
+
+  return sendSuccess(res, { statusCode: 201, message: 'Workout added', data: await shapeWorkout(created) });
+});
+
+/**
+ * POST /api/workouts/:id/photo   (multipart/form-data, field name: "photo")
+ * A photo for one of the user's own workouts, stored like avatars and scans.
+ * Replaces the one it had. wger's workouts can't be given one
+ */
+const uploadWorkoutPhoto = asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) throw ApiError.notFound('Workout not found');
+  const workout = await Workout.findOne({ _id: id, source: 'user', createdBy: req.userId }, 'imageKey').lean();
+  if (!workout) throw ApiError.notFound('Workout not found');
+  if (!req.file || !req.file.buffer) {
+    throw ApiError.badRequest('No image was uploaded', { code: 'NO_FILE' });
+  }
+
+  const contentType = (req.file.mimetype || '').split(';')[0].trim().toLowerCase();
+  if (!EXT_BY_TYPE[contentType] || !looksLikeImage(req.file.buffer, EXT_BY_TYPE[contentType])) {
+    throw ApiError.badRequest(
+      'That file could not be used. Upload a JPEG, PNG or WebP image under 2 MB.',
+      { code: 'INVALID_IMAGE' },
+    );
+  }
+
+  const { key } = await storage.save(req.file.buffer, { key: storage.keys.workoutImageKey(req.userId, contentType), contentType });
+  const updated = await Workout.findOneAndUpdate(
+    { _id: id, createdBy: req.userId },
+    { $set: { imageKey: key, hasRealImage: true } },
+    { new: true },
+  ).lean();
+  if (workout.imageKey) await storage.remove(workout.imageKey);
+
+  return sendSuccess(res, { message: 'Photo added', data: await shapeWorkout(updated) });
+});
+
+/**
+ * DELETE /api/workouts/:id -- one of the user's own workouts, and every trace
+ * of it: favorite, routines (one left empty is deleted with its favorites and
+ * plans), logged and planned sessions, and the photo. wger's can't be deleted
+ */
+const deleteWorkout = asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) throw ApiError.notFound('Workout not found');
+
+  // One transaction: it is gone everywhere or nowhere
+  const removed = await withTransaction(async (client) => {
+    const workout = await Workout.removeOwned(id, req.userId, client);
+    if (!workout) return null;
+
+    await FavoriteWorkout.drop(req.userId, 'exercise', String(id), client);
+    const emptied = await WorkoutRoutine.removeExercise(req.userId, id, client);
+    for (const routineId of emptied) {
+      await FavoriteWorkout.removeAllFor('routine', routineId, client);
+      await WorkoutSession.removePlannedForRoutine(routineId, req.userId, client);
+    }
+    await WorkoutSession.removeExercise(req.userId, id, client);
+    return workout;
+  });
+  if (!removed) throw ApiError.notFound('Workout not found');
+
+  // After the commit: a rolled-back delete must not have lost its photo
+  if (removed.imageKey) await storage.remove(removed.imageKey);
+
+  return sendSuccess(res, { message: 'Workout deleted' });
 });
 
 // wger lists bodyweight exercises under an equipment entry named "none (...)"
@@ -247,6 +407,18 @@ const listEquipment = asyncHandler(async (req, res) => {
     { $unwind: '$equipment' },
     { $match: { 'equipment.name': { $not: NO_EQUIPMENT } } },
     { $group: { _id: '$equipment.id', name: { $first: '$equipment.name' } } },
+    { $sort: { name: 1 } },
+  ]);
+  return sendSuccess(res, { data: rows.map((r) => ({ id: r._id, name: r.name })) });
+});
+
+// GET /api/workouts/muscles -- every muscle the catalog's workouts list, main
+// or secondary, for the Add workout dialog
+const listMuscles = asyncHandler(async (req, res) => {
+  const rows = await Workout.aggregate([
+    { $project: { m: { $concatArrays: ['$muscles', '$musclesSecondary'] } } },
+    { $unwind: '$m' },
+    { $group: { _id: '$m.id', name: { $first: { $ifNull: ['$m.nameEn', '$m.name'] } } } },
     { $sort: { name: 1 } },
   ]);
   return sendSuccess(res, { data: rows.map((r) => ({ id: r._id, name: r.name })) });
@@ -443,8 +615,8 @@ const sessionSummary = asyncHandler(async (req, res) => {
 const SCHEDULE_AHEAD_MS = 7 * 24 * 60 * 60 * 1000;
 const SCHEDULE_SLACK_MS = 60 * 1000;
 
-async function findExercise(exerciseRef) {
-  return Workout.findById(Number(exerciseRef), 'name').lean();
+async function findExercise(exerciseRef, userId) {
+  return Workout.findOne({ _id: Number(exerciseRef), ...visibleTo(userId) }, 'name').lean();
 }
 
 async function requireRoutine(id, userId) {
@@ -546,7 +718,7 @@ const addFavorite = asyncHandler(async (req, res) => {
   if (kind === 'routine') {
     name = (await requireRoutine(refId, req.userId)).title;
   } else {
-    const exercise = await findExercise(refId);
+    const exercise = await findExercise(refId, req.userId);
     if (!exercise) throw ApiError.notFound('Exercise not found');
     name = exercise.name || name;
   }
@@ -595,7 +767,7 @@ const createSchedule = asyncHandler(async (req, res) => {
       exercises: WorkoutSession.snapshotExercises(routine.exercises),
     });
   } else {
-    const exercise = await findExercise(req.body.exerciseRef);
+    const exercise = await findExercise(req.body.exerciseRef, req.userId);
     if (!exercise) throw ApiError.notFound('Exercise not found');
     Object.assign(planned, {
       exerciseRef: Number(req.body.exerciseRef),
@@ -651,6 +823,11 @@ module.exports = {
   getWorkout,
   listCategories,
   listEquipment,
+  listMuscles,
+  matchWorkout,
+  createWorkout,
+  uploadWorkoutPhoto,
+  deleteWorkout,
   // sessions
   logSession,
   listSessions,

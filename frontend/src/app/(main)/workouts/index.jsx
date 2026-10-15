@@ -1,6 +1,6 @@
 import ExercisePills from "@/features/workouts/components/ExercisePills";
 import ExerciseWorkoutTracker from "@/features/workouts/components/ExerciseWorkoutTracker";
-import { RoutineEditorModal, RoutinePlayerModal, ScheduleModal } from "@/features/workouts/components/PlanModals";
+import { AddWorkoutModal, RoutineEditorModal, RoutinePlayerModal, ScheduleModal } from "@/features/workouts/components/PlanModals";
 import { FavoriteRoutines, PanelHeading, RecentPanel, relativeDay, RoutinesPanel, UpcomingPanel } from "@/features/workouts/components/PlanPanels";
 import { EmptyState, FavoriteButton, WorkoutTabs } from "@/features/workouts/components/PlanParts";
 import { WorkoutFilters, WorkoutImage } from "@/features/workouts/components/PlanTiles";
@@ -12,6 +12,7 @@ import { useWorkouts } from "@/features/workouts/hooks/useWorkouts";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
 import { MenuButton } from "@/shared/components/layout/ScreenHeader";
 import Skeleton from "@/shared/components/Skeleton";
+import ConfirmModal from "@/shared/components/ui/ConfirmModal";
 import { useFocusRing } from "@/shared/components/ui/FormInput";
 import PlanButton from "@/shared/components/ui/PlanButton";
 import { useTheme } from "@/shared/context/ThemeContext";
@@ -21,6 +22,7 @@ import { workoutsStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -49,6 +51,8 @@ export default function WorkoutsScreen() {
 
   const {
     activeCategory,
+    addWorkout,
+    addOpen,
     categories,
     closeDetail,
     detailLoading,
@@ -56,6 +60,9 @@ export default function WorkoutsScreen() {
     editor,
     equipment,
     equipmentList,
+    muscleList,
+    muscles,
+    musclesSecondary,
     exerciseHistory,
     exercises,
     filtered,
@@ -77,18 +84,41 @@ export default function WorkoutsScreen() {
     selectedExercise,
     sessionsLoading,
     setActiveCategory,
+    setAddOpen,
     setEditor,
     setEquipment,
+    setMuscles,
+    setMusclesSecondary,
     setPlayer,
     setPrefsOpen,
     setScheduleTarget,
     setSearchQuery,
     setTab,
+    setWorkoutSource,
     startScheduled,
     suggested,
     summary,
     tab,
+    workoutSource,
+    removeWorkout,
   } = useWorkouts();
+  // The own workout asked about in the delete dialog, and what it says
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  const confirmDelete = async () => {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await removeWorkout(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (err) {
+      setDeleteError(err?.message || "Couldn't delete the workout.");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <DashboardLayout hideTabBar>
@@ -224,7 +254,7 @@ export default function WorkoutsScreen() {
         )}
       </View>
 
-      {/* Category and equipment, behind one "Filters" button */}
+      {/* Category, equipment and muscles, behind one "Filters" button */}
       <WorkoutFilters
         categories={categories}
         category={activeCategory}
@@ -232,6 +262,13 @@ export default function WorkoutsScreen() {
         equipment={equipment}
         onEquipment={setEquipment}
         equipmentList={equipmentList}
+        muscleList={muscleList}
+        muscles={muscles}
+        onMuscles={setMuscles}
+        musclesSecondary={musclesSecondary}
+        onMusclesSecondary={setMusclesSecondary}
+        workoutSource={workoutSource}
+        onWorkoutSource={setWorkoutSource}
         onPreferences={() => setPrefsOpen(true)}
         darkMode={darkMode}
       />
@@ -244,7 +281,10 @@ export default function WorkoutsScreen() {
               "Exercises"
             : tab === "favorites" ? "" : suggested ? "Picked for you" : "All Exercises"}
         </Text>
-        <Text style={styles.resultCount}>{filtered.length} loaded</Text>
+        <View style={styles.resultActions}>
+          <Text style={styles.resultCount}>{filtered.length} loaded</Text>
+          <PlanButton compact variant="secondary" label="Add workout" onPress={() => setAddOpen(true)} darkMode={darkMode} />
+        </View>
       </View>
 
       {/* Exercise List */}
@@ -329,6 +369,19 @@ export default function WorkoutsScreen() {
         onSchedule={() =>
           selectedExercise &&
           setScheduleTarget({ kind: "exercise", refId: selectedExercise.id, name: selectedExercise.name })}
+        // Only the user's own workouts can be deleted
+        onDelete={selectedExercise?.source === "user" ? () => setDeleteTarget({ id: selectedExercise.id, name: selectedExercise.name }) : undefined}
+      />
+
+      <ConfirmModal
+        visible={deleteTarget !== null}
+        tone="danger"
+        title="Delete this workout?"
+        message={deleteError || `"${deleteTarget?.name || ""}" will be deleted for good, along with its photo, favorite, logged and scheduled sessions. It's also taken out of your routines, and a routine left empty is deleted.`}
+        confirmLabel="Delete"
+        loading={deleting}
+        onCancel={() => { setDeleteTarget(null); setDeleteError(""); }}
+        onConfirm={confirmDelete}
       />
 
       <ScheduleModal
@@ -359,11 +412,21 @@ export default function WorkoutsScreen() {
         darkMode={darkMode}
       />
 
+      <AddWorkoutModal
+        visible={addOpen}
+        onClose={() => setAddOpen(false)}
+        onSave={addWorkout}
+        categories={categories}
+        equipmentList={equipmentList}
+        muscleList={muscleList}
+        darkMode={darkMode}
+      />
+
       <WorkoutPrefsModal
         visible={prefsOpen}
         onClose={() => setPrefsOpen(false)}
         onSaved={reloadExercises}
-        options={{ categories, equipmentList, loading: false }}
+        options={{ categories, equipmentList, muscleList, loading: false }}
         darkMode={darkMode}
       />
     </DashboardLayout>
@@ -442,6 +505,7 @@ function ExerciseDetailModal({
   favorite: favoriteProp,
   onToggleFavorite,
   onSchedule,
+  onDelete,
 }) {
   // Kept while the modal fades out: the parent clears the exercise as it
   // closes, which used to blank the card for a moment first
@@ -576,6 +640,7 @@ function ExerciseDetailModal({
                     darkMode={darkMode}
                   />
                   <PlanButton variant="secondary" label="Schedule" onPress={onSchedule} darkMode={darkMode} />
+                  {onDelete && <PlanButton variant="danger" label="Delete" onPress={onDelete} darkMode={darkMode} />}
                 </View>
               )}
               {planned && (
@@ -683,6 +748,7 @@ const styles = StyleSheet.create({
   // Results
   resultTitle: { fontSize: 16, fontWeight: "700" },
   resultCount: { fontSize: 12, color: colors.textMuted },
+  resultActions: { flexDirection: "row", alignItems: "center", gap: 10 },
 
   // Exercise Card
   exerciseCard: {

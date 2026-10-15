@@ -12,10 +12,11 @@ export default function PrimaryButton({ title, onPress, loading = false, disable
     <Pressable
       onPress={onPress}
       disabled={disabled || loading}
-      style={({ pressed }) => [
+      style={({ pressed, hovered }) => [
         styles.base,
         (disabled || loading) && styles.disabled,
-        pressed && !disabled && styles.pressed,
+        // Darker green on hover too, the same shade as when pressed
+        (pressed || hovered) && !disabled && styles.pressed,
         style,
       ]}
     >

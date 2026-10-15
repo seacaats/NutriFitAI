@@ -122,4 +122,26 @@ workoutRoutineSchema.statics.removeOwned = async function removeOwned(id, userId
   return result.deletedCount > 0;
 };
 
+// A deleted workout comes out of the owner's routines. A routine it was the
+// only exercise of is deleted, and its id returned so the caller can clear
+// what hung off it
+workoutRoutineSchema.statics.removeExercise = async function removeExercise(userId, exerciseRef, client) {
+  const routines = await this.find({ ownerId: userId, 'exercises.exerciseRef': exerciseRef }, null, opts(client)).lean();
+  const emptied = [];
+  for (const routine of routines) {
+    const left = routine.exercises.filter((e) => e.exerciseRef !== exerciseRef);
+    if (left.length) {
+      await this.updateOne(
+        { _id: routine._id },
+        { $set: { exercises: normaliseExercises(left), updatedAt: new Date() } },
+        opts(client),
+      );
+    } else {
+      await this.deleteOne({ _id: routine._id }, opts(client));
+      emptied.push(String(routine._id));
+    }
+  }
+  return emptied;
+};
+
 module.exports = mongoose.model('WorkoutRoutine', workoutRoutineSchema);

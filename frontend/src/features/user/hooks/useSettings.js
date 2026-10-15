@@ -55,12 +55,6 @@ export function useSettings() {
     }
   }, [profile?.notificationPrefs]);
 
-  // Kept on the account too, so the choice follows the user. The local
-  // switch (ThemeContext) is what actually changes the look
-  const saveTheme = useCallback((theme) => {
-    apiClient.patch("/profile", { theme }, { auth: true }).catch(() => {});
-  }, []);
-
   // Both throw with the server's message, for the form to show inline
   const verifyPassword = useCallback(
     (currentPassword) => apiClient.post("/profile/password/verify", { currentPassword }, { auth: true }),
@@ -90,7 +84,6 @@ export function useSettings() {
     clearError: () => setError(""),
     setNotifications,
     setNotificationPrefs,
-    saveTheme,
     verifyPassword,
     changePassword,
     deleteAccount,

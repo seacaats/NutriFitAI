@@ -1,12 +1,20 @@
 const { Router } = require('express');
+const multer = require('multer');
 
+const env = require('../../config/env');
 const controller = require('../controllers/coachController');
 const { validateBody, validateQuery, validateParams } = require('../middleware/validateMiddleware');
 const { requireAuth } = require('../middleware/authMiddleware');
-const { aiChatLimiter } = require('../middleware/rateLimitMiddleware');
+const { aiChatLimiter, voiceTranscribeLimiter } = require('../middleware/rateLimitMiddleware');
 const { sendMessageSchema, subjectQuerySchema, conversationIdParamSchema } = require('../validators/coachValidators');
 
 const router = Router();
+
+// One short clip, held in memory and size-capped before it is buffered
+const voiceUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: env.ai.groq.transcribeMaxBytes, files: 1 },
+});
 
 // Ownership comes form req.userId (signed token) so no authorization to another user
 router.post(
@@ -15,6 +23,14 @@ router.post(
     aiChatLimiter, 
     validateBody(sendMessageSchema), 
     controller.sendMessage
+);
+
+router.post(
+    '/transcribe',
+    requireAuth,
+    voiceTranscribeLimiter,
+    voiceUpload.single('audio'),
+    controller.transcribe
 );
 
 router.get(

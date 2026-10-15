@@ -2,9 +2,10 @@ import { apiClient, ApiClientError } from "@/shared/api/apiClient";
 import { useAuth } from "@/shared/context/AuthContext";
 import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { forgetRemembered, getRemembered, setRemembered } from "@/shared/utils/rememberedState";
+import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder } from "expo-audio";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-
+import { Platform } from "react-native";
 /**
  * Backs both AI coach screens so they share one definition of what a message
  * is, how sending works, and what happens when the provider chain is exhausted
@@ -27,6 +28,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * reloads instead of forking a fresh one every time. After RESUME_MS without
  * use the coach opens on a fresh chat instead; the old one stays in history
  */
+
+const WEB = Platform.OS === "web";
 
 // Mirrors MAX_CONVERSATIONS in coachController.js: a user keeps at most
 // this many conversations, and must delete one to start another
@@ -311,8 +314,236 @@ export function useCoachChat(about = null) {
   };
 }
 
-// The AI Coach screen's state, shared by web and phone: the chat (about a
-// scan or meal when opened from the food scanner), the draft, and sending
+// Web only: opens the default mic (the browser shows its permission prompt) and
+// gives a precise error instead of a vague one
+async function openWebMic() {
+  if (typeof window !== "undefined" && !window.isSecureContext) {
+    return { error: "Voice needs https:// (or localhost). This page isn't secure." };
+  }
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+    return { error: "This browser can't record audio." };
+  }
+  try {
+    return { stream: await navigator.mediaDevices.getUserMedia({ audio: true }) };
+  } catch (e) {
+    if (__DEV__) console.warn("[voice] getUserMedia failed:", e.name, e.message);
+    if (e.name === "NotAllowedError" || e.name === "SecurityError")
+      return { error: "Microphone is blocked. Allow it in the browser's site settings." };
+    if (e.name === "NotFoundError" || e.name === "OverconstrainedError")
+      return { error: "No microphone found. Plug one in or check your system's input device." };
+    if (e.name === "NotReadableError") return { error: "The microphone is in use by another app." };
+    return { error: "Couldn't open the microphone." };
+  }
+}
+
+// A clip is cut off here, the server only takes short ones
+const MAX_RECORD_MS = 120 * 1000;
+const TRANSCRIBE_TIMEOUT_MS = 30 * 1000;
+// National languages Whisper supports: Auto, Filipino and English first, the rest A-Z.
+// Auto lets Whisper detect the language. Keep in step with the backend list in coachController
+export const VOICE_LANGUAGES = [
+  { code: "auto", label: "Auto" },
+  { code: "tl", label: "Filipino (Tagalog)" },
+  { code: "en", label: "English" },
+  { code: "af", label: "Afrikaans" },
+  { code: "sq", label: "Albanian" },
+  { code: "am", label: "Amharic" },
+  { code: "ar", label: "Arabic" },
+  { code: "hy", label: "Armenian" },
+  { code: "az", label: "Azerbaijani" },
+  { code: "be", label: "Belarusian" },
+  { code: "bn", label: "Bengali" },
+  { code: "bs", label: "Bosnian" },
+  { code: "bg", label: "Bulgarian" },
+  { code: "my", label: "Burmese" },
+  { code: "zh", label: "Chinese" },
+  { code: "hr", label: "Croatian" },
+  { code: "cs", label: "Czech" },
+  { code: "da", label: "Danish" },
+  { code: "nl", label: "Dutch" },
+  { code: "et", label: "Estonian" },
+  { code: "fi", label: "Finnish" },
+  { code: "fr", label: "French" },
+  { code: "ka", label: "Georgian" },
+  { code: "de", label: "German" },
+  { code: "el", label: "Greek" },
+  { code: "ht", label: "Haitian Creole" },
+  { code: "ha", label: "Hausa" },
+  { code: "he", label: "Hebrew" },
+  { code: "hi", label: "Hindi" },
+  { code: "hu", label: "Hungarian" },
+  { code: "is", label: "Icelandic" },
+  { code: "id", label: "Indonesian" },
+  { code: "it", label: "Italian" },
+  { code: "ja", label: "Japanese" },
+  { code: "kk", label: "Kazakh" },
+  { code: "km", label: "Khmer" },
+  { code: "ko", label: "Korean" },
+  { code: "lo", label: "Lao" },
+  { code: "lv", label: "Latvian" },
+  { code: "ln", label: "Lingala" },
+  { code: "lt", label: "Lithuanian" },
+  { code: "lb", label: "Luxembourgish" },
+  { code: "mk", label: "Macedonian" },
+  { code: "mg", label: "Malagasy" },
+  { code: "ms", label: "Malay" },
+  { code: "mt", label: "Maltese" },
+  { code: "mi", label: "Maori" },
+  { code: "mn", label: "Mongolian" },
+  { code: "ne", label: "Nepali" },
+  { code: "no", label: "Norwegian" },
+  { code: "ps", label: "Pashto" },
+  { code: "fa", label: "Persian" },
+  { code: "pl", label: "Polish" },
+  { code: "pt", label: "Portuguese" },
+  { code: "ro", label: "Romanian" },
+  { code: "ru", label: "Russian" },
+  { code: "sr", label: "Serbian" },
+  { code: "sn", label: "Shona" },
+  { code: "si", label: "Sinhala" },
+  { code: "sk", label: "Slovak" },
+  { code: "sl", label: "Slovenian" },
+  { code: "so", label: "Somali" },
+  { code: "es", label: "Spanish" },
+  { code: "sw", label: "Swahili" },
+  { code: "sv", label: "Swedish" },
+  { code: "tg", label: "Tajik" },
+  { code: "ta", label: "Tamil" },
+  { code: "th", label: "Thai" },
+  { code: "tr", label: "Turkish" },
+  { code: "tk", label: "Turkmen" },
+  { code: "uk", label: "Ukrainian" },
+  { code: "ur", label: "Urdu" },
+  { code: "uz", label: "Uzbek" },
+  { code: "vi", label: "Vietnamese" },
+  { code: "yo", label: "Yoruba" },
+];
+// Browsers record different formats; the first one this browser supports
+const WEB_AUDIO_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+
+// Dictation into the message box, web and mobile alike. Records a short clip,
+// the server turns it into text (Whisper), and the text is appended after
+// whatever was already typed
+export function useVoiceInput(setMessage) {
+  const [listening, setListening] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [error, setError] = useState("");
+  const [seconds, setSeconds] = useState(0);
+  const [language, setLanguage] = useState("auto");
+  // Native recorder; web uses MediaRecorder (webRef) for exact control of the format
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const webRef = useRef(null);
+  const activeRef = useRef(false);
+  const discardRef = useRef(false);
+  const timerRef = useRef(null);
+  const tickRef = useRef(null);
+  // Each recording gets its own number and start time, so a timer left over from an
+  // earlier one can never end (or message about) a newer one
+  const sessionRef = useRef(0);
+  const startedRef = useRef(0);
+  const startingRef = useRef(false);
+
+  const supported = WEB
+    ? typeof MediaRecorder !== "undefined" && typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia
+    : true;
+
+  const transcribe = useCallback(async (file) => {
+    setTranscribing(true);
+    try {
+      const { text } = await apiClient.uploadFile(`/coach/transcribe?language=${language}`, file, { field: "audio", auth: true, timeoutMs: TRANSCRIBE_TIMEOUT_MS });
+      if (!text) return setError("Didn't catch that. Try again.");
+      setMessage((prev) => `${prev.trim() ? `${prev.trim()} ` : ""}${text}`.slice(0, MAX_MESSAGE_LENGTH));
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Couldn't turn that into text.");
+    } finally {
+      setTranscribing(false);
+    }
+  }, [setMessage, language]);
+
+  // discard: stop without sending the clip off (the message was sent, or the screen closed)
+  const finish = useCallback(async (discard) => {
+    if (!activeRef.current) return;
+    activeRef.current = false;
+    clearTimeout(timerRef.current);
+    clearInterval(tickRef.current);
+    setListening(false);
+    discardRef.current = discard;
+
+    // Web: the recorder's onstop hands the clip over once it has flushed
+    if (WEB) return webRef.current?.stop();
+    try {
+      await recorder.stop();
+      if (!discard && recorder.uri) transcribe({ uri: recorder.uri, name: "voice.m4a", type: "audio/mp4" });
+    } catch {
+      // Not recording
+    }
+  }, [recorder, transcribe]);
+
+  const stop = useCallback(() => finish(false), [finish]);
+  const cancel = useCallback(() => finish(true), [finish]);
+
+  // Stops if the screen closes mid-recording
+  useEffect(() => () => { cancel(); }, [cancel]);
+
+  const toggle = async () => {
+    if (activeRef.current) return stop();
+    if (transcribing || startingRef.current) return;
+    startingRef.current = true;
+    setError("");
+    try {
+      if (WEB) {
+        const mic = await openWebMic();
+        if (mic.error) return setError(mic.error);
+
+        const type = WEB_AUDIO_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
+        const rec = new MediaRecorder(mic.stream, type ? { mimeType: type } : undefined);
+        const chunks = [];
+        rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+        rec.onstop = () => {
+          // Releases the mic, the browser's recording indicator goes off
+          mic.stream.getTracks().forEach((t) => t.stop());
+          webRef.current = null;
+          if (discardRef.current || !chunks.length) return;
+          const mime = (rec.mimeType || type || "audio/webm").split(";")[0];
+          const blob = new Blob(chunks, { type: mime });
+          transcribe({ uri: URL.createObjectURL(blob), name: `voice.${mime === "audio/mp4" ? "m4a" : "webm"}`, type: mime });
+        };
+        webRef.current = rec;
+        rec.start();
+      } else {
+        // Native: RECORD_AUDIO on Android, the microphone prompt on iOS
+        const { granted } = await requestRecordingPermissionsAsync();
+        if (!granted) return setError("Allow microphone access to use voice.");
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+        await recorder.prepareToRecordAsync();
+        recorder.record();
+      }
+      // Always starts from zero, whatever was recorded before
+      clearTimeout(timerRef.current);
+      clearInterval(tickRef.current);
+      const session = ++sessionRef.current;
+      startedRef.current = Date.now();
+      activeRef.current = true;
+      setListening(true);
+      // The clock shown while recording, read from the start time so it can't drift
+      setSeconds(0);
+      tickRef.current = setInterval(() => setSeconds(Math.floor((Date.now() - startedRef.current) / 1000)), 1000);
+      timerRef.current = setTimeout(() => {
+        if (sessionRef.current !== session || !activeRef.current) return;
+        stop();
+        setError("Recording stopped at 2 minutes.");
+      }, MAX_RECORD_MS);
+    } catch (e) {
+      if (__DEV__) console.warn("[voice] start failed:", e);
+      setError(`Voice input couldn't start${e?.message ? `: ${e.message}` : "."}`);
+    } finally {
+      startingRef.current = false;
+    }
+  };
+
+  return { supported, listening, transcribing, error, language, setLanguage, toggle, stop, cancel, seconds, limitSeconds: MAX_RECORD_MS / 1000 };
+}
+
 export function useCoach() {
   const scrollRef = useRef(null);
 
@@ -322,6 +553,7 @@ export function useCoach() {
 
   const [message, setMessage] = useState("");
   const chat = useCoachChat(about);
+  const voice = useVoiceInput(setMessage);
   // Any conversation load, the one resumed on open or one picked from history
   const loadingThread = chat.resuming || chat.switching;
   // Empty chat: a welcome in the middle instead of a first message
@@ -330,10 +562,11 @@ export function useCoach() {
   const sendMessage = (preset) => {
     const text = (typeof preset === "string" ? preset : message).trim();
     if (!text || chat.sending || chat.atLimit) return;
+    voice.cancel();
     chat.send(text);
     setMessage("");
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
   };
 
-  return { ...chat, scrollRef, message, setMessage, loadingThread, empty, sendMessage };
+  return { ...chat, scrollRef, message, setMessage, loadingThread, empty, sendMessage, voice };
 }

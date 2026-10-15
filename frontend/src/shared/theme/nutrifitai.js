@@ -245,6 +245,60 @@ export function getChipTint(name, darkMode) {
   return { backgroundColor: darkMode ? tint.dark : tint.light, icon: tint.icon };
 }
 
+// ------------------------------------------------------------------
+// Public pages (landing, terms): the mint look, and its dark counterpart.
+// `hover` is the one fill for anything sitting on the page background (nav
+// links, the toggle, ghost buttons), so they all react the same way
+// ------------------------------------------------------------------
+export const publicTones = {
+  light: {
+    bg: colors.bgMint,
+    nav: "rgba(220, 255, 202, 0.92)",
+    line: "#bfe3a8",
+    hover: "rgba(255, 255, 255, 0.6)",
+    bandMint: colors.mintTint,
+    bandWhite: colors.white,
+    surface: colors.white,
+    border: colors.border,
+    ink: colors.textPrimary,
+    text: colors.textSecondary,
+    muted: colors.textMuted,
+    accent: colors.green700,
+    title: colors.brandDark,
+    tint: colors.greenTint,
+    soft: colors.mintTint,
+    tag: colors.white,
+    track: chipTints.green.light,
+    rule: colors.authCard,
+    shadow: "#0f2a08",
+  },
+  dark: {
+    bg: shellColors.dark.shellBg,
+    nav: "rgba(17, 17, 17, 0.92)",
+    line: "#2a2a2a",
+    hover: "rgba(255, 255, 255, 0.1)",
+    bandMint: shellColors.dark.cardBg,
+    bandWhite: shellColors.dark.cardBg,
+    surface: screenTones.dark.card,
+    border: screenTones.dark.border,
+    ink: screenTones.dark.text,
+    text: "#c1c7d0",
+    muted: screenTones.dark.muted,
+    accent: shellColors.primary,
+    title: shellColors.primary,
+    tint: shellColors.dark.activeNavBg,
+    soft: chipTints.green.dark,
+    tag: screenTones.dark.surfaceMuted,
+    track: chipTints.green.dark,
+    rule: shellColors.dark.activeNavBg,
+    shadow: "#000000",
+  },
+};
+
+export function getPublicTones(darkMode) {
+  return darkMode ? publicTones.dark : publicTones.light;
+}
+
 export default {
   colors,
   spacing,
@@ -257,4 +311,6 @@ export default {
   getScreenPalette,
   chipTints,
   getChipTint,
+  publicTones,
+  getPublicTones,
 };

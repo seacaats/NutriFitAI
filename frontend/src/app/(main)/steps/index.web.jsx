@@ -85,7 +85,6 @@ export default function StepsScreen() {
     <DashboardLayout>
       <View style={[styles.pageHeader, narrow && styles.pageHeaderNarrow]}>
         <View style={styles.headerCopy}>
-          <Text style={[styles.eyebrow, { color: palette.muted }]}>ACTIVITY</Text>
           <Text style={[styles.pageTitle, { color: palette.text }]}>Steps</Text>
           <Text style={[styles.pageSubtitle, { color: palette.muted }]}>Move more, build consistency, and make every step count.</Text>
         </View>
