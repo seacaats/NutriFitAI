@@ -28,8 +28,8 @@ function auditedHandler(limiter) {
 // Throttle login brute-force attacks
 const loginLimiter = rateLimit({
   handler: auditedHandler('login'),
-  windowMs: 5 * 60 * 1000,
-  limit: 5,
+  windowMs: 10 * 60 * 1000,
+  limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => `${req.ip}:${(req.body && req.body.email) || ''}`,
@@ -64,6 +64,39 @@ const otpVerifyLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => `${req.ip}:${(req.body && req.body.email) || ''}`,
+  message: { success: false, message: 'Too many attempts. Please try again in 5 minutes.' },
+});
+
+// Second sign-in step. By IP only, since the challenge token isn't trusted
+// before it's verified. The per-account lockout (MFA_MAX_FAILED_ATTEMPTS) is
+// the real brake: a 6-digit code gets 5 wrong guesses, then 15 minutes off
+const mfaLoginLimiter = rateLimit({
+  handler: auditedHandler('two-factor sign-in'),
+  windowMs: 5 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many attempts. Please try again in 5 minutes.' },
+});
+
+// Resending the emailed sign-in code: same cooldown as the other OTP resends
+const mfaResendLimiter = rateLimit({
+  windowMs: env.otp.resendCooldownSeconds * 1000,
+  limit: 1,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Please wait a minute before requesting another code.' },
+});
+
+// Two-factor setup and changes from Settings, per signed-in user. Each one
+// takes a password and/or code guess
+const mfaManageLimiter = rateLimit({
+  handler: auditedHandler('two-factor settings'),
+  windowMs: 5 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.userId || req.ip,
   message: { success: false, message: 'Too many attempts. Please try again in 5 minutes.' },
 });
 
@@ -143,6 +176,9 @@ const passwordCheckLimiter = rateLimit({
 
 module.exports = {
   passwordCheckLimiter,
+  mfaLoginLimiter,
+  mfaManageLimiter,
+  mfaResendLimiter,
   loginLimiter,
   registerLimiter,
   otpRequestLimiter,

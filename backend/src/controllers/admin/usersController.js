@@ -295,10 +295,6 @@ const reinstateUser = asyncHandler(async (req, res) => {
 // user sets a new password through Forgot password
 const forcePasswordReset = asyncHandler(async (req, res) => {
   const target = await loadManageableTarget(req);
-  // getByIdSafe leaves the hash out, so whether there is one is read here
-  if (!(await User.getById(target.id))?.passwordHash) {
-    throw ApiError.badRequest('This account signs in with Google and has no password.', { code: 'NO_PASSWORD' });
-  }
 
   const updated = await User.requirePasswordReset(target.id);
   await logAction(req, {

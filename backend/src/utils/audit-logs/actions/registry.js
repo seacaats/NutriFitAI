@@ -189,6 +189,74 @@ const AUDIT_ACTIONS = {
     ],
   },
 
+  'auth.mfa.enabled': {
+    label: 'Two-factor turned on',
+    category: 'auth',
+    severity: 'notice',
+    targetType: 'user',
+    audience: 'admin',
+    message: '{actor} turned on two-factor sign-in',
+
+    fields: [],
+  },
+
+  'auth.mfa.disabled': {
+    label: 'Two-factor turned off',
+    category: 'auth',
+    severity: 'warning',
+    targetType: 'user',
+    audience: 'admin',
+    message: '{actor} turned off two-factor sign-in',
+
+    fields: [],
+  },
+
+  'auth.mfa.recovery_regenerated': {
+    label: 'Recovery codes regenerated',
+    category: 'auth',
+    severity: 'notice',
+    targetType: 'user',
+    audience: 'admin',
+    message: '{actor} generated new recovery codes',
+
+    fields: [],
+  },
+
+  'auth.mfa.recovery_used': {
+    label: 'Recovery code used',
+    category: 'auth',
+    severity: 'warning',
+    targetType: 'user',
+    audience: 'admin',
+    message: '{actor} signed in with a recovery code',
+
+    fields: [],
+  },
+
+  'auth.mfa.failed': {
+    label: 'Two-factor code rejected',
+    category: 'auth',
+    severity: 'warning',
+    targetType: 'user',
+    audience: 'admin',
+    message: 'A wrong two-factor code was entered for {target}',
+
+    fields: [
+      { label: 'Step', key: 'step', format: 'label' },
+    ],
+  },
+
+  'auth.mfa.locked': {
+    label: 'Two-factor locked',
+    category: 'auth',
+    severity: 'warning',
+    targetType: 'user',
+    audience: 'admin',
+    message: 'Two-factor sign-in was locked for {target}',
+
+    fields: [],
+  },
+
   'auth.logout': {
     label: 'Signed out',
     category: 'auth',

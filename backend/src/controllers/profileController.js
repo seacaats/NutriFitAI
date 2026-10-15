@@ -23,6 +23,8 @@ async function buildProfilePayload(userId) {
   const goal = await User.getActiveGoal(userId);
   const latestWeight = await WeightLog.findLatestByUserId(userId);
   const identities = await AuthIdentity.findByUserId(userId);
+  // Only authenticator-app accounts (admins) have recovery codes, email codes need none
+  const recoveryCodesLeft = user.mfa?.enabled && (user.role || 'user') !== 'user' ? await User.countRecoveryCodes(userId) : 0;
 
   return {
     id: user.id,
@@ -33,9 +35,9 @@ async function buildProfilePayload(userId) {
     emailVerified: Boolean(user.emailVerifiedAt),
     role: user.role || 'user',
     createdAt: user.createdAt,
-    // Settings > Account: whether there's a password to change, and which
-    // sign-in providers are linked (read-only)
-    hasPassword: Boolean(user.passwordHash),
+    // Settings > Account: which sign-in providers are linked (read-only)
+    mfaEnabled: Boolean(user.mfa && user.mfa.enabled),
+    recoveryCodesLeft,
     linkedProviders: identities.map((i) => i.provider),
 
     age: profile?.age ?? null,
@@ -321,16 +323,10 @@ const removeAvatar = asyncHandler(async (req, res) => {
 
 // ---- Settings > change password -------------------------------------------
 
-// The signed-in user, or a 400 when the current password is wrong. Google-only
-// accounts have no password to check against
+// The signed-in user, or a 400 when the current password is wrong
 async function requireCurrentPassword(req, userId, currentPassword) {
   const user = await User.getById(userId);
   if (!user) throw ApiError.notFound('User not found');
-  if (!user.passwordHash) {
-    throw ApiError.badRequest('This account signs in with Google and has no password to change.', {
-      code: 'NO_PASSWORD',
-    });
-  }
   if (!(await verifyPassword(currentPassword, user.passwordHash))) {
     await logAction(req, { action: 'auth.password.verify_failed', targetType: 'user' });
     throw ApiError.badRequest('That password is incorrect.', { code: 'WRONG_PASSWORD' });
@@ -376,12 +372,7 @@ const deleteAccount = asyncHandler(async (req, res) => {
   const user = await User.getById(req.userId);
   if (!user) throw ApiError.notFound('User not found');
 
-  if (user.passwordHash) {
-    if (!req.body.currentPassword) {
-      throw ApiError.badRequest('Please enter your current password.', { code: 'PASSWORD_REQUIRED' });
-    }
-    await requireCurrentPassword(req, req.userId, req.body.currentPassword);
-  }
+  await requireCurrentPassword(req, req.userId, req.body.currentPassword);
 
   // The last superadmin can't leave the system without one
   if (user.role === 'superadmin') {

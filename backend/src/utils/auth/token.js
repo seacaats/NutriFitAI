@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const env = require('../../../config/env');
 
@@ -131,6 +132,34 @@ function verifyResetToken(token) {
   return jwt.verify(token, env.resetToken.secret);
 }
 
+/**
+ * Challenge returned when the password was right but two-factor is on. It
+ * proves only that step, so it carries no access: it can't call the API, only
+ * be exchanged at /auth/login/mfa together with a valid code.
+ *
+ *   rmb  the rememberMe choice, carried to the real session
+ *   pv   fingerprint of the password hash, so changing the password (or a
+ *        reset) kills any challenge issued before it
+ */
+function passwordFingerprint(passwordHash) {
+  return crypto.createHash('sha256').update(String(passwordHash)).digest('hex').slice(0, 16);
+}
+
+// via: how the first step was passed, 'password' or 'google'
+function signMfaToken(user, rememberMe = false, via = 'password') {
+  return jwt.sign(
+    { sub: user.id, type: 'mfa', rmb: Boolean(rememberMe), via, pv: passwordFingerprint(user.passwordHash) },
+    env.mfa.tokenSecret,
+    { expiresIn: env.mfa.tokenExpiresIn },
+  );
+}
+
+function verifyMfaToken(token) {
+  const payload = jwt.verify(token, env.mfa.tokenSecret, { algorithms: ['HS256'] });
+  if (payload.type !== 'mfa') throw new Error('Wrong token type');
+  return payload;
+}
+
 function signOauthExchangeToken({ userId }) {
   return jwt.sign({ sub: userId, type: 'oauth_exchange' }, env.oauthExchange.secret, {
     expiresIn: env.oauthExchange.expiresIn,
@@ -159,6 +188,9 @@ module.exports = {
   verifyRefreshToken,
   signResetToken,
   verifyResetToken,
+  passwordFingerprint,
+  signMfaToken,
+  verifyMfaToken,
   signOauthExchangeToken,
   verifyOauthExchangeToken,
 };

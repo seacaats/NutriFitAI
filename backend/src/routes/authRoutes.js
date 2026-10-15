@@ -5,10 +5,10 @@ const { validateBody } = require('../middleware/validateMiddleware');
 const { requireAuth } = require('../middleware/authMiddleware');
 const { allowOauthPopup } = require('../middleware/oauthHeadersMiddleware');
 
-const { loginLimiter, registerLimiter, otpRequestLimiter, otpVerifyLimiter, 
+const { loginLimiter, mfaLoginLimiter, mfaManageLimiter, mfaResendLimiter, registerLimiter, otpRequestLimiter, otpVerifyLimiter, 
         refreshLimiter } = require('../middleware/rateLimitMiddleware');
 
-const { registerSchema, verifyRegistrationSchema, resendRegistrationOtpSchema, 
+const { registerSchema, mfaLoginSchema, mfaSetupSchema, mfaEnableSchema, mfaChangeSchema, mfaResendSchema, mfaEmailConfirmSchema, verifyRegistrationSchema, resendRegistrationOtpSchema, 
         loginSchema, forgotPasswordSchema, verifyPasswordResetSchema, 
         resetPasswordSchema } = require('../validators/authValidators');
 
@@ -41,6 +41,42 @@ router.post(
   validateBody(loginSchema), 
   controller.login
 );
+router.post(
+  '/login/mfa',
+  mfaLoginLimiter,
+  validateBody(mfaLoginSchema),
+  controller.loginMfa
+);
+
+router.post(
+  '/login/mfa/resend',
+  mfaResendLimiter,
+  validateBody(mfaResendSchema),
+  controller.resendLoginMfa
+);
+
+// First sign-in of an admin or superadmin: authenticator setup, from the challenge token
+router.post(
+  '/login/mfa/setup',
+  mfaLoginLimiter,
+  validateBody(mfaResendSchema),
+  controller.loginMfaSetup
+);
+
+router.post(
+  '/login/mfa/enable',
+  mfaLoginLimiter,
+  validateBody(mfaEnableSchema),
+  controller.loginMfaEnable
+);
+
+// ----- Two-factor (Settings and onboarding), signed in -----
+// Regular users: a code by email. Admins and superadmins: recovery codes only, their
+// authenticator is set up at sign-in (above) and can't be turned off
+router.post('/mfa/email/request', requireAuth, mfaManageLimiter, validateBody(mfaSetupSchema), controller.mfaEmailRequest);
+router.post('/mfa/email/confirm', requireAuth, mfaManageLimiter, validateBody(mfaEmailConfirmSchema), controller.mfaEmailConfirm);
+router.post('/mfa/recovery-codes', requireAuth, mfaManageLimiter, validateBody(mfaChangeSchema), controller.mfaRecoveryCodes);
+
 router.post(
   '/refresh', 
   refreshLimiter, 

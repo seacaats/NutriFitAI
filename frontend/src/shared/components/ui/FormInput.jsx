@@ -23,6 +23,12 @@ export default function FormInput({
   label,
   required = false,
   optional = false,
+  // Code fields: length cap, one-time-code autofill, Enter to submit
+  maxLength,
+  autoComplete,
+  textContentType,
+  autoFocus = false,
+  onSubmitEditing,
 }) {
   const { tokens } = useTheme();
   const { colors, radii } = tokens;
@@ -45,6 +51,11 @@ export default function FormInput({
         secureTextEntry={secureTextEntry && !visible}
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}
+        maxLength={maxLength}
+        autoComplete={autoComplete}
+        textContentType={textContentType}
+        autoFocus={autoFocus}
+        onSubmitEditing={onSubmitEditing}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
       />

@@ -32,6 +32,7 @@ export const ONBOARDING_STEPS = [
   { key: "weight", title: "Target weight", subtitle: "Where you'd like to be, and how fast. Both optional, and you can change them on Progress." },
   { key: "coach", title: "Coach tone", subtitle: "How Nori, your AI coach, talks to you. Change it any time from the AI Coach screen." },
   { key: "quiet", title: "Quiet hours", subtitle: "No reminders in this window. Your sleep hours work well." },
+  { key: "security", title: "Two-factor authentication", subtitle: "Optional. We email you a code each time you sign in, so a stolen password isn't enough. Turn it on or off any time in Settings." },
   { key: "review", title: "All set?", subtitle: "Check your answers. You can change any of them later." },
 ];
 
@@ -54,6 +55,8 @@ function initialAnswers(profile) {
     quietOn: Boolean(prefs.quietStart),
     quietStart: prefs.quietStart || QUIET_START,
     quietEnd: prefs.quietEnd || QUIET_END,
+    // Turned on from the step itself (it saves right away, not with the rest)
+    mfaOn: Boolean(profile?.mfaEnabled),
   };
 }
 

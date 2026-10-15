@@ -25,6 +25,13 @@ export function useSettings() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Same data without the loading state, so what's open on screen stays put
+  // (2FA setup is showing recovery codes when this runs)
+  const refreshQuietly = useCallback(
+    () => apiClient.get("/profile", { auth: true }).then(setProfile).catch(() => {}),
+    [],
+  );
   usePullRefresh(load);
 
   // Optimistic: flips right away, rolls back if the save fails
@@ -66,13 +73,12 @@ export function useSettings() {
     [],
   );
 
-  // Throws with the server's message. Password accounts send their password,
-  // Google-only accounts just the typed DELETE
+  // Throws with the server's message. Sends the password along with the typed DELETE
   const deleteAccount = useCallback(
     (currentPassword) =>
       apiClient.delete("/profile", {
         auth: true,
-        body: { confirm: "DELETE", ...(currentPassword ? { currentPassword } : {}) },
+        body: { confirm: "DELETE", currentPassword },
       }),
     [],
   );
@@ -82,6 +88,7 @@ export function useSettings() {
     loading,
     error,
     clearError: () => setError(""),
+    reload: refreshQuietly,
     setNotifications,
     setNotificationPrefs,
     verifyPassword,

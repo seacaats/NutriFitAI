@@ -21,6 +21,8 @@ const GOOGLE_ERROR_MESSAGES = {
   // Raised by the popup callback screen itself
   missing_exchange_token: "Google didn't return a sign-in token. Please try again.",
   exchange_failed: "We couldn't finish signing you in. Please try again.",
+  // Google went through but the 2FA check couldn't carry on in the original tab
+  mfa_undelivered: "Google sign-in worked, but the 2FA check couldn't continue here. Please log in again.",
   // Raised by the opener while driving the popup
   popup_blocked: "Your browser blocked the sign-in window. Allow popups for this site and try again.",
   popup_closed: "The Google sign-in window was closed before sign-in finished.",
@@ -59,9 +61,28 @@ export function buildGoogleAuthUrl(redirectUri = getGoogleRedirectUri(), { popup
   return `${API_BASE_URL}/auth/google?${params.toString()}`;
 }
 
-/** Trades the short-lived exchangeToken from the OAuth redirect for a session. */
+/**
+ * Trades the short-lived exchangeToken from the OAuth redirect for a session, or,
+ * when 2FA is on (always for admins), for the challenge that
+ * comes next ({ mfaRequired, mfaToken, mfaMethod, mfaSetupRequired }).
+ */
 export function exchangeGoogleToken(exchangeToken) {
   return apiClient.post("/auth/google/exchange", { exchangeToken });
+}
+
+/** The second-step state of an exchange response, in the shape the login form takes */
+export function mfaFromExchange(data) {
+  return { token: data.mfaToken, method: data.mfaMethod, setupRequired: Boolean(data.mfaSetupRequired) };
+}
+
+// A full-page Google sign-in that still needs its second step. Held in memory for
+// the login screen to pick up, so the token never sits in the address bar
+let pendingGoogleMfa = null;
+export const stashGoogleMfa = (mfa) => { pendingGoogleMfa = mfa; };
+export function takeGoogleMfa() {
+  const mfa = pendingGoogleMfa;
+  pendingGoogleMfa = null;
+  return mfa;
 }
 
 // True while the phone's Google sign-in is open (the browser backgrounds the
@@ -72,7 +93,8 @@ export const isGoogleSignInOpen = () => googleSignInOpen;
 /**
  * Native Google sign-in. Opens the backend OAuth flow in an in-app browser
  * session and waits for the redirect back into the app.
- * Resolves with the exchange response ({ accessToken, user }). Throws an
+ * Resolves with the exchange response ({ accessToken, user }, or the second-step
+ * challenge, see exchangeGoogleToken). Throws an
  * ApiClientError with code GOOGLE_CANCELLED if the user dismisses the browser.
  * (Web uses the popup flow in useLoginForm instead.)
  */

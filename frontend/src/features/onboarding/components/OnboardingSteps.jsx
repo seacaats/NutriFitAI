@@ -1,6 +1,7 @@
 import CoachToneOptions from "@/features/coach/components/CoachToneOptions";
 import TargetWeightFields from "@/features/progress/components/TargetWeightFields";
 import WorkoutPrefsPicker, { describeWorkoutPrefs } from "@/features/workouts/components/WorkoutPrefsPicker";
+import MfaSetup from "@/shared/components/ui/MfaSetup";
 import NumberBox from "@/shared/components/ui/NumberBox";
 import Stepper from "@/shared/components/ui/Stepper";
 import TimeStepper, { formatTime } from "@/shared/components/ui/TimeStepper";
@@ -114,6 +115,8 @@ function summaryOf(key, onboarding, workoutOptions) {
     }
     case "coach":
       return COACH_TONES.find((t) => t.value === answers.coachTone)?.label || "Not set";
+    case "security":
+      return answers.mfaOn ? "On" : "Off";
     case "quiet":
       return answers.quietOn ? `${formatTime(answers.quietStart)} – ${formatTime(answers.quietEnd)}` : "Off";
     default:
@@ -211,6 +214,15 @@ export function OnboardingStepBody({ onboarding, workoutOptions, onSubmit, darkM
       return <CoachToneOptions value={answers.coachTone} onChange={(coachTone) => update({ coachTone })} darkMode={darkMode} />;
     case "quiet":
       return <QuietStep onboarding={onboarding} darkMode={darkMode} />;
+    case "security":
+      return (
+        <MfaSetup
+          method="email"
+          enabled={answers.mfaOn}
+          onChange={(mfaOn) => update({ mfaOn })}
+          darkMode={darkMode}
+        />
+      );
     default:
       return <ReviewStep onboarding={onboarding} workoutOptions={workoutOptions} darkMode={darkMode} />;
   }

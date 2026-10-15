@@ -5,12 +5,16 @@ const AuthChallenge = require('../models/auth/AuthChallenge');
 const AuthIdentity = require('../models/auth/AuthIdentity');
 
 const { hashPassword, verifyPassword } = require('../utils/auth/password');
-const { generateOtp, hashOtp, verifyOtp, otpExpiryDate } = require('../utils/auth/otp');
+const { generateOtp, hashOtp, verifyOtp, otpExpiryDate, generateTotpSecret, matchTotpStep, buildOtpauthUri,
+        encryptMfaSecret, decryptMfaSecret, generateRecoveryCodes, isRecoveryCodeShape,
+        hashRecoveryCode } = require('../utils/auth/otp');
 const { signAccessToken, signRefreshToken, refreshSessionRemainingMs, refreshCookieMaxAgeMs,
         verifyRefreshToken, signResetToken, verifyResetToken,
-        signOauthExchangeToken, verifyOauthExchangeToken } = require('../utils/auth/token');
+        signOauthExchangeToken, verifyOauthExchangeToken,
+        signMfaToken, verifyMfaToken, passwordFingerprint } = require('../utils/auth/token');
 const { REFRESH_COOKIE_NAME, refreshCookieOptions, clearRefreshCookie, setRefreshCookie } = require('../utils/auth/refreshCookie');
 const crypto = require('crypto');
+const QRCode = require('qrcode');
 const { normalizeGoal } = require('../utils/goalNormalizer');
 const { isAllowedRedirectUri } = require('../utils/auth/redirectUri');
 const { saveRemoteAvatar, isUserUploaded, toPublicAvatarUrl } = require('../utils/storage/avatarStore');
@@ -394,13 +398,22 @@ const login = asyncHandler(async (req, res) => {
     throw hold.error;
   }
 
+  // Two-factor on: no session yet, only a challenge for the second step
+  if (user.mfa && user.mfa.enabled) return startMfaChallenge(res, user, rememberMe, 'password');
+
+  return finishLogin(req, res, user, rememberMe, 'password');
+});
+
+// Tokens, cookie and audit entry for a completed sign-in. `extra` rides along in
+// the response data (the recovery codes, on an admin's first sign-in)
+async function finishLogin(req, res, user, rememberMe, method, extra = {}) {
   const accessToken = signAccessToken(user);
   const refreshToken = signRefreshToken(user, rememberMe);
   setRefreshCookie(res, refreshToken, rememberMe, req);
 
   await logAction(
     req,
-    { action: 'auth.login.succeeded', targetType: 'user', details: { method: 'password', rememberMe: Boolean(rememberMe) } },
+    { action: 'auth.login.succeeded', targetType: 'user', details: { method, rememberMe: Boolean(rememberMe) } },
     { userId: user.id, role: user.role },
   );
 
@@ -409,8 +422,267 @@ const login = asyncHandler(async (req, res) => {
     data: {
       accessToken,
       user: User.toAuthPayload(user),
+      ...extra,
     },
   });
+}
+
+// ---- Two-factor sign-in --------------------------------------------------------
+// Regular users get a code by email, the same OTP process as registration and
+// password reset, and choose whether to have it. Admins and superadmins always
+// have it, with an authenticator app (TOTP) and recovery codes: their accounts are
+// created with it on, and the app is scanned in at their first sign-in. Every
+// sign-in goes through it, whether the first step was the password or Google:
+// Google only stands in for typing the password, never for the second step
+
+const mfaMethodOf = (user) => (user.role === 'user' ? 'email' : 'totp');
+
+// On, but nothing scanned in yet: a new or just-promoted admin, or an existing one
+// the migration switched on
+const needsAuthenticatorSetup = (user) => mfaMethodOf(user) === 'totp' && !(user.mfa && user.mfa.secretEnc);
+
+// The second step for a sign-in whose first step went through. No session yet: a
+// challenge token, plus the emailed code for regular users. `via` ('password' or
+// 'google') rides in the token and ends up in the audit entry of the finished sign-in
+async function startMfaChallenge(res, user, rememberMe, via) {
+  const method = mfaMethodOf(user);
+  if (method === 'email') {
+    const code = await withTransaction((client) => issueOtpChallenge(user.id, 'login_mfa', client));
+    if (!(await sendOtpWithinWait(user.email, code, 'login_mfa'))) throw emailFailed();
+  }
+  // An admin who hasn't set up the authenticator yet gets the setup instead of a
+  // code prompt (first sign-in), on the same screen and with the same token
+  const setupRequired = needsAuthenticatorSetup(user);
+  return sendSuccess(res, {
+    message: setupRequired
+      ? 'Set up your authenticator app to finish signing in.'
+      : 'Enter your verification code to finish signing in.',
+    data: { mfaRequired: true, mfaMethod: method, mfaSetupRequired: setupRequired, mfaToken: signMfaToken(user, rememberMe, via) },
+  });
+}
+
+const MFA_SESSION_MESSAGE = 'Your sign-in session expired. Please log in again.';
+
+// The user behind a challenge token, or a 401 for anything off: bad or expired
+// token, password changed since, two-factor switched off, account on hold
+async function userFromMfaToken(mfaToken) {
+  const expired = () => ApiError.unauthorized(MFA_SESSION_MESSAGE, { code: 'MFA_SESSION_EXPIRED' });
+  let payload;
+  try {
+    payload = verifyMfaToken(mfaToken);
+  } catch {
+    throw expired();
+  }
+  const user = await User.getById(payload.sub);
+  if (!user || !user.emailVerifiedAt || !user.mfa || !user.mfa.enabled || accountHold(user)) throw expired();
+  if (payload.pv !== passwordFingerprint(user.passwordHash)) throw expired();
+  return { user, rememberMe: Boolean(payload.rmb), via: payload.via || 'password' };
+}
+
+const minutesLeft = (date) => Math.max(1, Math.ceil((date.getTime() - Date.now()) / 60000));
+
+function assertNotMfaLocked(user) {
+  const until = user.mfa && user.mfa.lockedUntil;
+  if (until && until > new Date()) {
+    throw ApiError.tooManyRequests(
+      `Too many incorrect codes. Try again in ${minutesLeft(until)} minutes.`,
+      { code: 'MFA_LOCKED' },
+    );
+  }
+}
+
+// Counts a wrong authenticator code. The account locks after
+// MFA_MAX_FAILED_ATTEMPTS in a row, however many IPs they come from
+async function rejectAuthenticatorCode(req, user, step) {
+  const lockedUntil = await User.recordMfaFailure(user.id, {
+    max: env.mfa.maxFailedAttempts,
+    lockMs: env.mfa.lockMinutes * 60 * 1000,
+  });
+  await logAction(
+    req,
+    { action: lockedUntil ? 'auth.mfa.locked' : 'auth.mfa.failed', targetType: 'user', targetId: user.id, details: { step } },
+    { userId: null, role: null },
+  );
+  if (lockedUntil) {
+    throw ApiError.tooManyRequests(
+      `Too many incorrect codes. Try again in ${minutesLeft(lockedUntil)} minutes.`,
+      { code: 'MFA_LOCKED' },
+    );
+  }
+  throw ApiError.unauthorized('That code is incorrect.', { code: 'INVALID_MFA_CODE' });
+}
+
+// 'totp' for an app code, 'recovery' for a one-time recovery code, else null.
+// Both are single use: a step is claimed atomically, a recovery code removed
+async function checkAuthenticatorCode(user, code) {
+  const clean = String(code).replace(/\s/g, '');
+  if (/^\d{6}$/.test(clean)) {
+    const step = matchTotpStep(decryptMfaSecret(user.mfa.secretEnc, user.id), clean);
+    return step !== null && (await User.claimTotpStep(user.id, step)) ? 'totp' : null;
+  }
+  if (isRecoveryCodeShape(clean)) {
+    return (await User.consumeRecoveryHash(user.id, hashRecoveryCode(clean))) ? 'recovery' : null;
+  }
+  return null;
+}
+
+// Not awaited by callers: a failed email mustn't undo a sign-in
+function noteRecoveryUsed(req, user) {
+  logAction(req, { action: 'auth.mfa.recovery_used', targetType: 'user', targetId: user.id }, { userId: user.id, role: user.role }).catch(() => {});
+  notify(user.id, 'mfa_recovery_used');
+}
+
+// POST /api/auth/login/mfa -- second step. Single-use codes either way
+const loginMfa = asyncHandler(async (req, res) => {
+  const { user, rememberMe, via } = await userFromMfaToken(req.body.mfaToken);
+
+  if (needsAuthenticatorSetup(user)) {
+    throw ApiError.badRequest('Set up your authenticator app first.', { code: 'MFA_SETUP_REQUIRED' });
+  }
+
+  if (mfaMethodOf(user) === 'email') {
+    try {
+      await consumeOtpChallenge({ userId: user.id, purpose: 'login_mfa', code: req.body.code });
+    } catch (err) {
+      await logAction(req, { action: 'auth.mfa.failed', targetType: 'user', targetId: user.id, details: { step: 'login' } }, { userId: null, role: null });
+      throw err;
+    }
+    return finishLogin(req, res, user, rememberMe, `${via}+email_code`);
+  }
+
+  assertNotMfaLocked(user);
+  const kind = await checkAuthenticatorCode(user, req.body.code);
+  if (!kind) await rejectAuthenticatorCode(req, user, 'login');
+  await User.clearMfaFailures(user.id);
+  if (kind === 'recovery') noteRecoveryUsed(req, user);
+  return finishLogin(req, res, user, rememberMe, kind === 'recovery' ? `${via}+recovery_code` : `${via}+totp`);
+});
+
+// POST /api/auth/login/mfa/resend -- a fresh emailed code (regular users)
+const resendLoginMfa = asyncHandler(async (req, res) => {
+  const { user } = await userFromMfaToken(req.body.mfaToken);
+  if (mfaMethodOf(user) !== 'email') throw ApiError.badRequest('This account uses an authenticator app.');
+
+  const code = await withTransaction((client) => issueOtpChallenge(user.id, 'login_mfa', client));
+  if (!(await sendOtpWithinWait(user.email, code, 'login_mfa'))) throw emailFailed();
+  await logAction(req, { action: 'auth.otp.resent', targetType: 'user' }, { userId: user.id, role: user.role });
+  return sendSuccess(res, { message: 'A new code has been sent.' });
+});
+
+// ---- First sign-in of an admin: authenticator setup ------------------------------
+// The first step (the password, or Google) was just proven and the challenge token
+// carries that, so neither step asks for it again. The token is only ever issued after it
+
+// The admin behind a challenge token who still has to scan the app in
+async function setupUserFromMfaToken(mfaToken) {
+  const { user, rememberMe, via } = await userFromMfaToken(mfaToken);
+  if (!needsAuthenticatorSetup(user)) throw ApiError.conflict('Your authenticator app is already set up.', { code: 'MFA_ALREADY_SET_UP' });
+  assertNotMfaLocked(user);
+  return { user, rememberMe, via };
+}
+
+// POST /api/auth/login/mfa/setup { mfaToken } -- secret and QR, not active yet
+const loginMfaSetup = asyncHandler(async (req, res) => {
+  const { user } = await setupUserFromMfaToken(req.body.mfaToken);
+
+  const secret = generateTotpSecret();
+  await User.startMfaSetup(user.id, encryptMfaSecret(secret, user.id));
+  const otpauthUri = buildOtpauthUri({ secret, email: user.email });
+  const qrDataUrl = await QRCode.toDataURL(otpauthUri, { errorCorrectionLevel: 'M', margin: 1, width: 224 });
+
+  // The secret is in this response, so nothing may cache it
+  res.set('Cache-Control', 'no-store');
+  return sendSuccess(res, { data: { secret, otpauthUri, qrDataUrl } });
+});
+
+// POST /api/auth/login/mfa/enable { mfaToken, code } -- the first code from the app
+// finishes the setup and the sign-in. The recovery codes come back with the session,
+// the only time they're shown
+const loginMfaEnable = asyncHandler(async (req, res) => {
+  const { user, rememberMe, via } = await setupUserFromMfaToken(req.body.mfaToken);
+
+  const pending = user.mfa && user.mfa.pendingSecretEnc;
+  if (!pending || !user.mfa.pendingExpiresAt || user.mfa.pendingExpiresAt < new Date()) {
+    throw ApiError.badRequest('That setup expired. Start again.', { code: 'MFA_SETUP_EXPIRED' });
+  }
+  const step = matchTotpStep(decryptMfaSecret(pending, user.id), req.body.code);
+  if (step === null) await rejectAuthenticatorCode(req, user, 'setup');
+
+  const recoveryCodes = generateRecoveryCodes();
+  const switched = await User.enableMfa(user.id, {
+    secretEnc: pending,
+    recoveryHashes: recoveryCodes.map(hashRecoveryCode),
+    step,
+  });
+  if (!switched) throw ApiError.conflict('Your authenticator app is already set up.', { code: 'MFA_ALREADY_SET_UP' });
+
+  await logAction(
+    req,
+    { action: 'auth.mfa.enabled', targetType: 'user', targetId: user.id, targetLabel: User.displayName(user), targetRole: user.role },
+    { userId: user.id, role: user.role },
+  );
+  notify(user.id, 'mfa_enabled');
+  res.set('Cache-Control', 'no-store');
+  return finishLogin(req, res, user, rememberMe, `${via}+totp`, { recoveryCodes });
+});
+
+// ---- Settings: the emailed code (regular users) and recovery codes (admins) ----------
+
+// The signed-in account, after re-checking its password. Changing a second
+// factor must not be possible from a borrowed session alone
+async function requirePasswordFor(req, password, method) {
+  const user = await User.getById(req.userId);
+  if (!user) throw ApiError.notFound('User not found');
+  if (mfaMethodOf(user) !== method) throw ApiError.forbidden('That option isn\'t available for this account.');
+  if (!(await verifyPassword(password, user.passwordHash))) {
+    await logAction(req, { action: 'auth.password.verify_failed', targetType: 'user' });
+    throw ApiError.badRequest('That password is incorrect.', { code: 'WRONG_PASSWORD' });
+  }
+  return user;
+}
+
+const mfaAudit = (req, user, action) =>
+  logAction(req, { action, targetType: 'user', targetId: user.id, targetLabel: User.displayName(user), targetRole: user.role });
+
+// Regular users. POST /api/auth/mfa/email/request -- sends the confirmation code
+const mfaEmailRequest = asyncHandler(async (req, res) => {
+  const user = await requirePasswordFor(req, req.body.password, 'email');
+  const code = await withTransaction((client) => issueOtpChallenge(user.id, 'mfa_change', client));
+  if (!(await sendOtpWithinWait(user.email, code, 'mfa_change'))) throw emailFailed();
+  return sendSuccess(res, { message: 'We sent a code to your email.' });
+});
+
+// POST /api/auth/mfa/email/confirm { code, enable }
+const mfaEmailConfirm = asyncHandler(async (req, res) => {
+  const user = await User.getById(req.userId);
+  if (!user || mfaMethodOf(user) !== 'email') throw ApiError.forbidden('That option isn\'t available for this account.');
+
+  await consumeOtpChallenge({ userId: user.id, purpose: 'mfa_change', code: req.body.code });
+  await User.setEmailMfa(user.id, req.body.enable);
+  await mfaAudit(req, user, req.body.enable ? 'auth.mfa.enabled' : 'auth.mfa.disabled');
+  notify(user.id, req.body.enable ? 'mfa_enabled' : 'mfa_disabled');
+  return sendSuccess(res, { message: req.body.enable ? 'Two-factor sign-in is on.' : 'Two-factor sign-in is off.', data: { mfaEnabled: req.body.enable } });
+});
+
+// New recovery codes need the password and a current code
+async function requireAuthenticatorProof(req) {
+  const user = await requirePasswordFor(req, req.body.password, 'totp');
+  if (!user.mfa || !user.mfa.enabled) throw ApiError.badRequest('Two-factor sign-in is off.');
+  assertNotMfaLocked(user);
+  const kind = await checkAuthenticatorCode(user, req.body.code);
+  if (!kind) await rejectAuthenticatorCode(req, user, 'settings');
+  await User.clearMfaFailures(user.id);
+  return user;
+}
+
+// POST /api/auth/mfa/recovery-codes { password, code } -- replaces all of them
+const mfaRecoveryCodes = asyncHandler(async (req, res) => {
+  const user = await requireAuthenticatorProof(req);
+  const recoveryCodes = generateRecoveryCodes();
+  await User.replaceRecoveryHashes(user.id, recoveryCodes.map(hashRecoveryCode));
+  await mfaAudit(req, user, 'auth.mfa.recovery_regenerated');
+  res.set('Cache-Control', 'no-store');
+  return sendSuccess(res, { message: 'New recovery codes generated.', data: { recoveryCodes } });
 });
 
 // api/auth/google — kicks off the flow
@@ -546,6 +818,10 @@ const googleExchange = asyncHandler(async (req, res) => {
     );
     throw hold.error;
   }
+
+  // Google stands in for the password only. Two-factor still follows: the emailed
+  // code, or an admin's authenticator app (scanned in here on a first sign-in)
+  if (user.mfa && user.mfa.enabled) return startMfaChallenge(res, user, true, 'google');
 
   const accessToken = signAccessToken(user);
   const refreshToken = signRefreshToken(user, true);
@@ -791,6 +1067,13 @@ const me = asyncHandler(async (req, res) => {
 
 module.exports = {
   register,
+  loginMfa,
+  resendLoginMfa,
+  loginMfaSetup,
+  loginMfaEnable,
+  mfaEmailRequest,
+  mfaEmailConfirm,
+  mfaRecoveryCodes,
   verifyRegistration,
   resendRegistrationOtp,
   login,

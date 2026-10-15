@@ -8,7 +8,7 @@ const { Schema } = mongoose;
 const authChallengeSchema = new Schema(
   {
     userId: USER_REF,
-    purpose: { type: String, enum: ['email_verification', 'password_reset'], required: true },
+    purpose: { type: String, enum: ['email_verification', 'password_reset', 'login_mfa', 'mfa_change'], required: true },
     codeHash: { type: String, required: true }, // hash of the OTP, never plaintext
     expiresAt: { type: Date, required: true },
     consumedAt: { type: Date, default: null },

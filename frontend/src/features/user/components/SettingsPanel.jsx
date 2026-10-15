@@ -4,6 +4,7 @@ import { useSettings } from "@/features/user/hooks/useSettings";
 import Skeleton from "@/shared/components/Skeleton";
 import ConfirmModal from "@/shared/components/ui/ConfirmModal";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
+import MfaSetup from "@/shared/components/ui/MfaSetup";
 import PlanButton from "@/shared/components/ui/PlanButton";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import TimeStepper, { formatTime, QUIET_END, QUIET_START } from "@/shared/components/ui/TimeStepper";
@@ -151,12 +152,6 @@ function ChangePassword({ settings, darkMode }) {
     }
   }
 
-  if (!settings.profile?.hasPassword) {
-    return (
-      <Row label="Password" hint="This account signs in with Google, so there's no password to change." darkMode={darkMode} />
-    );
-  }
-
   return (
     <View style={[styles.row, styles.column, { borderBottomColor: tone.border, borderBottomWidth: 1 }]}>
       <View style={styles.inline}>
@@ -168,7 +163,7 @@ function ChangePassword({ settings, darkMode }) {
               : "Now choose a new password."}
           </Text>
         </View>
-        {step === "idle" ? (
+        {step === "idle" && (
           <PlanButton
             compact
             variant="secondary"
@@ -176,8 +171,6 @@ function ChangePassword({ settings, darkMode }) {
             onPress={() => { setDone(""); setStep("verify"); }}
             darkMode={darkMode}
           />
-        ) : (
-          <PlanButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
         )}
       </View>
 
@@ -198,7 +191,8 @@ function ChangePassword({ settings, darkMode }) {
           />
           <ScreenError message={error} onDismiss={() => setError("")} />
           <View style={styles.formActions}>
-            <PlanButton label="Continue" onPress={verify} loading={busy} darkMode={darkMode} />
+            <PlanButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
+            <PlanButton compact label="Continue" onPress={verify} loading={busy} darkMode={darkMode} />
           </View>
         </View>
       )}
@@ -227,7 +221,8 @@ function ChangePassword({ settings, darkMode }) {
           />
           <ScreenError message={error} onDismiss={() => setError("")} />
           <View style={styles.formActions}>
-            <PlanButton label="Save password" onPress={review} darkMode={darkMode} />
+            <PlanButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
+            <PlanButton compact label="Save password" onPress={review} darkMode={darkMode} />
           </View>
         </View>
       )}
@@ -341,12 +336,11 @@ function NotificationSettings({ settings, loading, darkMode }) {
 
 // ---- Delete account ------------------------------------------------------------
 //
-// Typed DELETE, plus the current password when there is one, then a final
+// Typed DELETE, plus the current password, then a final
 // "are you sure?". Signs out once the server confirms
 
 function DeleteAccount({ settings, onDeleted, darkMode }) {
   const tone = getScreenTones(darkMode);
-  const hasPassword = Boolean(settings.profile?.hasPassword);
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [password, setPassword] = useState("");
@@ -365,7 +359,7 @@ function DeleteAccount({ settings, onDeleted, darkMode }) {
 
   function review() {
     if (typed !== "DELETE") return setError('Type DELETE to confirm.');
-    if (hasPassword && !password) return setError("Please enter your current password.");
+    if (!password) return setError("Please enter your current password.");
     setError("");
     return setConfirming(true);
   }
@@ -373,7 +367,7 @@ function DeleteAccount({ settings, onDeleted, darkMode }) {
   async function remove() {
     setBusy(true);
     try {
-      await settings.deleteAccount(hasPassword ? password : null);
+      await settings.deleteAccount(password);
       await onDeleted();
     } catch (err) {
       setConfirming(false);
@@ -392,13 +386,11 @@ function DeleteAccount({ settings, onDeleted, darkMode }) {
           </Text>
         </View>
         {/* Right-aligned, even when the long hint pushes it onto its own line */}
-        <View style={styles.endAction}>
-          {open ? (
-            <PlanButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
-          ) : (
+        {!open && (
+          <View style={styles.endAction}>
             <PlanButton compact variant="danger" label="Delete account" onPress={() => setOpen(true)} darkMode={darkMode} />
-          )}
-        </View>
+          </View>
+        )}
       </View>
 
       {open && (
@@ -410,22 +402,21 @@ function DeleteAccount({ settings, onDeleted, darkMode }) {
             onChangeText={setTyped}
             autoCapitalize="characters"
           />
-          {hasPassword && (
-            <FormInput
-              icon="lock-closed-outline"
-              placeholder="Current password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              showToggle
-              visible={show}
-              onToggleVisible={() => setShow((v) => !v)}
-              autoCapitalize="none"
-            />
-          )}
+          <FormInput
+            icon="lock-closed-outline"
+            placeholder="Current password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            showToggle
+            visible={show}
+            onToggleVisible={() => setShow((v) => !v)}
+            autoCapitalize="none"
+          />
           <ScreenError message={error} onDismiss={() => setError("")} />
           <View style={styles.formActions}>
-            <PlanButton variant="danger" label="Delete my account" onPress={review} darkMode={darkMode} />
+            <PlanButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
+            <PlanButton compact variant="danger" label="Delete my account" onPress={review} darkMode={darkMode} />
           </View>
         </View>
       )}
@@ -451,6 +442,7 @@ export default function SettingsPanel() {
   const tone = getScreenTones(darkMode);
   const settings = useSettings();
   const logout = useLogout();
+  const { role } = useAuth();
 
   // The page renders in full right away. Only the values that come from the
   // account are placeholders while it loads, each the size of what replaces it
@@ -501,6 +493,26 @@ export default function SettingsPanel() {
         ) : (
           <ChangePassword settings={settings} darkMode={darkMode} />
         )}
+
+        {/* Regular users: a code by email. Admins: an authenticator app */}
+        <View style={[styles.row, styles.column, { borderBottomColor: tone.border, borderBottomWidth: 1 }]}>
+          <Text style={[styles.rowLabel, { color: tone.text }]}>Two-Factor Authentication</Text>
+          {loading ? (
+            // Same shape as MfaSetup: its status line, then the button
+            <>
+              <Skeleton width={220} height={14} style={{ marginTop: 8 }} />
+              <Skeleton width={150} height={32} borderRadius={radii.pill} style={{ marginTop: 10 }} />
+            </>
+          ) : (
+            <MfaSetup
+              method={role === "user" ? "email" : "totp"}
+              enabled={Boolean(profile.mfaEnabled)}
+              recoveryCodesLeft={profile.recoveryCodesLeft}
+              onChange={settings.reload}
+              darkMode={darkMode}
+            />
+          )}
+        </View>
 
         <Row label="Google account" hint="Linked accounts can't be changed here." darkMode={darkMode}>
           {loading ? <Skeleton width={90} height={26} borderRadius={radii.pill} /> : (
@@ -558,7 +570,7 @@ const styles = StyleSheet.create({
   segText: { fontSize: 13, fontWeight: "700" },
   form: { gap: 10, maxWidth: 420 },
   endAction: { marginLeft: "auto" },
-  formActions: { flexDirection: "row", justifyContent: "flex-end" },
+  formActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
   badge: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: radii.pill, paddingHorizontal: 10, paddingVertical: 5 },
   badgeText: { fontSize: 12, fontWeight: "700" },
 });

@@ -1,10 +1,13 @@
+import { useOtpInput } from "@/features/auth/hooks/useOtpInput";
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
 import { useAuth } from "@/shared/context/AuthContext";
 import { useKeepOnResume } from "@/shared/hooks/useLandingOnResume";
 import {
   buildGoogleAuthUrl,
   googleErrorMessage,
+  mfaFromExchange,
   signInWithGoogle,
+  takeGoogleMfa,
 } from "@/shared/services/googleAuth";
 import { listenForGoogleResult, resetGoogleAuthChannel } from "@/shared/utils/authChannel";
 import { setAccessToken } from "@/shared/utils/authStorage";
@@ -51,6 +54,19 @@ export function useLoginForm() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
+  // Set when the password was right but two-factor is on: { token, method, setupRequired }
+  // method is "email" (regular users) or "totp" (admins, authenticator app).
+  // setupRequired: an admin's first sign-in, the app isn't scanned in yet
+  const [mfa, setMfa] = useState(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaNotice, setMfaNotice] = useState("");
+  // First sign-in of an admin: the QR code to scan ({ secret, qrDataUrl }), then
+  // the recovery codes. The session itself is held back until they're saved
+  const [mfaSetup, setMfaSetup] = useState(null);
+  const [recoveryCodes, setRecoveryCodes] = useState(null);
+  const pendingSessionRef = useRef(null);
+  // The emailed code, entered in boxes like the other code screens
+  const otp = useOtpInput(4);
 
   const popupRef = useRef(null);
   const stopListeningRef = useRef(null);
@@ -109,6 +125,160 @@ export function useLoginForm() {
   // Tear down timers/listeners if the user navigates away mid sign-in
   useEffect(() => cleanupGoogleListener, []);
 
+  /** Stores the session from a finished sign-in (password, or password + code) */
+  async function completeSignIn(data) {
+    if (!data?.accessToken) {
+      const message = "Sign-in didn't return a session. Please try again.";
+      setError(message);
+      Alert.alert("Login failed", message);
+      return;
+    }
+
+    try {
+      await setAccessToken(data.accessToken);
+    } catch {
+      const message = "Signed in, but the session couldn't be saved on this device. Check your storage settings.";
+      setError(message);
+      Alert.alert("Login failed", message);
+      return;
+    }
+
+    // Re-fetch /auth/me now that a new token is stored, so AuthContext
+    // (and anything reading useAuth(), like DashboardLayout) reflects the
+    // freshly logged-in user
+    // Signed in now: the (auth) layout sees it and takes them in (to `next`
+    // or their home). Navigating here too replaced the onboarding the
+    // dashboard had just opened
+    await refresh();
+  }
+
+  // The first step went through (password or Google) but a second one is needed before
+  // there's a session. { token, method, setupRequired }
+  async function beginMfa({ token, method, setupRequired }) {
+    // Admins and superadmins (the authenticator-app method) are web only: on a phone
+    // there's no code prompt and no QR setup, just the screen saying so. Nothing was
+    // stored, so there's no session to clear
+    if (Platform.OS !== "web" && method === "totp") {
+      router.replace({ pathname: "/access-denied", params: { reason: "admin-web-only" } });
+      return;
+    }
+    setMfa({ token, method, setupRequired });
+    setMfaCode("");
+    setMfaNotice(method === "email" ? "We sent a code to your email." : "");
+    if (setupRequired) await loadMfaSetup(token);
+  }
+
+  // A full-page Google sign-in lands here from the callback screen with its second step pending
+  useEffect(() => {
+    const pending = takeGoogleMfa();
+    if (pending) beginMfa(pending);
+  }, []);
+
+  const mfaProblem = (err, fallback) => (err instanceof ApiClientError ? err.message : fallback);
+
+  function cancelMfa() {
+    setMfa(null);
+    setMfaCode("");
+    setMfaSetup(null);
+    setRecoveryCodes(null);
+    pendingSessionRef.current = null;
+    otp.reset();
+    setMfaNotice("");
+    setError("");
+    setPassword("");
+  }
+
+  // The QR code and key for the first sign-in of an admin
+  async function loadMfaSetup(token) {
+    setError("");
+    try {
+      setMfaSetup(await apiClient.post("/auth/login/mfa/setup", { mfaToken: token }));
+    } catch (err) {
+      if (err?.code === "MFA_SESSION_EXPIRED") cancelMfa();
+      setError(mfaProblem(err, "Couldn't start the setup. Please try again."));
+    }
+  }
+
+  // First code from the app: finishes the setup and signs in. The recovery codes
+  // are shown before the session is stored, which would take them off this screen
+  async function handleMfaEnable() {
+    const code = mfaCode.trim();
+    if (!/^\d{6}$/.test(code)) {
+      setError("Enter the 6-digit code from your authenticator app.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      const data = await apiClient.post("/auth/login/mfa/enable", { mfaToken: mfa.token, code });
+      pendingSessionRef.current = data;
+      setRecoveryCodes(data.recoveryCodes || []);
+      setMfaSetup(null);
+      setMfaCode("");
+    } catch (err) {
+      if (err?.code === "MFA_SESSION_EXPIRED") cancelMfa();
+      // The QR code timed out: a fresh one replaces it
+      if (err?.code === "MFA_SETUP_EXPIRED") loadMfaSetup(mfa.token);
+      setError(mfaProblem(err, "Something went wrong. Please try again."));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function finishMfaSetup() {
+    const session = pendingSessionRef.current;
+    pendingSessionRef.current = null;
+    setRecoveryCodes(null);
+    setLoading(true);
+    try {
+      await completeSignIn(session);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleMfaSubmit() {
+    if (mfa.setupRequired) {
+      await handleMfaEnable();
+      return;
+    }
+    const byEmail = mfa.method === "email";
+    const code = byEmail ? otp.codeValue : mfaCode.trim();
+    if (byEmail ? !otp.isComplete : !code) {
+      setError(byEmail ? "Please enter the code we emailed you." : "Please enter the code from your authenticator app.");
+      return;
+    }
+    setError("");
+    setMfaNotice("");
+    setLoading(true);
+    try {
+      const data = await apiClient.post("/auth/login/mfa", { mfaToken: mfa.token, code });
+      await completeSignIn(data);
+    } catch (err) {
+      const message = mfaProblem(err, "Something went wrong. Please try again.");
+      // The challenge ran out or was invalidated: start over from the password
+      if (err?.code === "MFA_SESSION_EXPIRED") {
+        cancelMfa();
+      }
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleMfaResend() {
+    setError("");
+    setMfaNotice("");
+    try {
+      await apiClient.post("/auth/login/mfa/resend", { mfaToken: mfa.token });
+      otp.reset();
+      setMfaNotice("We sent a new code to your email.");
+    } catch (err) {
+      if (err?.code === "MFA_SESSION_EXPIRED") cancelMfa();
+      setError(mfaProblem(err, "Couldn't resend the code. Try again."));
+    }
+  }
+
   async function handleLogin() {
     if (!email.trim() && !password) {
       setError("Please enter your email and password.");
@@ -137,29 +307,13 @@ export function useLoginForm() {
         rememberMe,
       });
 
-      if (!data?.accessToken) {
-        const message = "Sign-in didn't return a session. Please try again.";
-        setError(message);
-        Alert.alert("Login failed", message);
+      // Right password, but a second step is needed before there's a session
+      if (data?.mfaRequired) {
+        await beginMfa(mfaFromExchange(data));
         return;
       }
 
-      try {
-        await setAccessToken(data.accessToken);
-      } catch {
-        const message = "Signed in, but the session couldn't be saved on this device. Check your storage settings.";
-        setError(message);
-        Alert.alert("Login failed", message);
-        return;
-      }
-
-      // Re-fetch /auth/me now that a new token is stored, so AuthContext
-      // (and anything reading useAuth(), like DashboardLayout) reflects the
-      // freshly logged-in user
-      // Signed in now: the (auth) layout sees it and takes them in (to `next`
-      // or their home). Navigating here too replaced the onboarding the
-      // dashboard had just opened
-      await refresh();
+      await completeSignIn(data);
     } catch (err) {
       // Unknown, unverified, and wrong-password all come back as the same
       // "Invalid email or password" from the server, by design
@@ -215,6 +369,11 @@ export function useLoginForm() {
       setGoogleLoading(true);
       try {
         const data = await signInWithGoogle();
+        // Same second step as after a password
+        if (data?.mfaRequired) {
+          await beginMfa(mfaFromExchange(data));
+          return;
+        }
         await setAccessToken(data.accessToken);
         // Signed in now: the (auth) layout sees it and takes them in (to `next`
         // or their home). Navigating here too replaced the onboarding the
@@ -291,6 +450,12 @@ export function useLoginForm() {
         const message = googleErrorMessage(data.error, data.message);
         setError(message);
         Alert.alert("Google sign-in failed", message);
+        return;
+      }
+
+      // Same second step as after a password
+      if (data.mfa) {
+        await beginMfa(data.mfa);
         return;
       }
 
@@ -450,6 +615,18 @@ export function useLoginForm() {
     error,
     dismissError,
     handleLogin,
+    mfa,
+    mfaCode,
+    setMfaCode,
+    otp,
+    mfaNotice,
+    dismissMfaNotice: () => setMfaNotice(""),
+    handleMfaSubmit,
+    handleMfaResend,
+    mfaSetup,
+    recoveryCodes,
+    finishMfaSetup,
+    cancelMfa,
     handleGoogleLogin,
     cancelGoogleLogin,
     goToForgotPassword,

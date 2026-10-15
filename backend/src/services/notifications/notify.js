@@ -124,6 +124,42 @@ const NOTIFICATION_TYPES = {
       intro: 'The password for your NutriFitAI account was just changed from Settings.',
     },
   },
+  mfa_enabled: {
+    category: 'account',
+    inbox: true,
+    title: 'Two-factor sign-in is on',
+    body: 'Signing in now asks for a code from your authenticator app.',
+    link: '/settings',
+    email: {
+      subject: 'Two-factor sign-in was turned on',
+      title: 'Two-factor sign-in is on',
+      intro: 'Two-factor sign-in was just turned on for your NutriFitAI account.',
+    },
+  },
+  mfa_disabled: {
+    category: 'account',
+    inbox: true,
+    title: 'Two-factor sign-in is off',
+    body: 'Two-factor sign-in was turned off from Settings.',
+    link: '/settings',
+    email: {
+      subject: 'Two-factor sign-in was turned off',
+      title: 'Two-factor sign-in is off',
+      intro: 'Two-factor sign-in was just turned off for your NutriFitAI account.',
+    },
+  },
+  mfa_recovery_used: {
+    category: 'account',
+    inbox: true,
+    title: 'A recovery code was used',
+    body: 'A recovery code was used to sign in. Generate new ones in Settings if you are running low.',
+    link: '/settings',
+    email: {
+      subject: 'A recovery code was used to sign in',
+      title: 'A recovery code was used',
+      intro: 'A one-time recovery code was just used to sign in to your NutriFitAI account.',
+    },
+  },
   password_reset: {
     category: 'account',
     inbox: true,

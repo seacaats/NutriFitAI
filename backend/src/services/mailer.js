@@ -190,25 +190,47 @@ async function send({ from, to, subject, html }) {
   return transporter.sendMail({ from, to, subject, html });
 }
 
+// Wording per purpose. login_mfa is the second sign-in step, mfa_change turns
+// email two-factor on or off from Settings
+const OTP_COPY = {
+  email_verification: {
+    subject: 'Verify your NutriFitAI account',
+    title: 'Verify your email',
+    intro: 'Welcome to NutriFitAI! Use this code to finish creating your account.',
+  },
+  password_reset: {
+    subject: 'Your NutriFitAI password reset code',
+    title: 'Reset your password',
+    intro: 'Use this code to reset your NutriFitAI password.',
+  },
+  login_mfa: {
+    subject: 'Your NutriFitAI sign-in code',
+    title: 'Confirm it\'s you',
+    intro: 'Use this code to finish signing in to NutriFitAI.',
+  },
+  mfa_change: {
+    subject: 'Your NutriFitAI security code',
+    title: 'Confirm this change',
+    intro: 'Use this code to change two-factor sign-in on your NutriFitAI account.',
+  },
+};
+
 /**
  * @param {string} to
  * @param {string} code
- * @param {'email_verification'|'password_reset'} purpose
+ * @param {'email_verification'|'password_reset'|'login_mfa'|'mfa_change'} purpose
  */
 async function sendOtpEmail(to, code, purpose) {
-  const reset = purpose === 'password_reset';
-  const subject = reset ? 'Your NutriFitAI password reset code' : 'Verify your NutriFitAI account';
+  const copy = OTP_COPY[purpose] || OTP_COPY.email_verification;
 
   const html = renderEmail({
-    title: reset ? 'Reset your password' : 'Verify your email',
-    intro: reset
-      ? 'Use this code to reset your NutriFitAI password.'
-      : 'Welcome to NutriFitAI! Use this code to finish creating your account.',
+    title: copy.title,
+    intro: copy.intro,
     code,
     note: `This code expires in ${env.otp.ttlMinutes} minutes. If you didn't request it, you can safely ignore this email.`,
   });
 
-  return deliver(to, subject, html, `OTP for ${to} (${purpose}): ${code}`);
+  return deliver(to, copy.subject, html, `OTP for ${to} (${purpose}): ${code}`);
 }
 
 // Sent when someone registers with an email that already has a verified account

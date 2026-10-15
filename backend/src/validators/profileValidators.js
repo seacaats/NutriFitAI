@@ -108,10 +108,9 @@ const changePasswordSchema = z.object({
   newPassword: passwordSchema,
 }).strict();
 
-// Settings > delete account. Password accounts confirm with their password,
-// Google-only accounts by typing DELETE (checked in the controller)
+// Settings > delete account. Confirmed with the password and by typing DELETE
 const deleteAccountSchema = z.object({
-  currentPassword: z.string().min(1).max(200).optional(),
+  currentPassword: z.string({ required_error: 'Please enter your current password.' }).min(1, 'Please enter your current password.').max(200),
   confirm: z.literal('DELETE'),
 }).strict();
 

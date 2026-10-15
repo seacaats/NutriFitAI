@@ -105,6 +105,25 @@ const goalSchema = new Schema(
   { _id: false },
 );
 
+// Two-factor sign-in. The secret is stored encrypted and recovery codes only
+// as hashes (utils/auth/otp.js); none of it ever leaves the server
+const mfaSchema = new Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    secretEnc: { type: String, default: null },
+    // Set while the user is still confirming their first code
+    pendingSecretEnc: { type: String, default: null },
+    pendingExpiresAt: { type: Date, default: null },
+    recoveryHashes: { type: [String], default: [] },
+    // Newest TOTP step accepted, so a code can't be used twice
+    lastUsedStep: { type: Number, default: 0 },
+    failedAttempts: { type: Number, default: 0 },
+    lockedUntil: { type: Date, default: null },
+    enabledAt: { type: Date, default: null },
+  },
+  { _id: false },
+);
+
 const userSchema = new Schema(
   {
 
@@ -115,7 +134,7 @@ const userSchema = new Schema(
     _id: { type: String, default: () => crypto.randomUUID() },
 
     email: { type: String, required: true, maxlength: 255 },
-    passwordHash: { type: String, default: null }, // null for OAuth-only accounts
+    passwordHash: { type: String, default: null }, // every account has one: Google only links to an existing account
     fullName: { type: String, maxlength: 150, default: null },
     firstName: { type: String, maxlength: 75, default: null },
     lastName: { type: String, maxlength: 75, default: null },
@@ -147,6 +166,8 @@ const userSchema = new Schema(
     // resets through Forgot password, which clears it (updatePasswordHash)
     passwordResetRequiredAt: { type: Date, default: null },
 
+    mfa: { type: mfaSchema, default: () => ({}) },
+
     profile: { type: profileSchema, default: () => ({}) },
     goals: { type: [goalSchema], default: [] },
   },
@@ -160,7 +181,7 @@ const userSchema = new Schema(
 // ===========================================================================
 
 // Fields never sent anywhere. Applied here, not per caller
-const PRIVATE_FIELDS = '-passwordHash';
+const PRIVATE_FIELDS = '-passwordHash -mfa.secretEnc -mfa.pendingSecretEnc -mfa.recoveryHashes';
 
 // Keys callers may write to the profile, mapped to the stored path.
 // A whitelist, so { role: 'admin' } or a passwordHash can't slip through.
@@ -228,6 +249,7 @@ userSchema.statics.toAuthPayload = function toAuthPayload(user) {
     fullName: user.fullName,
     emailVerified: Boolean(user.emailVerifiedAt),
     role: user.role || 'user',
+    mfaEnabled: Boolean(user.mfa && user.mfa.enabled),
   };
 };
 
@@ -328,6 +350,117 @@ userSchema.statics.updatePasswordHash = async function updatePasswordHash(id, pa
       { $set: { passwordHash, passwordResetRequiredAt: null } },
       { new: true, ...opts(client) },
     ).lean(),
+  );
+};
+
+// ===========================================================================
+// Two-factor sign-in
+// ===========================================================================
+
+// How long a started setup (QR shown) can be confirmed
+const MFA_SETUP_MS = 10 * 60 * 1000;
+
+// Authenticator setup, done at sign-in. Admin accounts are already "enabled" but
+// have no secret until this finishes, so the guard is the missing secret: a live
+// setup can't have its secret swapped
+userSchema.statics.startMfaSetup = async function startMfaSetup(id, secretEnc, client) {
+  await this.updateOne(
+    { _id: id, 'mfa.secretEnc': null },
+    { $set: { 'mfa.pendingSecretEnc': secretEnc, 'mfa.pendingExpiresAt': new Date(Date.now() + MFA_SETUP_MS) } },
+    opts(client),
+  );
+};
+
+// Only while there's no secret yet: a second confirm can't swap the secret of a
+// live setup. Returns whether it went through
+userSchema.statics.enableMfa = async function enableMfa(id, { secretEnc, recoveryHashes, step }, client) {
+  const result = await this.updateOne(
+    { _id: id, 'mfa.secretEnc': null },
+    {
+      $set: {
+        mfa: {
+          enabled: true,
+          secretEnc,
+          pendingSecretEnc: null,
+          pendingExpiresAt: null,
+          recoveryHashes,
+          lastUsedStep: step,
+          failedAttempts: 0,
+          lockedUntil: null,
+          enabledAt: new Date(),
+        },
+      },
+    },
+    opts(client),
+  );
+  return result.modifiedCount === 1;
+};
+
+// Email two-factor (regular users) has no secret: on or off, nothing else
+userSchema.statics.setEmailMfa = async function setEmailMfa(id, enabled, client) {
+  await this.updateOne(
+    { _id: id },
+    { $set: { 'mfa.enabled': enabled, 'mfa.enabledAt': enabled ? new Date() : null } },
+    opts(client),
+  );
+};
+
+userSchema.statics.replaceRecoveryHashes = async function replaceRecoveryHashes(id, recoveryHashes, client) {
+  await this.updateOne({ _id: id, 'mfa.enabled': true }, { $set: { 'mfa.recoveryHashes': recoveryHashes } }, opts(client));
+};
+
+// How many recovery codes are left. The other reads leave the hashes out on purpose,
+// so this asks for them itself and only ever hands back the count
+userSchema.statics.countRecoveryCodes = async function countRecoveryCodes(id, client) {
+  const doc = await this.findById(id, 'mfa.recoveryHashes', opts(client)).lean();
+  return doc?.mfa?.recoveryHashes?.length ?? 0;
+};
+
+// Atomic: true only for the first use of a step (or any later one), so two
+// requests carrying the same code can't both pass
+userSchema.statics.claimTotpStep = async function claimTotpStep(id, step, client) {
+  const result = await this.updateOne(
+    { _id: id, 'mfa.lastUsedStep': { $lt: step } },
+    { $set: { 'mfa.lastUsedStep': step } },
+    opts(client),
+  );
+  return result.modifiedCount === 1;
+};
+
+// Atomic single use of a recovery code
+userSchema.statics.consumeRecoveryHash = async function consumeRecoveryHash(id, hash, client) {
+  const result = await this.updateOne(
+    { _id: id, 'mfa.recoveryHashes': hash },
+    { $pull: { 'mfa.recoveryHashes': hash } },
+    opts(client),
+  );
+  return result.modifiedCount === 1;
+};
+
+// Counts a wrong code and locks the account for a while once `max` pile up.
+// Returns the lock time, or null while still under the limit
+userSchema.statics.recordMfaFailure = async function recordMfaFailure(id, { max, lockMs }, client) {
+  const updated = await this.findByIdAndUpdate(
+    id,
+    { $inc: { 'mfa.failedAttempts': 1 } },
+    { new: true, fields: 'mfa.failedAttempts', ...opts(client) },
+  ).lean();
+  if (!updated || updated.mfa.failedAttempts < max) return null;
+
+  const lockedUntil = new Date(Date.now() + lockMs);
+  await this.updateOne(
+    { _id: id },
+    { $set: { 'mfa.lockedUntil': lockedUntil, 'mfa.failedAttempts': 0 } },
+    opts(client),
+  );
+  return lockedUntil;
+};
+
+userSchema.statics.clearMfaFailures = async function clearMfaFailures(id, client) {
+  await this.updateOne(
+    { _id: id, $or: [{ 'mfa.failedAttempts': { $gt: 0 } }, { 'mfa.lockedUntil': { $ne: null } }] },
+    { $set: { 'mfa.failedAttempts': 0, 'mfa.lockedUntil': null } },
+    opts(client),
   );
 };
 
@@ -566,12 +699,19 @@ userSchema.statics.countByRole = async function countByRole(client) {
 };
 
 // Who may grant what is decided in controllers/admin/usersController, not here. runValidators
-// keeps a typo'd role from slipping past the enum
+// keeps a typo'd role from slipping past the enum.
+// 2FA follows the role: admins and superadmins always have it on (the
+// authenticator app is set up at their next sign-in, until then there's no secret),
+// and an account going back to 'user' drops the authenticator, since regular users
+// use the emailed code and choose for themselves
 userSchema.statics.updateRole = async function updateRole(id, role, client) {
+  const mfa = role === 'user'
+    ? { mfa: { enabled: false, recoveryHashes: [], lastUsedStep: 0, failedAttempts: 0 } }
+    : { 'mfa.enabled': true };
   return withId(
     await this.findByIdAndUpdate(
       id,
-      { $set: { role } },
+      { $set: { role, ...mfa } },
       { new: true, runValidators: true, fields: PRIVATE_FIELDS, ...opts(client) },
     ).lean(),
   );

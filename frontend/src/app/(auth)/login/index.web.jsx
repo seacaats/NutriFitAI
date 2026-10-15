@@ -1,4 +1,5 @@
 import GoogleIcon from "@/features/auth/components/GoogleIcon";
+import { MfaChallenge } from "@/features/auth/components/OtpInputRow";
 import { useLoginForm } from "@/features/auth/hooks/useLoginForm";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
@@ -50,8 +51,13 @@ export default function LoginScreen() {
           )}
 
           <View style={styles.card}>
-            <Text style={styles.title}>Welcome Back!</Text>
-            <Text style={styles.subtitle}>Login to continue your journey</Text>
+            <Text style={styles.title}>{form.mfa ? "Verify it's you" : "Welcome Back!"}</Text>
+            <Text style={styles.subtitle}>{form.mfa ? "Two-factor authentication" : "Login to continue your journey"}</Text>
+
+            {form.mfa ? (
+              <MfaChallenge form={form} styles={styles} />
+            ) : (
+            <>
 
             <FormInput
               label="Email"
@@ -118,6 +124,8 @@ export default function LoginScreen() {
                 <Text style={styles.link}>Register</Text>
               </Pressable>
             </View>
+            </>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

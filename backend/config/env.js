@@ -118,6 +118,19 @@ module.exports = {
     expiresIn: process.env.RESET_TOKEN_EXPIRES_IN || '15m',
   },
 
+  // Two-factor sign-in (TOTP). Each secret is its own, never reuse a JWT one:
+  //   encryptionKey  encrypts authenticator secrets at rest, peppers recovery codes
+  //   tokenSecret    signs the short challenge returned after the password step
+  mfa: {
+    encryptionKey: secret('MFA_ENCRYPTION_KEY'),
+    tokenSecret: secret('MFA_TOKEN_SECRET'),
+    tokenExpiresIn: process.env.MFA_TOKEN_EXPIRES_IN || '5m',
+    issuer: (process.env.MFA_ISSUER || 'NutriFitAI').trim(),
+    // Wrong codes in a row before that account is locked, and for how long
+    maxFailedAttempts: parseInt(process.env.MFA_MAX_FAILED_ATTEMPTS || '5', 10),
+    lockMinutes: parseInt(process.env.MFA_LOCK_MINUTES || '15', 10),
+  },
+
   mail: {
     // 'smtp' or 'brevo'. 
     provider: (process.env.MAIL_PROVIDER || 'smtp').trim().toLowerCase(),

@@ -1,7 +1,7 @@
 import { ApiClientError } from "@/shared/api/apiClient";
 import LoadingScreen from "@/shared/components/ui/LoadingScreen";
 import { homeFor, useAuth } from "@/shared/context/AuthContext";
-import { exchangeGoogleToken, googleErrorMessage } from "@/shared/services/googleAuth";
+import { exchangeGoogleToken, googleErrorMessage, mfaFromExchange, stashGoogleMfa } from "@/shared/services/googleAuth";
 import { colors, spacing, typography } from "@/shared/theme/nutrifitai";
 import { GOOGLE_AUTH_ACK_TYPE, GOOGLE_AUTH_CHANNEL, GOOGLE_AUTH_MESSAGE_TYPE } from "@/shared/utils/authChannel";
 import { setAccessToken } from "@/shared/utils/authStorage";
@@ -145,7 +145,10 @@ export default function GoogleAuthCallback() {
         // Nothing is listening (opener navigated away, channel unsupported,
         // popups isolated). Never close silently — the user would be left on
         // the login screen with no explanation
-        if (result.success && result.accessToken) {
+        if (result.mfa) {
+          // The second step can't be finished from this window
+          setStranded({ success: false, message: googleErrorMessage("mfa_undelivered") });
+        } else if (result.success && result.accessToken) {
           try {
             await setAccessToken(result.accessToken);
             await refresh();  // status becomes AUTHENTICATED before the nav
@@ -182,7 +185,16 @@ export default function GoogleAuthCallback() {
       try {
         const data = await exchangeGoogleToken(exchangeToken);
 
-        if (popup) {
+        if (data.mfaRequired) {
+          // 2FA comes next, on the login screen: no session yet
+          const mfa = mfaFromExchange(data);
+          if (popup) {
+            await finish({ success: true, mfa });
+          } else {
+            stashGoogleMfa(mfa);
+            router.replace("/login");
+          }
+        } else if (popup) {
           await finish({ success: true, accessToken: data.accessToken });
         } else {
           await setAccessToken(data.accessToken);
