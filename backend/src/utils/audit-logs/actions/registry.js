@@ -53,16 +53,14 @@ const RETENTION_DAYS = {
 // the network detail adds nothing to the trail, so it isn't collected
 const NETWORK_CATEGORIES = ['auth', 'administration'];
 
-// Health fields (sensitive personal information under the Data Privacy Act).
+// Health measurements (sensitive personal information under the Data Privacy Act).
 // A change to one records the field name only, never the from/to values --
-// the values already live on the user's own record
+// the values already live on the user's own record. Dropdown choices (sex,
+// diet, health conditions) are recorded with their values
 const HEALTH_FIELDS = [
   'age',
-  'sex',
   'heightCm',
   'weightKg',
-  'healthConditions',
-  'dietPreference',
   'targetWeightKg',
   'weeklyPaceKg',
 ];
@@ -453,7 +451,7 @@ const AUDIT_ACTIONS = {
   },
 
   /**
-   * Critical and self-directed. userDeletion.js clears every collection the user owns, and
+   * Critical and self-directed. accountDeletion.js clears every collection the user owns, and
    * this entry is the only thing that survives it -- audit_logs is deliberately
    * not one of the nine. The detail records what was removed, since after the
    * fact there is nothing left to inspect.
@@ -932,6 +930,14 @@ function canViewAction(action, viewerRole) {
   return needed >= 0 && held >= needed;
 }
 
+// A note entry names the action it was added to, so it is only as visible as that action
+function canViewEntry(entry, viewerRole) {
+  if (!canViewAction(entry.action, viewerRole)) return false;
+  if (entry.action !== 'admin.audit_log.note_added') return true;
+  const noted = entry.details && entry.details.notedAction;
+  return Boolean(noted && AUDIT_ACTIONS[noted]) && canViewAction(noted, viewerRole);
+}
+
 /** Every action a viewer of this role is allowed to see, for the filter menu. */
 function visibleActionsFor(viewerRole) {
   return Object.keys(AUDIT_ACTIONS).filter((action) => canViewAction(action, viewerRole));
@@ -955,5 +961,6 @@ module.exports = {
   AUDIT_ACTIONS,
   getActionDef,
   canViewAction,
+  canViewEntry,
   visibleActionsFor,
 };

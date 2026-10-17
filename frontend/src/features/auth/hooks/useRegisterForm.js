@@ -17,7 +17,6 @@ import {
   SEXES,
   sexLabelToValue,
 } from "@/shared/constants/profileOptions";
-import { useKeepOnResume } from "@/shared/hooks/useLandingOnResume";
 import {
   AGE_MAX,
   AGE_MIN,
@@ -85,12 +84,6 @@ export function useRegisterForm() {
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  // Something typed or picked: coming back to the app keeps it
-  useKeepOnResume(Boolean(
-    email || firstName || lastName || password || confirmPassword || age || height || weight || sex
-      || dietPreference.length || dietOther || healthConditions.length || healthOther
-      || activity || activityOther || goal || goalOther || agreeTerms,
-  ));
 
   const toggleShowPassword = () => setShowPassword((v) => !v);
   const toggleShowConfirmPassword = () => setShowConfirmPassword((v) => !v);

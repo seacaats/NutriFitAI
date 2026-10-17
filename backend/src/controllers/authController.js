@@ -269,6 +269,31 @@ async function deliverOtpEmail(email, code, purpose) {
   }
 }
 
+// A double-submitted or concurrent request shares one issue + send. A second code
+// would invalidate the first, and its email lands as a duplicate. In memory: resets on restart
+const OTP_DEDUPE_MS = 10 * 1000;
+const recentOtpSends = new Map();
+
+/**
+ * Issues a fresh code and emails it, once per user and purpose within OTP_DEDUPE_MS
+ *
+ * @returns {Promise<boolean>} same as sendOtpWithinWait
+ */
+function issueAndSendOtp(userId, email, purpose) {
+  const key = `${purpose}:${userId}`;
+  const inFlight = recentOtpSends.get(key);
+  if (inFlight) return inFlight;
+
+  const sent = withTransaction((client) => issueOtpChallenge(userId, purpose, client)).then((code) =>
+    sendOtpWithinWait(email, code, purpose),
+  );
+  recentOtpSends.set(key, sent);
+  // A failed send is released at once, so the retry isn't blocked
+  const release = () => recentOtpSends.delete(key);
+  sent.then((ok) => (ok ? setTimeout(release, OTP_DEDUPE_MS).unref() : release()), release);
+  return sent;
+}
+
 // otp for email verification and password reset. Every failure throws the
 // same INVALID_CODE_MESSAGE -- see its comment
 async function consumeOtpChallenge({ userId, purpose, code }) {
@@ -337,13 +362,8 @@ const resendRegistrationOtp = asyncHandler(async (req, res) => {
     return genericResponse();
   }
 
-  // Commit challenge first, and then send the email to avoid
-  // doubling up the transaction whenever it retries
-  const code = await withTransaction((client) =>
-    issueOtpChallenge(user.id, 'email_verification', client),
-  );
-
-  const emailSent = await sendOtpWithinWait(user.email, code, 'email_verification');
+  // Challenge committed first, then emailed, once per double-submit
+  const emailSent = await issueAndSendOtp(user.id, user.email, 'email_verification');
 
   await logAction(req, { action: 'auth.otp.resent', targetType: 'user' }, { userId: user.id, role: user.role });
 
@@ -447,8 +467,7 @@ const needsAuthenticatorSetup = (user) => mfaMethodOf(user) === 'totp' && !(user
 async function startMfaChallenge(res, user, rememberMe, via) {
   const method = mfaMethodOf(user);
   if (method === 'email') {
-    const code = await withTransaction((client) => issueOtpChallenge(user.id, 'login_mfa', client));
-    if (!(await sendOtpWithinWait(user.email, code, 'login_mfa'))) throw emailFailed();
+    if (!(await issueAndSendOtp(user.id, user.email, 'login_mfa'))) throw emailFailed();
   }
   // An admin who hasn't set up the authenticator yet gets the setup instead of a
   // code prompt (first sign-in), on the same screen and with the same token
@@ -563,8 +582,7 @@ const resendLoginMfa = asyncHandler(async (req, res) => {
   const { user } = await userFromMfaToken(req.body.mfaToken);
   if (mfaMethodOf(user) !== 'email') throw ApiError.badRequest('This account uses an authenticator app.');
 
-  const code = await withTransaction((client) => issueOtpChallenge(user.id, 'login_mfa', client));
-  if (!(await sendOtpWithinWait(user.email, code, 'login_mfa'))) throw emailFailed();
+  if (!(await issueAndSendOtp(user.id, user.email, 'login_mfa'))) throw emailFailed();
   await logAction(req, { action: 'auth.otp.resent', targetType: 'user' }, { userId: user.id, role: user.role });
   return sendSuccess(res, { message: 'A new code has been sent.' });
 });
@@ -647,8 +665,7 @@ const mfaAudit = (req, user, action) =>
 // Regular users. POST /api/auth/mfa/email/request -- sends the confirmation code
 const mfaEmailRequest = asyncHandler(async (req, res) => {
   const user = await requirePasswordFor(req, req.body.password, 'email');
-  const code = await withTransaction((client) => issueOtpChallenge(user.id, 'mfa_change', client));
-  if (!(await sendOtpWithinWait(user.email, code, 'mfa_change'))) throw emailFailed();
+  if (!(await issueAndSendOtp(user.id, user.email, 'mfa_change'))) throw emailFailed();
   return sendSuccess(res, { message: 'We sent a code to your email.' });
 });
 
@@ -850,10 +867,7 @@ const forgotPassword = asyncHandler(async (req, res) => {
 
   let emailSent = true;
   if (user) {
-    const code = await withTransaction((client) =>
-      issueOtpChallenge(user.id, 'password_reset', client),
-    );
-    emailSent = await sendOtpWithinWait(user.email, code, 'password_reset');
+    emailSent = await issueAndSendOtp(user.id, user.email, 'password_reset');
     await logAction(
       req,
       { action: 'auth.password.reset_requested', targetType: 'user' },
@@ -1053,8 +1067,6 @@ const me = asyncHandler(async (req, res) => {
       dietPreference: profile?.dietPreference ?? null,
       healthConditions: profile?.healthConditions ?? null,
       notificationsEnabled: profile?.notificationsEnabled ?? true,
-      // The account's theme, which the app applies on login
-      theme: profile?.theme ?? 'system',
       avatarUrl: await toPublicAvatarUrl(profile?.avatarStorageKey),
       weightKg: latestWeight?.weightKg ?? null,
       fitnessGoal: goal?.fitnessGoal ?? null,
@@ -1074,6 +1086,10 @@ module.exports = {
   mfaEmailRequest,
   mfaEmailConfirm,
   mfaRecoveryCodes,
+  assertNotMfaLocked,
+  checkAuthenticatorCode,
+  rejectAuthenticatorCode,
+  noteRecoveryUsed,
   verifyRegistration,
   resendRegistrationOtp,
   login,

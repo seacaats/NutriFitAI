@@ -7,9 +7,10 @@ import {
   splitChoice,
   splitMulti,
 } from "@/shared/constants/profileOptions";
-import { colors, radii, typography } from "@/shared/theme/nutrifitai";
+import { useAuthColors } from "@/shared/context/ThemeContext";
+import { radii, typography } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 /**
@@ -37,6 +38,8 @@ export default function OptionSelect({
   // Optional { surface, border, text } for dark surfaces (the profile page)
   palette,
 }) {
+  const colors = useAuthColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const selected = multiple ? value : value ? [value] : [];
   const display = selected.join(", ");
   const otherSelected = selected.includes(OTHER_OPTION);
@@ -92,12 +95,12 @@ export default function OptionSelect({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   select: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: colors.white,
+    backgroundColor: colors.inputBg,
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,
@@ -109,7 +112,7 @@ const styles = StyleSheet.create({
   valueText: { ...typography.caption, color: colors.textPrimary, fontWeight: "600", flex: 1 },
   options: {
     marginTop: 6,
-    backgroundColor: colors.white,
+    backgroundColor: colors.inputBg,
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,

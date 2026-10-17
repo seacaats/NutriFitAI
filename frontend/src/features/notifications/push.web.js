@@ -7,6 +7,14 @@ export async function registerDevice() {
 
 export async function unregisterDevice() {}
 
+export async function getPushState() {
+  return null;
+}
+
+export async function disableDevice() {
+  return "off";
+}
+
 export function onNotificationTap() {
   return () => {};
 }

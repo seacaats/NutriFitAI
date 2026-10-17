@@ -379,9 +379,9 @@ export default function AuditLogsScreen() {
           {row.changes.map((change) => (
             <View key={change.field} style={styles.changeRow}>
               <Text style={[styles.changeField, { color: tone.text }]}>{change.label}</Text>
-              {/* Health fields are recorded without values (HEALTH_FIELDS) */}
+              {/* Health fields are recorded without values on purpose (HEALTH_FIELDS) */}
               {change.hidden ? (
-                <Text style={[styles.changeFrom, styles.changeHidden, { color: tone.muted }]}>Value not recorded</Text>
+                <Text style={[styles.changeFrom, styles.changeHidden, { color: tone.muted }]}>Not recorded (health data)</Text>
               ) : (
                 <>
                   <Text selectable style={[styles.changeFrom, { color: tone.muted }]}>

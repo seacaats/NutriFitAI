@@ -4,7 +4,7 @@ import PlanButton from "@/shared/components/ui/PlanButton";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 // Two-factor authentication (2FA), from Settings and the onboarding.
 // method "email": regular users get a code by email at sign-in, and turn it on and
@@ -19,6 +19,8 @@ import { Platform, StyleSheet, Text, View } from "react-native";
 export default function MfaSetup({ method, enabled, recoveryCodesLeft = 0, onChange, darkMode }) {
   const tone = getScreenTones(darkMode);
   const email = method === "email";
+  // Phone-width: the buttons go below the text instead of squeezing beside it
+  const narrow = useWindowDimensions().width < 600;
   const [step, setStep] = useState("idle");
   const [intent, setIntent] = useState("enable"); // enable | disable, for the email flow
   const [password, setPassword] = useState("");
@@ -136,25 +138,30 @@ export default function MfaSetup({ method, enabled, recoveryCodesLeft = 0, onCha
 
   return (
     <View style={styles.wrap}>
-      {status}
-      <Text style={[styles.hint, { color: tone.muted }]}>
-        {email
-          ? "When on, we email you a code each time you sign in with your password."
-          : "Required for admin accounts: signing in with your password also needs a code from your authenticator app."}
-        {!email && !enabled ? " You'll scan the QR code the next time you sign in." : ""}
-        {enabled && !email ? ` ${recoveryCodesLeft} recovery code${recoveryCodesLeft === 1 ? "" : "s"} left.` : ""}
-      </Text>
+      {/* The status and its button share a row, like Change password. On a phone the buttons drop below */}
+      <View style={styles.inline}>
+        <View style={[styles.info, narrow && styles.infoFull]}>
+          {status}
+          <Text style={[styles.hint, { color: tone.muted }]}>
+            {email
+              ? "When on, we email you a code each time you sign in with your password."
+              : "Required for admin accounts: signing in with your password also needs a code from your authenticator app."}
+            {!email && !enabled ? " You'll scan the QR code the next time you sign in." : ""}
+            {enabled && !email ? ` ${recoveryCodesLeft} recovery code${recoveryCodesLeft === 1 ? "" : "s"} left.` : ""}
+          </Text>
+        </View>
+
+        {step === "idle" && (email || enabled) && (
+          <View style={[styles.actions, narrow && styles.actionsStart]}>
+            {email && (enabled
+              ? <PlanButton compact variant="secondary" label="Turn off" onPress={() => begin("password", "disable")} darkMode={darkMode} />
+              : <PlanButton compact label="Turn on" onPress={() => begin("password")} darkMode={darkMode} />)}
+            {!email && <PlanButton compact variant="secondary" label="New recovery codes" onPress={() => begin("regen")} darkMode={darkMode} />}
+          </View>
+        )}
+      </View>
 
       <FormAlert message={notice} tone="success" onDismiss={() => setNotice("")} />
-
-      {step === "idle" && (email || enabled) && (
-        <View style={styles.actions}>
-          {email && (enabled
-            ? <PlanButton compact variant="secondary" label="Turn off" onPress={() => begin("password", "disable")} darkMode={darkMode} />
-            : <PlanButton compact label="Turn on" onPress={() => begin("password")} darkMode={darkMode} />)}
-          {!email && <PlanButton compact variant="secondary" label="New recovery codes" onPress={() => begin("regen")} darkMode={darkMode} />}
-        </View>
-      )}
 
       {step === "password" && (
         <View style={styles.form}>
@@ -209,11 +216,15 @@ export default function MfaSetup({ method, enabled, recoveryCodesLeft = 0, onCha
 
 const styles = StyleSheet.create({
   wrap: { gap: 10 },
+  inline: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 12 },
+  info: { flex: 1, minWidth: 180, gap: 6 },
+  infoFull: { flexBasis: "100%" },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   status: { fontSize: 14, fontWeight: "700" },
   hint: { fontSize: 12, lineHeight: 17 },
   form: { gap: 10, maxWidth: 420 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" },
+  actionsStart: { justifyContent: "flex-start" },
   codes: { flexDirection: "row", flexWrap: "wrap", gap: 8, borderWidth: 1, borderRadius: radii.sm, padding: 10 },
   code: { width: "47%", fontSize: 14, fontWeight: "700", fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
 });

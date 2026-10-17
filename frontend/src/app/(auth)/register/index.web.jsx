@@ -8,11 +8,13 @@ import {
 } from "@/features/auth/hooks/useRegisterForm";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
+import { useAuthColors } from "@/shared/context/ThemeContext";
+import { radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { registerStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router } from "expo-router";
+import { useMemo } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -28,6 +30,8 @@ const BREAKPOINT = 1024;
 const COMPACT_FORM = 500;
 
 export default function RegisterScreen() {
+  const colors = useAuthColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const form = useRegisterForm();
   const { width } = useWindowDimensions();
   const isWide = width >= BREAKPOINT;
@@ -240,7 +244,7 @@ export default function RegisterScreen() {
                 {/* Consent */}
                 <Pressable style={styles.termsRow} onPress={form.toggleAgreeTerms}>
                   <View style={[styles.checkbox, form.agreeTerms && styles.checkboxChecked]}>
-                    {form.agreeTerms && <Ionicons name="checkmark" size={11} color={colors.white} />}
+                    {form.agreeTerms && <Ionicons name="checkmark" size={11} color="#ffffff" />}
                   </View>
                   <Text style={styles.termsText}>
                     I consent to NutriFitAI collecting and storing the dietary and health information I provide above, as described in the{" "}
@@ -275,8 +279,8 @@ export default function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  ...registerStyles,
+const createStyles = (colors) => StyleSheet.create({
+  ...registerStyles(colors),
 
   root: { flex: 1, flexDirection: "row", backgroundColor: colors.screenDark },
 
@@ -302,7 +306,7 @@ const styles = StyleSheet.create({
   fieldSpacing: { marginBottom: 14 },
   // Sits under the field above it, inside that field's spacing
   fieldNote: { marginTop: -8, marginBottom: 14, fontSize: 11, lineHeight: 16, color: colors.textSecondary },
-  genderPill: { flex: 1, paddingVertical: 10, borderRadius: radii.sm, backgroundColor: colors.white, alignItems: "center" },
+  genderPill: { flex: 1, paddingVertical: 10, borderRadius: radii.sm, backgroundColor: colors.inputBg, alignItems: "center" },
   hint: { ...typography.tiny, color: colors.textSecondary, marginTop: -4, marginBottom: 10 },
 
   checkbox: {

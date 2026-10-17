@@ -1,11 +1,15 @@
 import { useResetPasswordForm } from "@/features/auth/hooks/useForgotPasswordForm";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
+import { useAuthColors } from "@/shared/context/ThemeContext";
+import { radii, spacing, typography } from "@/shared/theme/nutrifitai";
+import { useMemo } from "react";
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from "react-native";
 
 
 export default function ResetPasswordScreen() {
+  const colors = useAuthColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const form = useResetPasswordForm();
 
   return (
@@ -55,7 +59,7 @@ export default function ResetPasswordScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.bgMint },
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.lg },
   card: {
@@ -76,7 +80,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   fieldSpacing: { marginBottom: 20, width: "100%" },
-  grayInput: { backgroundColor: "#f9fafb" },
+  grayInput: { backgroundColor: colors.grayInputBg },
   hint: { ...typography.tiny, color: colors.textSecondary, marginTop: -8, marginBottom: spacing.md, alignSelf: "stretch" },
   button: { width: "100%" },
 });

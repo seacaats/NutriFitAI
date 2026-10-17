@@ -20,7 +20,7 @@ const { clearStoredAvatar } = require('../utils/storage/avatarStore');
 
 // Collections keyed by userId. A new userId collection must be added here,
 // or deleting an account leaves its rows behind (see the notes at the end of migration 001).
-// audit_logs is deliberately not one of them
+// audit_logs, audit_notes and audit_holds are deliberately never touched, for any role
 const BY_USER_ID = {
   weightLogs: WeightLog,
   authChallenges: AuthChallenge,
@@ -35,27 +35,44 @@ const BY_USER_ID = {
   pushTokens: PushToken,
 };
 
+// Admins and superadmins only reach /profile, /notifications and /admin, so they
+// own nothing beyond these. Their trail stays, under the names saved on it
+const ADMIN_BY_USER_ID = {
+  authChallenges: AuthChallenge,
+  authIdentities: AuthIdentity,
+  notifications: Notification,
+  pushTokens: PushToken,
+};
+
 // Deletes the account and everything it owns in one transaction, then its
 // files. Returns per-collection counts for the audit entry. Files go after
-// the commit, so a rollback never leaves a record pointing at a missing file
-async function deleteUserAccount(userId) {
+// the commit, so a rollback never leaves a record pointing at a missing file.
+// Regular users also lose their app data, admins only what is listed above
+async function deleteAccount(userId, role = 'user') {
+  const isUser = role === 'user';
+
   const counts = await withTransaction(async (client) => {
     const session = { session: client };
     const result = {};
 
-    // Messages hang off conversations, not the user
-    const conversations = await ChatConversation.find({ userId }, { _id: 1 }, session).lean();
-    const conversationIds = conversations.map((c) => c._id);
-    result.chatMessages = (await ChatMessage.deleteMany({ conversationId: { $in: conversationIds } }, session)).deletedCount;
-    result.chatConversations = (await ChatConversation.deleteMany({ userId }, session)).deletedCount;
+    if (isUser) {
+      // Messages hang off conversations, not the user
+      const conversations = await ChatConversation.find({ userId }, { _id: 1 }, session).lean();
+      const conversationIds = conversations.map((c) => c._id);
+      result.chatMessages = (await ChatMessage.deleteMany({ conversationId: { $in: conversationIds } }, session)).deletedCount;
+      result.chatConversations = (await ChatConversation.deleteMany({ userId }, session)).deletedCount;
+    }
 
-    for (const [name, Model] of Object.entries(BY_USER_ID)) {
+    for (const [name, Model] of Object.entries(isUser ? BY_USER_ID : ADMIN_BY_USER_ID)) {
       result[name] = (await Model.deleteMany({ userId }, session)).deletedCount;
     }
-    // Routines use ownerId. Shared routines (ownerId null) are untouched
-    result.workoutRoutines = (await WorkoutRoutine.deleteMany({ ownerId: userId }, session)).deletedCount;
-    // Their own catalog workouts, wger's are untouched
-    result.workouts = (await Workout.deleteMany({ createdBy: userId }, session)).deletedCount;
+
+    if (isUser) {
+      // Routines use ownerId. Shared routines (ownerId null) are untouched
+      result.workoutRoutines = (await WorkoutRoutine.deleteMany({ ownerId: userId }, session)).deletedCount;
+      // Their own catalog workouts, wger's are untouched
+      result.workouts = (await Workout.deleteMany({ createdBy: userId }, session)).deletedCount;
+    }
 
     result.users = (await User.deleteOne({ _id: userId }, session)).deletedCount;
     return result;
@@ -63,10 +80,12 @@ async function deleteUserAccount(userId) {
 
   // Neither throws, see localStore
   await clearStoredAvatar(userId);
-  await storage.removePrefix(storage.keys.userScanPrefix(userId));
-  await storage.removePrefix(storage.keys.userWorkoutPrefix(userId));
+  if (isUser) {
+    await storage.removePrefix(storage.keys.userScanPrefix(userId));
+    await storage.removePrefix(storage.keys.userWorkoutPrefix(userId));
+  }
 
   return counts;
 }
 
-module.exports = { deleteUserAccount };
+module.exports = { deleteAccount };

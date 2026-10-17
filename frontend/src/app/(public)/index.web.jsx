@@ -118,7 +118,7 @@ export default function LandingScreen() {
               <Ionicons name="logo-android" size={20} color={p.accent} />
               <View>
                 <Text style={styles.apkTitle}>Download for Android</Text>
-                <Text style={styles.apkNote}>Free APK, Android 8 or newer</Text>
+                <Text style={styles.apkNote}>APK, Android 8 or newer</Text>
               </View>
               <Ionicons name="download-outline" size={18} color={p.muted} />
             </Pressable>

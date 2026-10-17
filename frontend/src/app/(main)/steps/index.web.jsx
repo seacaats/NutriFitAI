@@ -182,7 +182,7 @@ export default function StepsScreen() {
                 <Tooltip
                   formatter={(value, name, entry) => [entry?.payload?.hasData ? formatNumber(value) : "No data", perDay ? "Steps per day" : "Steps"]}
                   cursor={{ fill: palette.soft }}
-                  contentStyle={{ borderRadius: 8, borderColor: palette.border, backgroundColor: palette.card, color: palette.text }}
+                  contentStyle={{ fontFamily: CHART_FONT, borderRadius: 8, borderColor: palette.border, backgroundColor: palette.card, color: palette.text }}
                   // `contentStyle.color` only styles the tooltip's outer
                   // wrapper -- recharts renders the label and each item's
                   // text with their own default (black) color unless told

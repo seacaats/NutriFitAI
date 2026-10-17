@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "967818228667",
+    "project_id": "nutrifitai-3c20c",
+    "storage_bucket": "nutrifitai-3c20c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:967818228667:android:cc3b93cecbc4eaa50dca9e",
+        "android_client_info": {
+          "package_name": "com.nutrifitai.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDCVUUxa7_gRheLvfXnFsnEpM03d88rKSE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

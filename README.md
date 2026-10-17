@@ -42,17 +42,18 @@ Snap a photo of a meal and NutriFitAI recognises the foods (Filipino dishes incl
 cd backend
 cp .env.example .env          # fill in MONGODB_URI, the secrets, Google, SMTP (see backend/README.md)
 npm install
-npm run dev                   # http://localhost:4000
+npm run dev                   # http://localhost:4000/ngrok tunnel if set
 
 # 2. Model server
 cd ../model
 pip install -r requirements.txt
-python -m uvicorn main:app --port 8000  # http://127.0.0.1:8000
+python -m uvicorn chosen_python_script:app --port 8000  # http://127.0.0.1:8000
 
 # 3. App
 cd ../frontend
 npm install
-npx expo start                # w = website, or open the dev client on a phone on the same Wi-Fi
+npm run start:local (local)                # w = website, or open the dev client on a phone on the same Wi-Fi
+npm run start:tunnel (with ngrok tunnel, change URL in package.json)
 ```
 
 ## Deployment

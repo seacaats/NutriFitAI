@@ -1,13 +1,17 @@
 import { useForgotPasswordForm } from "@/features/auth/hooks/useForgotPasswordForm";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
+import { useAuthColors } from "@/shared/context/ThemeContext";
+import { radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { forgotPasswordStyles } from "@/shared/theme/screenStyles";
+import { useMemo } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 
 // forgot-password -> verify-reset-password -> reset-password
 export default function ForgotPasswordScreen() {
+  const colors = useAuthColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const form = useForgotPasswordForm();
 
   return (
@@ -44,8 +48,8 @@ export default function ForgotPasswordScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  ...forgotPasswordStyles,
+const createStyles = (colors) => StyleSheet.create({
+  ...forgotPasswordStyles(colors),
 
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.lg },
   card: {

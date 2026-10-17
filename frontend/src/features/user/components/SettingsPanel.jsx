@@ -1,5 +1,5 @@
 import { useLogout } from "@/features/auth/hooks/useLogout";
-import { registerDevice } from "@/features/notifications/push";
+import { disableDevice, getPushState, registerDevice } from "@/features/notifications/push";
 import { useSettings } from "@/features/user/hooks/useSettings";
 import Skeleton from "@/shared/components/Skeleton";
 import ConfirmModal from "@/shared/components/ui/ConfirmModal";
@@ -13,7 +13,7 @@ import { useTheme } from "@/shared/context/ThemeContext";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { validatePassword } from "@/shared/utils/authValidators";
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Platform, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 
 // Settings body, shared by the web and mobile pages:
@@ -249,6 +249,7 @@ function ChangePassword({ settings, darkMode }) {
 
 const PUSH_STATUS_TEXT = {
   granted: "Push is on for this device.",
+  off: "Push is off for this device.",
   denied: "Push is blocked. Turn it on for NutriFitAI in your phone's settings.",
   unavailable: "Push isn't available on this device.",
 };
@@ -260,6 +261,11 @@ function NotificationSettings({ settings, loading, darkMode }) {
   const prefs = profile.notificationPrefs || {};
   const enabled = profile.notificationsEnabled ?? true;
   const [pushStatus, setPushStatus] = useState(null);
+
+  // Whether this device is already on, so the button reads Turn off
+  useEffect(() => {
+    getPushState().then((state) => state && setPushStatus(state));
+  }, []);
 
   const toggle = (value, onChange, disabled = false) => (loading ? (
     <Skeleton width={46} height={26} borderRadius={13} />
@@ -323,8 +329,8 @@ function NotificationSettings({ settings, loading, darkMode }) {
           <PlanButton
             compact
             variant="secondary"
-            label="Turn on"
-            onPress={async () => setPushStatus(await registerDevice({ prompt: true }))}
+            label={pushStatus === "granted" ? "Turn off" : "Turn on"}
+            onPress={async () => setPushStatus(pushStatus === "granted" ? await disableDevice() : await registerDevice({ prompt: true }))}
             darkMode={darkMode}
           />
         </Row>
@@ -339,11 +345,13 @@ function NotificationSettings({ settings, loading, darkMode }) {
 // Typed DELETE, plus the current password, then a final
 // "are you sure?". Signs out once the server confirms
 
-function DeleteAccount({ settings, onDeleted, darkMode }) {
+function DeleteAccount({ settings, onDeleted, isAdmin, darkMode }) {
   const tone = getScreenTones(darkMode);
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [password, setPassword] = useState("");
+  // Admins also enter an authenticator or recovery code
+  const [code, setCode] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -353,6 +361,7 @@ function DeleteAccount({ settings, onDeleted, darkMode }) {
     setOpen(false);
     setTyped("");
     setPassword("");
+    setCode("");
     setError("");
     setConfirming(false);
   };
@@ -360,6 +369,7 @@ function DeleteAccount({ settings, onDeleted, darkMode }) {
   function review() {
     if (typed !== "DELETE") return setError('Type DELETE to confirm.');
     if (!password) return setError("Please enter your current password.");
+    if (isAdmin && !code.trim()) return setError("Enter your authenticator code or a recovery code.");
     setError("");
     return setConfirming(true);
   }
@@ -367,7 +377,7 @@ function DeleteAccount({ settings, onDeleted, darkMode }) {
   async function remove() {
     setBusy(true);
     try {
-      await settings.deleteAccount(password);
+      await settings.deleteAccount(password, isAdmin ? code.trim() : undefined);
       await onDeleted();
     } catch (err) {
       setConfirming(false);
@@ -413,6 +423,16 @@ function DeleteAccount({ settings, onDeleted, darkMode }) {
             onToggleVisible={() => setShow((v) => !v)}
             autoCapitalize="none"
           />
+          {isAdmin && (
+            <FormInput
+              icon="shield-checkmark-outline"
+              placeholder="Authenticator or recovery code"
+              value={code}
+              onChangeText={setCode}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          )}
           <ScreenError message={error} onDismiss={() => setError("")} />
           <View style={styles.formActions}>
             <PlanButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
@@ -425,7 +445,9 @@ function DeleteAccount({ settings, onDeleted, darkMode }) {
         visible={confirming}
         tone="danger"
         title="Delete your account?"
-        message="Your meals, scans, workouts, steps, water and coach chats are deleted with it."
+        message={isAdmin
+          ? "Your account is deleted. Your admin activity (audit notes, holds, suspensions and logged actions) stays on record under your name."
+          : "Your meals, scans, workouts, steps, water and coach chats are deleted with it."}
         confirmLabel="Delete"
         loading={busy}
         onConfirm={remove}
@@ -499,10 +521,12 @@ export default function SettingsPanel() {
           <Text style={[styles.rowLabel, { color: tone.text }]}>Two-Factor Authentication</Text>
           {loading ? (
             // Same shape as MfaSetup: its status line, then the button
-            <>
-              <Skeleton width={220} height={14} style={{ marginTop: 8 }} />
-              <Skeleton width={150} height={32} borderRadius={radii.pill} style={{ marginTop: 10 }} />
-            </>
+            <View style={styles.inline}>
+              <Skeleton width={220} height={14} />
+              <View style={styles.endAction}>
+                <Skeleton width={150} height={32} borderRadius={radii.pill} />
+              </View>
+            </View>
           ) : (
             <MfaSetup
               method={role === "user" ? "email" : "totp"}
@@ -543,7 +567,7 @@ export default function SettingsPanel() {
             </View>
           </Row>
         ) : (
-          <DeleteAccount settings={settings} onDeleted={logout} darkMode={darkMode} />
+          <DeleteAccount settings={settings} onDeleted={logout} isAdmin={role !== "user"} darkMode={darkMode} />
         )}
       </Section>
 

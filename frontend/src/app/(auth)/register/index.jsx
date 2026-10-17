@@ -9,10 +9,12 @@ import {
 import { AuthBackLink } from "@/shared/components/layout/PublicHeader";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
+import { useAuthColors } from "@/shared/context/ThemeContext";
+import { radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { registerStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useMemo } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -25,6 +27,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function RegisterScreen() {
+  const colors = useAuthColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const form = useRegisterForm();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -237,7 +241,7 @@ export default function RegisterScreen() {
               {/* Consent */}
               <Pressable style={styles.termsRow} onPress={form.toggleAgreeTerms}>
                 <View style={[styles.checkbox, form.agreeTerms && styles.checkboxChecked]}>
-                  {form.agreeTerms && <Ionicons name="checkmark" size={11} color={colors.white} />}
+                  {form.agreeTerms && <Ionicons name="checkmark" size={11} color="#ffffff" />}
                 </View>
                 <Text style={styles.termsText}>
                   I consent to NutriFitAI collecting and storing the dietary and health information I provide above, as described in the{" "}
@@ -259,8 +263,8 @@ export default function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  ...registerStyles,
+const createStyles = (colors) => StyleSheet.create({
+  ...registerStyles(colors),
 
   root: { flex: 1, backgroundColor: colors.bgMint },
   flex1: { flex: 1 },
@@ -275,7 +279,7 @@ const styles = StyleSheet.create({
   fieldSpacing: { marginBottom: 14 },
   // Sits under the field above it, inside that field's spacing
   fieldNote: { marginTop: -8, marginBottom: 14, fontSize: 11, lineHeight: 16, color: colors.textSecondary },
-  genderPill: { flex: 1, paddingVertical: 12, borderRadius: radii.sm, backgroundColor: colors.white, alignItems: "center", borderWidth: 1, borderColor: colors.border },
+  genderPill: { flex: 1, paddingVertical: 12, borderRadius: radii.sm, backgroundColor: colors.inputBg, alignItems: "center", borderWidth: 1, borderColor: colors.border },
   hint: { ...typography.tiny, color: colors.textSecondary, marginTop: -4, marginBottom: 10 },
 
   checkbox: {

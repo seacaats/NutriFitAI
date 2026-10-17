@@ -1,9 +1,13 @@
 import { useAccessDenied } from "@/features/auth/hooks/useAccessDenied";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
+import { useAuthColors } from "@/shared/context/ThemeContext";
+import { radii, spacing, typography } from "@/shared/theme/nutrifitai";
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function AccessDeniedScreen() {
+  const colors = useAuthColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { variant, handlePrimary, canSignOut, handleSignOut } = useAccessDenied();
 
   return (
@@ -27,7 +31,7 @@ export default function AccessDeniedScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.bgMint },
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.lg },
   card: {

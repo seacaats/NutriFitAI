@@ -259,11 +259,12 @@ const getWorkout = asyncHandler(async (req, res) => {
   return sendSuccess(res, { data: await shapeWorkout(doc) });
 });
 
-// The workout this user can see under that name, ignoring case. Their own
+// The workout this user can see under that name, ignoring case and punctuation
+// such as "-" ("push-up" = "push up" = "pushup"). Their own
 // wins over wger's, since a copy of their own is what blocks a second one
 async function findByName(name, userId) {
   const rows = await Workout.find({ name, ...visibleTo(userId) }, 'name source')
-    .collation({ locale: 'en', strength: 1 })
+    .collation({ locale: 'en', strength: 1, alternate: 'shifted' }) // shifted: skip punctuation/spaces
     .limit(5)
     .lean();
   return rows.find((r) => r.source === 'user') || rows[0] || null;

@@ -1,6 +1,6 @@
 const User = require('../../models/user/User');
 const { ROLES } = require('../../middleware/authMiddleware');
-const { deleteUserAccount } = require('../../services/userDeletion');
+const { deleteAccount } = require('../../services/accountDeletion');
 const { sendSuccess, ApiError, asyncHandler } = require('../../utils/httpResponse');
 const { logAction, diffFields } = require('../../utils/audit-logs/auditLogger');
 const { notify } = require('../../services/notifications/notify');
@@ -329,7 +329,7 @@ const cancelPasswordReset = asyncHandler(async (req, res) => {
 // DELETE /api/admin/users/:id -- superadmin only (adminRoutes)
 const deleteUser = asyncHandler(async (req, res) => {
   const target = await loadManageableTarget(req);
-  const deletedCounts = await deleteUserAccount(target.id);
+  const deletedCounts = await deleteAccount(target.id, target.role || 'user');
 
   await logAction(req, {
     action: 'admin.user.deleted',

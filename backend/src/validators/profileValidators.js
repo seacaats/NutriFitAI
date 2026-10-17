@@ -76,7 +76,6 @@ const updateProfileSchema = z
     timezone: z.string().trim().max(50).nullable().optional(),
     notificationsEnabled: z.boolean().optional(),
     notificationPrefs: notificationPrefsSchema.optional(),
-    theme: z.enum(['light', 'dark', 'system']).optional(),
     ...preferenceFields,
   })
   .strict() // reject unknown keys rather than silently ignoring a typo'd field
@@ -112,6 +111,8 @@ const changePasswordSchema = z.object({
 const deleteAccountSchema = z.object({
   currentPassword: z.string({ required_error: 'Please enter your current password.' }).min(1, 'Please enter your current password.').max(200),
   confirm: z.literal('DELETE'),
+  // Admins and superadmins: authenticator code or a recovery code
+  code: z.string().min(1).max(30).optional(),
 }).strict();
 
 module.exports = {

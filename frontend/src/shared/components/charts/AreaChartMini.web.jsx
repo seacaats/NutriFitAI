@@ -70,7 +70,7 @@ export default function AreaChartMini({
           <Tooltip
             formatter={(value) => [`${value} ${unit}`.trim(), name]}
             labelFormatter={tipAt}
-            contentStyle={{ fontSize: 12 }}
+            contentStyle={{ fontSize: 12, fontFamily: CHART_FONT }} // tooltip is HTML, so set the app font here too
           />
 
           <Area

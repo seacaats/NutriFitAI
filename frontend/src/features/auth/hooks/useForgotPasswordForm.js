@@ -1,10 +1,9 @@
 import { useOtpInput } from "@/features/auth/hooks/useOtpInput";
 import { useResendCooldown } from "@/features/auth/hooks/useResendCooldown";
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
-import { useKeepOnResume } from "@/shared/hooks/useLandingOnResume";
 import { isValidEmail, validateOtp, validatePassword } from "@/shared/utils/authValidators";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 export function useForgotPasswordForm() {
   const router = useRouter();
@@ -16,9 +15,9 @@ export function useForgotPasswordForm() {
     (Array.isArray(params.email) ? params.email[0] : params.email) || "",
   );
   const [loading, setLoading] = useState(false);
+  // Blocks a double tap before `loading` re-renders, which would email two codes
+  const submittingRef = useRef(false);
   const [error, setError] = useState("");
-  // Something typed: coming back to the app keeps it
-  useKeepOnResume(Boolean(email));
 
   async function handleSubmit() {
     if (!email.trim()) {
@@ -30,6 +29,8 @@ export function useForgotPasswordForm() {
       return;
     }
 
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setError("");
     setLoading(true);
     try {
@@ -42,6 +43,7 @@ export function useForgotPasswordForm() {
       const message = err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.";
       setError(message);
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   }

@@ -1,6 +1,8 @@
 const { withTransaction } = require('../../config/mongo');
 const User = require('../models/user/User');
 const WeightLog = require('../models/user/WeightLog');
+const Workout = require('../models/workouts/Workout');
+const WorkoutCategory = require('../models/workouts/WorkoutCategory');
 const AuthIdentity = require('../models/auth/AuthIdentity');
 const { hashPassword, verifyPassword } = require('../utils/auth/password');
 const { logAction, diffFields } = require('../utils/audit-logs/auditLogger');
@@ -9,8 +11,9 @@ const { notify } = require('../services/notifications/notify');
 const { normalizeGoal } = require('../utils/goalNormalizer');
 const { sendSuccess, ApiError, asyncHandler } = require('../utils/httpResponse');
 const { saveUploadedAvatar, clearStoredAvatar, toPublicAvatarUrl } = require('../utils/storage/avatarStore');
-const { deleteUserAccount } = require('../services/userDeletion');
+const { deleteAccount: deleteAccountData } = require('../services/accountDeletion');
 const { clearRefreshCookie } = require('../utils/auth/refreshCookie');
+const { assertNotMfaLocked, checkAuthenticatorCode, rejectAuthenticatorCode, noteRecoveryUsed } = require('./authController');
 
 
 // Used by GET /profile and response returned after PATCH /profile since
@@ -46,7 +49,6 @@ async function buildProfilePayload(userId) {
     activityLevel: profile?.activityLevel ?? null,
     dietPreference: profile?.dietPreference ?? null,
     healthConditions: profile?.healthConditions ?? null,
-    theme: profile?.theme ?? 'system',
     notificationsEnabled: profile?.notificationsEnabled ?? true,
     notificationPrefs: {
       reminders: profile?.notificationPrefs?.reminders ?? true,
@@ -108,7 +110,6 @@ const PROFILE_AUDIT_FIELDS = [
   'dietPreference',
   'healthConditions',
   'timezone',
-  'theme',
   'targetWeightKg',
   'weeklyPaceKg',
   'coachTone',
@@ -125,19 +126,65 @@ const PROFILE_KEYS = [
   'timezone',
   'notificationsEnabled',
   'notificationPrefs',
-  'theme',
   'workoutPrefs',
   'targetWeightKg',
   'weeklyPaceKg',
   'coachTone',
 ];
 
-// Profile diff for the audit row. workoutPrefs is an object, so it's compared
-// whole and recorded by name only
-function profileChanges(before, after) {
+// Profile diff for the audit row. workoutPrefs is an object of id lists, so it's
+// diffed per key and recorded with the names, not the wger ids
+const WORKOUT_PREF_KEYS = ['categoryIds', 'equipment', 'equipmentIds', 'muscleIds', 'secondaryMuscleIds'];
+
+// wger id -> name, per pref key. A failed lookup falls back to the ids, since an
+// audit-only read must not fail the saved update
+async function workoutPrefNames(key, ids) {
+  const names = new Map();
+  if (!ids.length) return names;
+  try {
+    let rows = [];
+    if (key === 'categoryIds') {
+      rows = (await WorkoutCategory.find({ _id: { $in: ids } }).lean()).map((c) => ({ _id: c._id, name: c.name }));
+    } else if (key === 'equipmentIds') {
+      rows = await Workout.aggregate([
+        { $unwind: '$equipment' },
+        { $match: { 'equipment.id': { $in: ids } } },
+        { $group: { _id: '$equipment.id', name: { $first: '$equipment.name' } } },
+      ]);
+    } else if (key === 'muscleIds' || key === 'secondaryMuscleIds') {
+      rows = await Workout.aggregate([
+        { $project: { m: { $concatArrays: ['$muscles', '$musclesSecondary'] } } },
+        { $unwind: '$m' },
+        { $match: { 'm.id': { $in: ids } } },
+        { $group: { _id: '$m.id', name: { $first: { $ifNull: ['$m.nameEn', '$m.name'] } } } },
+      ]);
+    }
+    rows.forEach((r) => names.set(r._id, r.name));
+  } catch (err) {
+    console.error('[profile] workout pref names lookup failed', err.message);
+  }
+  return names;
+}
+
+// Raw form for the comparison
+const prefText0 = (value) => (Array.isArray(value) ? (value.length ? value.join(', ') : null) : value ?? null);
+
+async function prefText(key, value, ids) {
+  if (!Array.isArray(value)) return value ?? null;
+  if (!value.length) return null;
+  const names = await workoutPrefNames(key, ids);
+  return value.map((id) => names.get(id) ?? id).join(', ');
+}
+
+async function profileChanges(before, after) {
   const changes = diffFields(PROFILE_AUDIT_FIELDS, before, after);
-  if (JSON.stringify(before.workoutPrefs) !== JSON.stringify(after.workoutPrefs)) {
-    changes.push({ field: 'workoutPrefs' });
+  const was = before.workoutPrefs || {};
+  const now = after.workoutPrefs || {};
+  for (const key of WORKOUT_PREF_KEYS) {
+    // Compared as ids, recorded as names
+    if (String(prefText0(was[key])) === String(prefText0(now[key]))) continue;
+    const ids = [...new Set([...(was[key] || []), ...(now[key] || [])])].filter(Number.isFinite);
+    changes.push({ field: `workoutPrefs.${key}`, from: await prefText(key, was[key], ids), to: await prefText(key, now[key], ids) });
   }
   return changes;
 }
@@ -209,7 +256,7 @@ const updateProfile = asyncHandler(async (req, res) => {
 
   // Health fields come out of diffFields without values (HEALTH_FIELDS).
   // Goal and notifications have their own actions, so they're left out here
-  const changes = profileChanges(before, data);
+  const changes = await profileChanges(before, data);
   if (changes.length > 0) {
     await logAction(req, { action: 'account.profile.updated', targetType: 'user', details: { changes } });
   }
@@ -269,7 +316,7 @@ const completeOnboarding = asyncHandler(async (req, res) => {
 
   const data = await buildProfilePayload(req.userId);
 
-  const changes = profileChanges(before, data);
+  const changes = await profileChanges(before, data);
   await logAction(req, {
     action: 'account.setup.completed',
     targetType: 'user',
@@ -384,7 +431,17 @@ const deleteAccount = asyncHandler(async (req, res) => {
     }
   }
 
-  const deletedCounts = await deleteUserAccount(user.id);
+  // Admins and superadmins also prove it with an authenticator or recovery code
+  if (user.role !== 'user') {
+    if (!req.body.code) throw ApiError.badRequest('Enter your authenticator code or a recovery code.', { code: 'MFA_CODE_REQUIRED' });
+    assertNotMfaLocked(user);
+    const kind = await checkAuthenticatorCode(user, req.body.code);
+    if (!kind) await rejectAuthenticatorCode(req, user, 'delete_account');
+    await User.clearMfaFailures(user.id);
+    if (kind === 'recovery') noteRecoveryUsed(req, user);
+  }
+
+  const deletedCounts = await deleteAccountData(user.id, user.role);
 
   // Labels passed explicitly, the account is already gone
   await logAction(req, {

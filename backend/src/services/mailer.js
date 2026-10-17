@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const env = require('../../config/env');
 
 const PROVIDER = env.mail.provider;
@@ -128,8 +129,20 @@ function renderEmail({ title, intro, code, actions = [], note }) {
 </body></html>`;
 }
 
+// Same recipient + same dedupe key (purpose + code) inside this window is sent once,
+// so a repeated call can't land a duplicate. In memory: resets on restart
+const DEDUPE_MS = 30 * 1000;
+const recentSends = new Map();
+
 // Sends one email, tracking status the same way for every kind
-async function deliver(to, subject, html, devLog) {
+async function deliver(to, subject, html, devLog, dedupeKey) {
+  if (dedupeKey) {
+    const key = `${to}:${dedupeKey}`;
+    if (recentSends.has(key)) return { skipped: true };
+    recentSends.set(key, true);
+    setTimeout(() => recentSends.delete(key), DEDUPE_MS).unref();
+  }
+
   // Print to console outside production, so flows work without SMTP
   if (env.nodeEnv !== 'production') {
     console.log(`[mailer:dev] ${devLog}`);
@@ -168,6 +181,8 @@ async function deliver(to, subject, html, devLog) {
 
 // One send, whichever provider is selected
 async function send({ from, to, subject, html }) {
+  // Unique per message, so clients don't stack same-subject emails into one thread
+  const headers = { 'X-Entity-Ref-ID': crypto.randomUUID() };
   if (PROVIDER === 'brevo') {
     // MAIL_FROM is "Name <address>", Brevo wants the two apart
     const match = from.match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
@@ -180,14 +195,14 @@ async function send({ from, to, subject, html }) {
         'Content-Type': 'application/json',
         accept: 'application/json',
       },
-      body: JSON.stringify({ sender, to: [{ email: to }], subject, htmlContent: html }),
+      body: JSON.stringify({ sender, to: [{ email: to }], subject, htmlContent: html, headers }),
       signal: AbortSignal.timeout(15000),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.message || `Brevo replied ${response.status}`);
     return result;
   }
-  return transporter.sendMail({ from, to, subject, html });
+  return transporter.sendMail({ from, to, subject, html, headers });
 }
 
 // Wording per purpose. login_mfa is the second sign-in step, mfa_change turns
@@ -230,7 +245,8 @@ async function sendOtpEmail(to, code, purpose) {
     note: `This code expires in ${env.otp.ttlMinutes} minutes. If you didn't request it, you can safely ignore this email.`,
   });
 
-  return deliver(to, copy.subject, html, `OTP for ${to} (${purpose}): ${code}`);
+  // The code in the subject keeps each email in its own thread
+  return deliver(to, `${copy.subject} (${code})`, html, `OTP for ${to} (${purpose}): ${code}`, `${purpose}:${code}`);
 }
 
 // Sent when someone registers with an email that already has a verified account

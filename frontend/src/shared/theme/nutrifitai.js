@@ -99,8 +99,8 @@ export const radii = {
 
 // recharts draws its axis labels as SVG text, which doesn't inherit the
 // page font and falls back to the browser's serif. Same stack React Native
-// Web uses for <Text>
-export const CHART_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+// Web uses for <Text>. Inter first, the app font (see shared/theme/fonts.js)
+export const CHART_FONT = "Inter_400Regular, Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
 export const typography = {
   brandHeading: { fontSize: 40, fontWeight: "800" }, // text-5xl
@@ -299,6 +299,34 @@ export function getPublicTones(darkMode) {
   return darkMode ? publicTones.dark : publicTones.light;
 }
 
+// Auth screens: the usual mint/white look in light, the public dark palette in
+// dark. Same keys as `colors`, so the screens only swap which object they read
+export function getAuthColors(darkMode) {
+  if (!darkMode) return colors;
+  const p = publicTones.dark;
+  return {
+    ...colors,
+    // Softer than the landing page's near-black
+    bgMint: p.bandMint,
+    authCard: p.surface,
+    // The brand panel as a deep green, like the landing page's green boxes, not a bright block
+    brandPanel: p.soft,
+    white: p.surface,
+    inputBg: p.tag,
+    grayInputBg: p.tag,
+    mintTint: p.soft,
+    greenTint: p.tint,
+    green700: p.accent,
+    brandDark: p.title,
+    textPrimary: p.ink,
+    textSecondary: p.text,
+    textMuted: p.muted,
+    border: p.border,
+    divider: p.border,
+    dangerBg: "#2a1215",
+  };
+}
+
 export default {
   colors,
   spacing,
@@ -313,4 +341,5 @@ export default {
   getChipTint,
   publicTones,
   getPublicTones,
+  getAuthColors,
 };

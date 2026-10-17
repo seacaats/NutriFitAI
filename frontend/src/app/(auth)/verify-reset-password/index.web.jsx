@@ -2,11 +2,15 @@ import OtpInputRow, { OtpHelpLine } from "@/features/auth/components/OtpInputRow
 import { useVerifyResetPassword } from "@/features/auth/hooks/useForgotPasswordForm";
 import { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { colors, spacing, typography } from "@/shared/theme/nutrifitai";
+import { useAuthColors } from "@/shared/context/ThemeContext";
+import { spacing, typography } from "@/shared/theme/nutrifitai";
 import { verifyResetPasswordStyles } from "@/shared/theme/screenStyles";
+import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 export default function VerifyOtpScreen() {
+  const colors = useAuthColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const form = useVerifyResetPassword();
 
   return (
@@ -36,11 +40,11 @@ export default function VerifyOtpScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   // Centred under the code boxes: FormAlert stretches by default, so with a
   // maxWidth alone it sat against the left edge
   alert: { marginTop: spacing.sm, marginBottom: 0, maxWidth: 384, width: "100%", alignSelf: "center" },
-  ...verifyResetPasswordStyles,
+  ...verifyResetPasswordStyles(colors),
 
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.lg },
   title: { ...typography.h3, color: colors.textPrimary },

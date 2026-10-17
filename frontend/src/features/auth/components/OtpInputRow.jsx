@@ -1,14 +1,15 @@
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { useTheme } from "@/shared/context/ThemeContext";
-import { colors, spacing, radii as staticRadii, typography } from "@/shared/theme/nutrifitai";
+import { useAuthColors, useTheme } from "@/shared/context/ThemeContext";
+import { spacing, radii as staticRadii, typography } from "@/shared/theme/nutrifitai";
 import { Image } from "expo-image";
 import { useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 export default function OtpInputRow({ otp, variant = "green500" }) {
   const { tokens } = useTheme();
-  const { colors, radii } = tokens;
+  const { radii } = tokens;
+  const colors = useAuthColors(tokens.colors);
   const styles = useMemo(() => createStyles(colors, radii), [colors, radii]);
 
   const [focusedIndex, setFocusedIndex] = useState(null);
@@ -47,13 +48,15 @@ export default function OtpInputRow({ otp, variant = "green500" }) {
  * login screen's own (link, alert and spacing)
  */
 export function MfaChallenge({ form, styles }) {
+  const mfaStyles = useMfaStyles();
   if (form.recoveryCodes) return <RecoveryCodesStep form={form} />;
   if (form.mfa.setupRequired) return <AuthenticatorSetupStep form={form} styles={styles} />;
 
   const email = form.mfa.method === "email";
   return (
     <View>
-      <Text style={mfaStyles.lead}>
+      {/* Darker and bolder, like the setup step, so the instructions are easy to read */}
+      <Text style={[mfaStyles.lead, mfaStyles.leadStrong]}>
         {email
           ? "Enter the code we sent to your email to finish signing in."
           : "Enter the 6-digit code from your authenticator app. Lost your phone? Use a recovery code instead."}
@@ -88,12 +91,12 @@ export function MfaChallenge({ form, styles }) {
 
       <PrimaryButton title="Verify" onPress={form.handleMfaSubmit} loading={form.loading} />
 
+      {/* Same help line as the register and reset screens, with the countdown */}
+      {email && (
+        <OtpHelpLine onResend={form.handleMfaResend} resending={form.resending} cooldown={form.cooldown} style={mfaStyles.leadStrong} />
+      )}
+
       <View style={mfaStyles.links}>
-        {email && (
-          <Pressable onPress={form.handleMfaResend} hitSlop={6}>
-            <Text style={styles.link}>Resend code</Text>
-          </Pressable>
-        )}
         <Pressable onPress={form.cancelMfa} hitSlop={6}>
           <Text style={styles.link}>Back to login</Text>
         </Pressable>
@@ -108,6 +111,7 @@ export function MfaChallenge({ form, styles }) {
  * exists. The first code from the app finishes the setup and the sign-in
  */
 function AuthenticatorSetupStep({ form, styles }) {
+  const mfaStyles = useMfaStyles();
   const setup = form.mfaSetup;
   return (
     <View>
@@ -155,6 +159,7 @@ function AuthenticatorSetupStep({ form, styles }) {
 
 /** Shown once, right after the setup, before the session is opened */
 function RecoveryCodesStep({ form }) {
+  const mfaStyles = useMfaStyles();
   return (
     <View>
       <Text style={[mfaStyles.lead, mfaStyles.leadStrong]}>
@@ -170,13 +175,13 @@ function RecoveryCodesStep({ form }) {
   );
 }
 
-const mfaStyles = StyleSheet.create({
+const createMfaStyles = (colors) => StyleSheet.create({
   lead: { ...typography.caption, color: colors.textMuted, marginBottom: spacing.md, textAlign: "center" },
   // The setup and recovery steps carry instructions people must not miss, so darker and bolder than the muted caption
   leadStrong: { color: colors.textPrimary, fontWeight: "600" },
   alertAbove: { marginBottom: spacing.md },
   otp: { marginBottom: spacing.md },
-  links: { flexDirection: "row", justifyContent: "space-between", marginTop: spacing.md },
+  links: { flexDirection: "row", justifyContent: "center", marginTop: spacing.md },
   qrBox: { alignSelf: "center", backgroundColor: "#ffffff", padding: 8, borderRadius: staticRadii.sm, marginBottom: spacing.md },
   qr: { width: 200, height: 200 },
   keyHint: { ...typography.caption, color: colors.textMuted, textAlign: "center", marginBottom: spacing.sm },
@@ -203,6 +208,12 @@ const mfaStyles = StyleSheet.create({
   },
 });
 
+// Auth palette, so the sign-in steps follow the light/dark theme
+const useMfaStyles = () => {
+  const colors = useAuthColors();
+  return useMemo(() => createMfaStyles(colors), [colors]);
+};
+
 function getFocusStyle(ringColor, alsoChangeBorder) {
   if (Platform.OS === "web") {
     return {
@@ -224,7 +235,7 @@ function createStyles(colors, radii) {
       fontSize: 20,
       fontWeight: "700",
       color: colors.textPrimary,
-      backgroundColor: colors.white,
+      backgroundColor: colors.inputBg,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.sm,
@@ -237,10 +248,11 @@ function createStyles(colors, radii) {
 
 /**
  * "Didn't get the code? Resend it or update your email address."
- * Both actions are inline links. Shared by the registration and
- * password-reset OTP screens (web + native)
+ * Both actions are inline links. Shared by the registration, password-reset
+ * and sign-in OTP screens (web + native)
  */
 export function OtpHelpLine({ onResend, onUpdateEmail, resending = false, cooldown = 0, style }) {
+  const helpLineStyles = useHelpLineStyles();
   const resendDisabled = resending || cooldown > 0;
   const resendLabel = resending ? "Sending..." : cooldown > 0 ? `Resend it (${cooldown}s)` : "Resend it";
 
@@ -253,18 +265,28 @@ export function OtpHelpLine({ onResend, onUpdateEmail, resending = false, cooldo
         accessibilityRole="link"
       >
         {resendLabel}
-      </Text>{" "}
-      or{" "}
-      <Text onPress={onUpdateEmail} style={helpLineStyles.link} accessibilityRole="link">
-        update your email address
       </Text>
+      {/* No email to change on the sign-in screen, so that part is optional */}
+      {onUpdateEmail ? (
+        <>
+          {" "}or{" "}
+          <Text onPress={onUpdateEmail} style={helpLineStyles.link} accessibilityRole="link">
+            update your email address
+          </Text>
+        </>
+      ) : null}
       .
     </Text>
   );
 }
 
-const helpLineStyles = StyleSheet.create({
+const createHelpLineStyles = (colors) => StyleSheet.create({
   line: { ...typography.caption, color: colors.textMuted, textAlign: "center", marginTop: spacing.md },
   link: { ...typography.caption, color: colors.green700, fontWeight: "700", textDecorationLine: "underline" },
   linkDisabled: { color: colors.textMuted, textDecorationLine: "none" },
 });
+
+const useHelpLineStyles = () => {
+  const colors = useAuthColors();
+  return useMemo(() => createHelpLineStyles(colors), [colors]);
+};

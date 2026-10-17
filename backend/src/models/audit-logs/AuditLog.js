@@ -122,6 +122,8 @@ function buildFilter(query) {
 
   if (Array.isArray(query.actions)) {
     filter.action = { $in: query.actions };
+    // A note entry is only visible with the action it names
+    filter.$nor = [{ action: 'admin.audit_log.note_added', 'details.notedAction': { $nin: query.actions } }];
   }
 
   // The actor did it.

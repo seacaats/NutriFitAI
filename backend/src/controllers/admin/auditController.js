@@ -10,6 +10,7 @@ const {
   SEVERITIES,
   getActionDef,
   canViewAction,
+  canViewEntry,
   visibleActionsFor,
   formatAuditEntry,
 } = require('../../utils/audit-logs/actions');
@@ -56,7 +57,7 @@ function auditFilters(query) {
 // TTL has already removed
 async function listHeld(actions, query) {
   const allowed = new Set(actions);
-  const holds = (await AuditHold.listAll()).filter((h) => allowed.has(h.row.action));
+  const holds = (await AuditHold.listAll()).filter((h) => allowed.has(h.row.action) && canViewEntry(h.row, query.viewerRole));
 
   const limit = Math.min(Math.max(Number(query.limit) || 25, 1), AuditLog.MAX_PAGE_SIZE);
   const page = Math.max(Number(query.page) || 1, 1);
@@ -94,7 +95,7 @@ async function annotate(rows, viewerRole, heldCopies = new Set()) {
 // existence isn't confirmed either
 async function loadAuditRow(req) {
   const row = (await AuditLog.getById(req.params.id)) || (await AuditHold.getByAuditLogId(req.params.id))?.row;
-  if (!row || !canViewAction(row.action, req.userRole)) throw ApiError.notFound('Audit entry not found');
+  if (!row || !canViewEntry(row, req.userRole)) throw ApiError.notFound('Audit entry not found');
   return row;
 }
 
@@ -212,7 +213,7 @@ const listAuditLogs = asyncHandler(async (req, res) => {
   }
 
   const result = query.held === 'true'
-    ? await listHeld(actions, query)
+    ? await listHeld(actions, { ...query, viewerRole })
     : await AuditLog.list({
       actions,
       subjectId: query.subjectId,

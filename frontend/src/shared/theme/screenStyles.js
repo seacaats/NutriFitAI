@@ -11,11 +11,11 @@ import { colors, radii, shellColors, spacing, typography } from "./nutrifitai";
 // (auth)
 // ===========================================================================
 
-export const forgotPasswordStyles = {
+export const forgotPasswordStyles = (colors) => ({
   root: { flex: 1, backgroundColor: colors.bgMint },
-};
+});
 
-export const loginStyles = {
+export const loginStyles = (colors) => ({
   fieldSpacing: { marginBottom: 20 },
   checkboxRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   checkboxChecked: { backgroundColor: colors.green600, borderColor: colors.green600 },
@@ -26,7 +26,7 @@ export const loginStyles = {
 
   socialText: { ...typography.caption, fontWeight: "700", color: colors.textSecondary },
   footerText: { ...typography.caption, color: colors.textSecondary },
-};
+});
 
 /**
  * register: the two screens use different outer layouts (single column vs.
@@ -34,7 +34,7 @@ export const loginStyles = {
  * checkbox, footer links -- live here. The dropdowns are OptionSelect and
  * messages are FormAlert, both self-styled.
  */
-export const registerStyles = {
+export const registerStyles = (colors) => ({
   row: { flexDirection: "row", gap: 12 },
   thirdField: { flex: 1 },
   // Step 1 (account) is a few plain fields, so it gets the login screen's
@@ -61,20 +61,20 @@ export const registerStyles = {
   link: { ...typography.caption, color: colors.green700, fontWeight: "700" },
 
   backText: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
-};
+});
 
-export const verifyRegistrationStyles = {
+export const verifyRegistrationStyles = (colors) => ({
   root: { flex: 1, backgroundColor: colors.bgMint },
   subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 10, textAlign: "center" },
   email: { ...typography.bodyBold, color: colors.textPrimary, marginTop: 2 },
   hint: { ...typography.tiny, color: colors.textMuted, marginTop: 6, textAlign: "center" },
-};
+});
 
-export const verifyResetPasswordStyles = {
+export const verifyResetPasswordStyles = (colors) => ({
   root: { flex: 1, backgroundColor: colors.bgMint },
   subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 10 },
   email: { ...typography.bodyBold, color: colors.textPrimary, marginTop: 2 },
-};
+});
 
 // ===========================================================================
 // (main)

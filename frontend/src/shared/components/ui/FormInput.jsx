@@ -1,4 +1,4 @@
-import { useTheme } from "@/shared/context/ThemeContext";
+import { useAuthColors, useTheme } from "@/shared/context/ThemeContext";
 import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
@@ -31,7 +31,9 @@ export default function FormInput({
   onSubmitEditing,
 }) {
   const { tokens } = useTheme();
-  const { colors, radii } = tokens;
+  const { radii } = tokens;
+  // The dark-aware palette on the auth screens, the theme's own elsewhere
+  const colors = useAuthColors(tokens.colors);
   const styles = useMemo(() => createStyles(colors, radii), [colors, radii]);
 
   const [focused, setFocused] = useState(false);
@@ -87,11 +89,12 @@ export default function FormInput({
  * it optional, and a field with neither gets no marker
  */
 export function FieldLabel({ label, required = false, optional = false, style }) {
+  const c = useAuthColors();
   return (
-    <Text style={[labelStyles.label, style]}>
+    <Text style={[labelStyles.label, { color: c.textSecondary }, style]}>
       {label}
       {required && <Text style={labelStyles.required}> *</Text>}
-      {optional && <Text style={labelStyles.optional}> (Optional)</Text>}
+      {optional && <Text style={[labelStyles.optional, { color: c.textMuted }]}> (Optional)</Text>}
     </Text>
   );
 }
@@ -180,15 +183,17 @@ export function RingField({ style, children }) {
  * screen/hook uses to clear its error state -- so the box stays gone until the
  * next failed submit sets a message again, rather than being hidden forever
  */
-const TONES = {
-  error: { icon: "alert-circle", fg: colors.danger, bg: colors.dangerBg },
-  success: { icon: "checkmark-circle", fg: colors.green700, bg: colors.greenTint },
-  info: { icon: "information-circle", fg: colors.textSecondary, bg: colors.white },
-};
+const getTones = (c) => ({
+  error: { icon: "alert-circle", fg: c.danger, bg: c.dangerBg },
+  success: { icon: "checkmark-circle", fg: c.green700, bg: c.greenTint },
+  info: { icon: "information-circle", fg: c.textSecondary, bg: c.white },
+});
 
 export function FormAlert({ message, onDismiss, tone = "error", style }) {
+  const c = useAuthColors();
   if (!message) return null;
-  const t = TONES[tone] || TONES.error;
+  const tones = getTones(c);
+  const t = tones[tone] || tones.error;
 
   return (
     <View

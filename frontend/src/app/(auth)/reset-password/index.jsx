@@ -1,12 +1,16 @@
 import { useResetPasswordForm } from "@/features/auth/hooks/useForgotPasswordForm";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
+import { useAuthColors } from "@/shared/context/ThemeContext";
+import { radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
+import { useMemo } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ResetPasswordScreen() {
+  const colors = useAuthColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const form = useResetPasswordForm();
   const insets = useSafeAreaInsets();
 
@@ -66,7 +70,7 @@ export default function ResetPasswordScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bgMint },
   flex1: { flex: 1 },
   container: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: "center" },

@@ -1,6 +1,7 @@
-import { colors } from "@/shared/theme/nutrifitai";
+import { useTheme } from "@/shared/context/ThemeContext";
+import { colors, getPublicTones } from "@/shared/theme/nutrifitai";
 import { Image } from "expo-image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 // Timing, the usual practice (Material's progress guidance, React Suspense,
@@ -15,12 +16,17 @@ const MIN_VISIBLE_MS = 500;
  * for the first moments before the loader is worth showing
  */
 export default function LoadingScreen({ visible = true, message = "" }) {
+  // Background follows the light/dark theme
+  const { darkMode } = useTheme();
+  const p = getPublicTones(darkMode);
+  const styles = useMemo(() => createStyles(p), [p]);
+
   return (
     <View style={styles.root}>
       {visible && (
         <>
           <Image source={require("@/assets/images/nutrifit-logo.png")} style={styles.logo} contentFit="contain" />
-          <ActivityIndicator size="large" color={colors.green600} />
+          <ActivityIndicator size="large" color={darkMode ? p.accent : colors.green600} />
           {!!message && <Text style={styles.message}>{message}</Text>}
         </>
       )}
@@ -69,8 +75,8 @@ export function useLoadingGate(loading) {
   return { pending: loading || holding || (visible && !loading), visible };
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, alignItems: "center", justifyContent: "center", gap: 24, backgroundColor: colors.bgMint },
+const createStyles = (p) => StyleSheet.create({
+  root: { flex: 1, alignItems: "center", justifyContent: "center", gap: 24, backgroundColor: p.bg },
   logo: { width: 96, height: 107 },
-  message: { fontSize: 13, color: colors.textSecondary },
+  message: { fontSize: 13, color: p.text },
 });

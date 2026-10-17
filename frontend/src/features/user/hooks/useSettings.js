@@ -73,12 +73,13 @@ export function useSettings() {
     [],
   );
 
-  // Throws with the server's message. Sends the password along with the typed DELETE
+  // Throws with the server's message. Sends the password along with the typed DELETE,
+  // and the authenticator / recovery code for admins
   const deleteAccount = useCallback(
-    (currentPassword) =>
+    (currentPassword, code) =>
       apiClient.delete("/profile", {
         auth: true,
-        body: { confirm: "DELETE", currentPassword },
+        body: { confirm: "DELETE", currentPassword, ...(code ? { code } : {}) },
       }),
     [],
   );

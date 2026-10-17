@@ -69,7 +69,7 @@ function inSentence(value) {
   return LABELS[value] ?? value.replace(/_/g, ' ');
 }
 
-// Rows deleted with an account, by userDeletion's collection keys
+// Rows deleted with an account, by accountDeletion's collection keys
 const COUNT_NOUNS = {
   users: ['account', 'accounts'],
   meals: ['meal', 'meals'],

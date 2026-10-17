@@ -54,7 +54,6 @@ const profileSchema = new Schema(
     dietPreference: { type: String },
     healthConditions: { type: String, default: null },
 
-    theme: { type: String, enum: ['system', 'light', 'dark'], default: 'system' },
     notificationsEnabled: { type: Boolean, default: true },
     notificationPrefs: { type: notificationPrefsSchema, default: () => ({}) },
     timezone: { type: String, maxlength: 50 },
@@ -196,7 +195,6 @@ const PROFILE_FIELDS = {
   healthConditions: 'profile.healthConditions',
   timezone: 'profile.timezone',
   avatarStorageKey: 'profile.avatarStorageKey',
-  theme: 'profile.theme',
   notificationsEnabled: 'profile.notificationsEnabled',
   notificationPrefs: 'profile.notificationPrefs',
   workoutPrefs: 'profile.workoutPrefs',

@@ -66,7 +66,7 @@ export const SECTIONS = [
     title: "3. What We Collect",
     icon: "document-text-outline",
     body:
-      "• Account: your name, email, and a password (we only keep a scrambled version). With Google sign-in, we also get your Google ID and profile picture.\n" +
+      "• Account: your name, email, and a password (we only keep a hashed version). With Google sign-in, we also get your Google ID and profile picture (if none is set).\n" +
       "• Profile: age, sex, height, activity level, goals, target weight, time zone, and your app settings.\n" +
       "• Activity: weight, water, steps, workouts, meals, food scan photos, and your coach chats.\n" +
       "• Technical: your device's notification token, the days you open the app, and sign-in records (with IP address and device info) for security.",
@@ -75,8 +75,8 @@ export const SECTIONS = [
     title: "4. Health & Diet Info",
     icon: "medkit-outline",
     body:
-      "Sharing your diet, health conditions, and body measurements is optional. We use it for one thing: tailoring food, workout, and coaching tips to you, like working around an allergy. Because it's sensitive, we handle it with extra care.\n\n" +
-      "By checking the consent box when you sign up, you let us store and use it for this. You can change or remove it anytime in your Profile.",
+      "Sharing your diet, health conditions, and body measurements is of much importance. We use it for one thing: tailoring food, workout, and coaching tips to you, like working around an allergy. Because it's sensitive, we handle it with extra care.\n\n" +
+      "By checking the consent box when you sign up, you let us store and use it for this. You can change such details anytime in your Profile.",
   },
   {
     title: "5. Permissions",
@@ -84,6 +84,7 @@ export const SECTIONS = [
     body:
       "We only ask when a feature needs it:\n" +
       "• Camera and photos: to scan food and set a profile picture.\n" +
+      "• Microphone: to talk to the AI coach. Audio is only used to turn your voice into text.\n" +
       "• Activity or health access: to read your daily step count from your phone, Apple Health, or Health Connect. Steps only, nothing else.\n\n" +
       "You can turn these off in your device settings. Only the related feature stops working.",
   },
@@ -91,20 +92,20 @@ export const SECTIONS = [
     title: "6. Scanner & AI Coach",
     icon: "sparkles-outline",
     body:
-      "Food scanner: your photo goes to our food detection service, which finds the foods and estimates their nutrition. We keep the photo so you can look back at it, then delete it after 90 days. Your nutrition results stay. Deleting a scan removes its photo right away.\n\n" +
-      "AI coach: to answer you, we send your message plus a short summary of your info to an AI model. That can include your first name, age range, sex, height, weight, diet, health notes, goals, and recent steps, water, workouts, and meals. It never includes your email, last name, or password. Answers may come from our own AI server or from outside AI services we use as backup. For under-18s, the coach sticks to general healthy habits.",
+      "Food scanner: your photo goes to our food detection service, which finds the foods and estimates their nutrition.\n\n" +
+      "AI coach: to answer you, we send your message plus a short summary of your info to an AI model. That can include your first name, age range, sex, height, weight, diet, health notes, goals, and recent steps, water, workouts, and meals. It never includes your email, last name, or password.",
   },
   {
     title: "7. Who Sees Your Data",
     icon: "share-social-outline",
     body:
       "We don't sell your personal or health information. We only share what's needed to run the app, with:\n" +
-      "• Hosting and storage providers, including Cloudflare for photos\n" +
+      "• Secure hosting and storage providers\n" +
       "• An email service, for verification and reset codes\n" +
       "• Expo, to send push notifications\n" +
       "• Google, if you sign in with it\n" +
       "• AI services, for the coach (see above)\n\n" +
-      "Our admins can see basic account details like name, email, and role, and can suspend or delete accounts. Their actions are logged. We may also share data if the law requires it.",
+      "Our admins can see basic account details like name, email, and role, and can manage accounts. Their actions are logged. We may also share data if the law requires it.",
   },
   {
     title: "8. How Long We Keep It",
@@ -123,7 +124,7 @@ export const SECTIONS = [
     title: "9. Keeping You Safe",
     icon: "lock-closed-outline",
     body:
-      "• Passwords and email codes are stored scrambled, never as plain text.\n" +
+      "• Passwords and email codes are stored hashed, never as plain text.\n" +
       "• You stay signed in with a secure cookie on web, or a token on your phone. \"Remember me\" lasts up to 30 days, otherwise 3 days.\n" +
       "• So the app still works when your connection drops, it saves your recent screens on your device. Signing out clears them.\n\n" +
       "Use a strong, unique password and sign out on shared devices. If you think someone got into your account, change your password right away.",
@@ -137,13 +138,20 @@ export const SECTIONS = [
       "• Change your goals and notification settings\n" +
       "• Delete scans, meals, and chats one by one\n" +
       "• Change or reset your password\n\n" +
-      "Want to leave? Delete your account in Settings (you'll confirm with your password). This permanently erases your profile, logs, meals, scans, photos, chats, notifications, and device tokens.\n\n" +
+      "Want to leave? Delete your account in Settings. This permanently erases your profile, logs, meals, scans, photos, chats, notifications, and device tokens.\n\n" +
       "In the Philippines, the Data Privacy Act of 2012 also gives you the right to access, correct, and erase your data, and to complain to the National Privacy Commission.",
   },
   {
-    title: "11. Changes",
+    title: "11. Credits",
+    icon: "heart-outline",
+    body:
+      "NutriFitAI's exercise library is powered by wger (wger.de), an open-source fitness project, and is used under the Creative Commons Attribution-ShareAlike (CC BY-SA) license. Thank you to the wger community and its contributors.\n\n" +
+      "The app is also built with open-source tools, and relies on trusted services for hosting, sign-in, and AI. We're grateful to everyone behind them.",
+  },
+  {
+    title: "12. Changes",
     icon: "refresh-outline",
-    body: "We'll update this page when NutriFitAI changes, and change the date above when we do. If you keep using the app afterward, you're agreeing to the new version.",
+    body: "We'll update this page when NutriFitAI changes. If you keep using the app afterward, you're agreeing to the new version.",
   },
 ];
 // "1. Using NutriFitAI" -> ["1", "Using NutriFitAI"], for the numbered cards

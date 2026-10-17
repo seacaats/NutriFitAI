@@ -3,11 +3,13 @@ import { MfaChallenge } from "@/features/auth/components/OtpInputRow";
 import { useLoginForm } from "@/features/auth/hooks/useLoginForm";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { colors, radii, spacing, typography } from "@/shared/theme/nutrifitai";
+import { useAuthColors } from "@/shared/context/ThemeContext";
+import { radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { loginStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { useMemo } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -22,6 +24,8 @@ import {
 const BREAKPOINT = 768;
 
 export default function LoginScreen() {
+  const colors = useAuthColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const form = useLoginForm();
   const { width } = useWindowDimensions();
   const isWide = width >= BREAKPOINT;
@@ -86,7 +90,7 @@ export default function LoginScreen() {
             <View style={styles.row}>
               <Pressable style={styles.checkboxRow} onPress={form.toggleRememberMe}>
                 <View style={[styles.checkbox, form.rememberMe && styles.checkboxChecked]}>
-                  {form.rememberMe && <Ionicons name="checkmark" size={11} color={colors.white} />}
+                  {form.rememberMe && <Ionicons name="checkmark" size={11} color="#ffffff" />}
                 </View>
                 <Text style={styles.rememberText}>Remember me</Text>
               </Pressable>
@@ -133,8 +137,8 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  ...loginStyles,
+const createStyles = (colors) => StyleSheet.create({
+  ...loginStyles(colors),
 
   root: { flex: 1, flexDirection: "row", backgroundColor: colors.screenDark },
 
@@ -184,7 +188,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: colors.white,
+    backgroundColor: colors.inputBg,
     borderRadius: radii.sm,
     paddingVertical: 12,
   },

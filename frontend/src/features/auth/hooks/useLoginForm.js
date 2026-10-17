@@ -1,7 +1,7 @@
 import { useOtpInput } from "@/features/auth/hooks/useOtpInput";
+import { useResendCooldown } from "@/features/auth/hooks/useResendCooldown";
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
 import { useAuth } from "@/shared/context/AuthContext";
-import { useKeepOnResume } from "@/shared/hooks/useLandingOnResume";
 import {
   buildGoogleAuthUrl,
   googleErrorMessage,
@@ -64,9 +64,15 @@ export function useLoginForm() {
   // the recovery codes. The session itself is held back until they're saved
   const [mfaSetup, setMfaSetup] = useState(null);
   const [recoveryCodes, setRecoveryCodes] = useState(null);
+  // Set the moment a submit starts, since `loading` only updates after a re-render and a double tap beats it
+  const submittingRef = useRef(false);
+  const resendingRef = useRef(false);
   const pendingSessionRef = useRef(null);
   // The emailed code, entered in boxes like the other code screens
   const otp = useOtpInput(4);
+  // Same resend cooldown as the register and reset code screens
+  const resend = useResendCooldown();
+  const [resending, setResending] = useState(false);
 
   const popupRef = useRef(null);
   const stopListeningRef = useRef(null);
@@ -79,8 +85,6 @@ export function useLoginForm() {
   // True only when the popup's state became unobservable, so the screen can
   // ask the user rather than leaving the button spinning
   const [googleNeedsAttention, setGoogleNeedsAttention] = useState(false);
-  // Something typed: coming back to the app keeps it
-  useKeepOnResume(Boolean(email || password));
   const settledRef = useRef(false);
 
   const toggleShowPassword = () => setShowPassword((v) => !v);
@@ -267,15 +271,22 @@ export function useLoginForm() {
   }
 
   async function handleMfaResend() {
+    if (!resend.canResend || resending || resendingRef.current) return;
+    resendingRef.current = true;
     setError("");
     setMfaNotice("");
+    setResending(true);
     try {
       await apiClient.post("/auth/login/mfa/resend", { mfaToken: mfa.token });
       otp.reset();
       setMfaNotice("We sent a new code to your email.");
+      resend.start();
     } catch (err) {
       if (err?.code === "MFA_SESSION_EXPIRED") cancelMfa();
       setError(mfaProblem(err, "Couldn't resend the code. Try again."));
+    } finally {
+      resendingRef.current = false;
+      setResending(false);
     }
   }
 
@@ -297,6 +308,8 @@ export function useLoginForm() {
       return;
     }
 
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setError("");
     setLoading(true);
 
@@ -321,6 +334,7 @@ export function useLoginForm() {
       setError(message);
       Alert.alert("Login failed", message);
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   }
@@ -623,6 +637,8 @@ export function useLoginForm() {
     dismissMfaNotice: () => setMfaNotice(""),
     handleMfaSubmit,
     handleMfaResend,
+    resending,
+    cooldown: resend.remaining,
     mfaSetup,
     recoveryCodes,
     finishMfaSetup,

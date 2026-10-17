@@ -1,6 +1,7 @@
 import LoadingScreen, { useLoadingGate } from "@/shared/components/ui/LoadingScreen";
 import { AUTH_STATUS, safeReturnTo, useAuth } from "@/shared/context/AuthContext";
-import { colors } from "@/shared/theme/nutrifitai";
+import { AuthColorsProvider, useTheme } from "@/shared/context/ThemeContext";
+import { getAuthColors } from "@/shared/theme/nutrifitai";
 import { Stack, useGlobalSearchParams, usePathname, useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
@@ -18,6 +19,8 @@ export default function AuthLayout() {
   const { status, isAuthenticated, emailVerified, role } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const { darkMode } = useTheme();
+  const bg = getAuthColors(darkMode).bgMint;
   // `next`: the page they were heading to before login, checked against the role
   const { next } = useGlobalSearchParams();
   const gate = useLoadingGate(status === AUTH_STATUS.LOADING);
@@ -45,13 +48,15 @@ export default function AuthLayout() {
   // session or leaving covers it instead
   const cover = allowed ? null
     : gate.pending ? <LoadingScreen visible={gate.visible} />
-    : target ? <View style={{ flex: 1, backgroundColor: colors.bgMint }} />
+    : target ? <View style={{ flex: 1, backgroundColor: bg }} />
     : null;
 
   return (
-    <View style={{ flex: 1 }}>
-      <Stack screenOptions={{ headerShown: false, animation: "ios_from_right" }} />
-      {cover && <View style={StyleSheet.absoluteFill}>{cover}</View>}
-    </View>
+    <AuthColorsProvider>
+      <View style={{ flex: 1 }}>
+        <Stack screenOptions={{ headerShown: false, animation: "ios_from_right", contentStyle: { backgroundColor: bg } }} />
+        {cover && <View style={StyleSheet.absoluteFill}>{cover}</View>}
+      </View>
+    </AuthColorsProvider>
   );
 }

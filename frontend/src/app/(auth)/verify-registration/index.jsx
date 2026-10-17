@@ -2,13 +2,17 @@ import OtpInputRow, { OtpHelpLine } from "@/features/auth/components/OtpInputRow
 import { useVerifyRegistration } from "@/features/auth/hooks/useRegisterForm";
 import { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
-import { colors, radii, spacing } from "@/shared/theme/nutrifitai";
+import { useAuthColors } from "@/shared/context/ThemeContext";
+import { radii, spacing } from "@/shared/theme/nutrifitai";
 import { verifyRegistrationStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
+import { useMemo } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function VerifyRegistrationScreen() {
+  const colors = useAuthColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const form = useVerifyRegistration();
   const insets = useSafeAreaInsets();
 
@@ -54,11 +58,11 @@ export default function VerifyRegistrationScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   // Centred under the code boxes: FormAlert stretches by default, so with a
   // maxWidth alone it sat against the left edge
   alert: { marginTop: spacing.sm, marginBottom: 0, maxWidth: 384, width: "100%", alignSelf: "center" },
-  ...verifyRegistrationStyles,
+  ...verifyRegistrationStyles(colors),
 
   flex1: { flex: 1 },
   container: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: "center" },

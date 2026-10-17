@@ -2,20 +2,23 @@ import NutriFitLogo from "@/shared/components/ui/NutriFitLogo";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
 import ThemeToggle from "@/shared/components/ui/ThemeToggle";
 import { homeFor, useAuth } from "@/shared/context/AuthContext";
-import { useTheme } from "@/shared/context/ThemeContext";
+import { useAuthColors, useTheme } from "@/shared/context/ThemeContext";
 import { colors, getPublicTones, radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 const NAV_HEIGHT = 64;
+// Same breakpoint as the landing page, below it the logo goes small
+const WIDE = 900;
 
 // Top bar for the public pages (logo left, buttons right)
 export default function PublicHeader({ isAuthenticated = false }) {
   const router = useRouter();
   const { role } = useAuth();
   const { darkMode } = useTheme();
+  const { width } = useWindowDimensions();
   const p = getPublicTones(darkMode);
   const styles = useMemo(() => createStyles(p), [p]);
 
@@ -23,7 +26,7 @@ export default function PublicHeader({ isAuthenticated = false }) {
     <View style={styles.nav}>
       <View style={styles.navInner}>
         <Pressable onPress={() => router.replace("/")} hitSlop={8}>
-          <NutriFitLogo small />
+          <NutriFitLogo small={width < WIDE} />
         </Pressable>
 
         <View style={styles.navActions}>
@@ -47,12 +50,13 @@ export default function PublicHeader({ isAuthenticated = false }) {
 // Back arrow at the top of the auth screens: previous page, else the fallback
 export function AuthBackLink({ fallback = "/" }) {
   const router = useRouter();
+  const c = useAuthColors();
   const back = () => (router.canGoBack() ? router.back() : router.replace(fallback));
 
   return (
     <Pressable onPress={back} hitSlop={12} accessibilityLabel="Go back" style={styles.back}>
-      <Ionicons name="chevron-back" size={20} color={colors.brandDark} />
-      <Text style={styles.backText}>Back</Text>
+      <Ionicons name="chevron-back" size={20} color={c.brandDark} />
+      <Text style={[styles.backText, { color: c.brandDark }]}>Back</Text>
     </Pressable>
   );
 }

@@ -5,7 +5,7 @@ import { forgetRemembered, getRemembered, setRemembered } from "@/shared/utils/r
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder } from "expo-audio";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { Linking, Platform } from "react-native";
 /**
  * Backs both AI coach screens so they share one definition of what a message
  * is, how sending works, and what happens when the provider chain is exhausted
@@ -473,6 +473,8 @@ export function useVoiceInput(setMessage) {
     if (WEB) return webRef.current?.stop();
     try {
       await recorder.stop();
+      // Back to playback mode so the mic isn't held (iOS keeps the recording indicator otherwise)
+      setAudioModeAsync({ allowsRecording: false }).catch(() => {});
       if (!discard && recorder.uri) transcribe({ uri: recorder.uri, name: "voice.m4a", type: "audio/mp4" });
     } catch {
       // Not recording
@@ -512,8 +514,16 @@ export function useVoiceInput(setMessage) {
         rec.start();
       } else {
         // Native: RECORD_AUDIO on Android, the microphone prompt on iOS
-        const { granted } = await requestRecordingPermissionsAsync();
-        if (!granted) return setError("Allow microphone access to use voice.");
+        const { granted, canAskAgain } = await requestRecordingPermissionsAsync();
+        if (!granted) {
+          // Denied for good: the system won't ask again, so send them to the app's settings
+          if (canAskAgain === false) {
+            setError("Microphone is off for NutriFitAI. Turn it on in Settings.");
+            Linking.openSettings().catch(() => {});
+            return;
+          }
+          return setError("Allow microphone access to use voice.");
+        }
         await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
         await recorder.prepareToRecordAsync();
         recorder.record();
