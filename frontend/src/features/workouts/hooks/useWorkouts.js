@@ -1,4 +1,3 @@
-import { useWorkoutTab } from "@/features/workouts/components/PlanParts";
 import {
   createWorkout,
   deleteWorkout,
@@ -17,6 +16,7 @@ import {
   uploadWorkoutPhoto,
 } from "@/features/workouts/hooks/useWorkoutApi";
 import { useWorkoutPlan, useWorkoutSessions } from "@/features/workouts/hooks/useWorkoutSessions";
+import { useWorkoutTab } from "@/features/workouts/hooks/useWorkoutTab";
 import { requireOnline } from "@/shared/api/apiClient";
 import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { useCallback, useEffect, useRef, useState } from "react";

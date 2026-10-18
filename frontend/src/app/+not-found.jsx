@@ -1,4 +1,4 @@
-import PlanButton from "@/shared/components/ui/PlanButton";
+import ActionButton from "@/shared/components/ui/ActionButton";
 import { homeFor, useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { getPublicTones, radii, spacing, typography } from "@/shared/theme/nutrifitai";
@@ -29,7 +29,7 @@ export default function NotFoundScreen() {
         <Text style={styles.code}>404</Text>
         <Text style={styles.title}>Page not found</Text>
         <Text style={styles.text}>The page you're looking for doesn't exist or has moved.</Text>
-        <PlanButton label={isAuthenticated ? "Back to my dashboard" : "Back to home"} onPress={home} darkMode={darkMode} />
+        <ActionButton label={isAuthenticated ? "Back to my dashboard" : "Back to home"} onPress={home} darkMode={darkMode} />
       </View>
     </View>
   );

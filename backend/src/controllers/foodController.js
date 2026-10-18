@@ -7,6 +7,8 @@ const { looksLikeImage } = require('../utils/storage/keys');
 const { logAction } = require('../utils/audit-logs/auditLogger');
 const { today } = require('../utils/calendarDay');
 const { asyncHandler, sendSuccess, ApiError } = require('../utils/httpResponse');
+const { userTimeZone } = require('../services/user/userTimeZone');
+const { round1 } = require('../utils/numbers');
 
 // Daily calorie and macro targets on the active goal; null when not set
 const NUTRITION_TARGETS = ['dailyCaloriesKcal', 'dailyProteinG', 'dailyCarbsG', 'dailyFatG'];
@@ -84,11 +86,6 @@ async function toScanPayload(scan) {
   };
 }
 
-async function userTimeZone(req) {
-  if (req.timeZone) return req.timeZone;
-  return (await User.getProfile(req.userId))?.timezone || undefined;
-}
-
 // ---- Scans -------------------------------------------------------------------
 
 // POST /api/food/scans   (multipart/form-data, field name: "image")
@@ -164,7 +161,6 @@ const removeScan = asyncHandler(async (req, res) => {
 
 // ---- Meals -------------------------------------------------------------------
 
-const round1 = (v) => (v === null || v === undefined ? null : Math.round(v * 10) / 10);
 
 // POST /api/food/meals -- logs the selected foods of a scan as eaten today
 const logMeal = asyncHandler(async (req, res) => {

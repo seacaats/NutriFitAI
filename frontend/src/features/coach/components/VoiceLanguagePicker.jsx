@@ -54,6 +54,7 @@ export default function VoiceLanguagePicker({ voice, inline = false }) {
               <Ionicons name="search" size={16} color={palette.muted} />
               <TextInput
                 value={query}
+                maxLength={50}
                 onChangeText={setQuery}
                 placeholder="Search languages"
                 placeholderTextColor={palette.muted}

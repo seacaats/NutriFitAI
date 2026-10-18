@@ -1,7 +1,7 @@
-import { PlanModal } from "@/features/workouts/components/PlanParts";
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
 import Skeleton from "@/shared/components/Skeleton";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
+import SheetModal from "@/shared/components/ui/SheetModal";
 import { COACH_TONES, DEFAULT_COACH_TONE } from "@/shared/constants/goalOptions";
 import { UntrackedSkeletons } from "@/shared/state/skeletonTracker";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
@@ -91,7 +91,7 @@ export function CoachToneButton({ color, darkMode }) {
       <Pressable onPress={() => setOpen(true)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Coach tone">
         <Ionicons name="color-wand-outline" size={20} color={color} />
       </Pressable>
-      <PlanModal
+      <SheetModal
         visible={open}
         title="Coach tone"
         subtitle={`How Nori talks to you, from the next reply. None picked is ${DEFAULT_TONE_LABEL}.`}
@@ -100,7 +100,7 @@ export function CoachToneButton({ color, darkMode }) {
       >
         <CoachToneOptions value={value} onChange={choose} disabled={saving} loading={value === undefined} darkMode={darkMode} />
         <ScreenError message={error} onDismiss={() => setError("")} />
-      </PlanModal>
+      </SheetModal>
     </>
   );
 }

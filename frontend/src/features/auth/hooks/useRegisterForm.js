@@ -17,6 +17,7 @@ import {
   SEXES,
   sexLabelToValue,
 } from "@/shared/constants/profileOptions";
+import { useEnterToSubmit } from "@/shared/hooks/useEnterToSubmit";
 import {
   AGE_MAX,
   AGE_MIN,
@@ -193,6 +194,11 @@ export function useRegisterForm() {
     return "";
   }
 
+  /** What Enter would submit right now: step 1 continues, step 2 creates the account */
+  function validateCurrentStep() {
+    return detailsOpen ? validateAccount() || validateDetails() : validateAccount();
+  }
+
   /** Advances from step 1 to step 2, only once step 1 is actually valid. */
   function continueToDetails() {
     const validationError = validateAccount();
@@ -278,6 +284,13 @@ export function useRegisterForm() {
   // Where Back goes when there's no history, e.g. sent here by Google sign-in
   const backTo = ["google", "login"].includes(firstParam(params.from)) ? "/login" : "/";
 
+  // Enter in any field: step 1 continues, step 2 creates the account
+  const { canSubmit, onSubmitEditing } = useEnterToSubmit({
+    submit: detailsOpen ? handleCreateAccount : continueToDetails,
+    validate: validateCurrentStep,
+    loading,
+  });
+
   return {
     backTo,
     firstName,
@@ -334,6 +347,8 @@ export function useRegisterForm() {
     dismissError,
     loading,
     handleCreateAccount,
+    canSubmit,
+    onSubmitEditing,
     goToLogin,
     goToTerms,
   };

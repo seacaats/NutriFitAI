@@ -1,13 +1,18 @@
 import { RoleBadge } from "@/features/admin/components/Badges";
-import DataTable, { DetailGrid, FilterRow, Pager } from "@/features/admin/components/DataTable";
+import DataTable from "@/features/admin/components/DataTable";
+import DetailGrid from "@/features/admin/components/DetailGrid";
+import FilterRow from "@/features/admin/components/FilterRow";
+import Pager from "@/features/admin/components/Pager";
+import StatCard from "@/features/admin/components/StatCard";
 import { useAdminUsers } from "@/features/admin/hooks/useAdminUsers";
-import Skeleton from "@/shared/components/Skeleton";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
 import { RingInput, useFocusRing } from "@/shared/components/ui/FormInput";
 import { ROLES, useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { adminStyles } from "@/shared/theme/screenStyles";
+import { NAME_MAX } from "@/shared/utils/authValidators";
+import { formatDate } from "@/shared/utils/formatDate";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
@@ -42,13 +47,6 @@ const ROLE_FILTERS = [
  * is SUPPOSED to be displayed in the reader's local timezone -- the admin in
  * Manila should see Manila time.
  */
-function formatWhen(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-}
-
 // Confirm-card copy per action. Every action needs a reason (adminValidators)
 const ACTION_COPY = {
   rename: { title: (p) => `Rename ${p.name}?`, button: "Save name" },
@@ -58,16 +56,6 @@ const ACTION_COPY = {
   cancelReset: { title: (p) => `Cancel the password reset for ${p.name}?`, body: "Their current password works again right away.", button: "Cancel reset" },
   delete: { title: (p) => `Permanently delete ${p.name}?`, body: "Their account and all of their data are removed. This can't be undone.", button: "Delete account" },
 };
-
-// `value` null while the counts load: the card renders with a placeholder
-function StatCard({ label, value, tone }) {
-  return (
-    <View style={[styles.statCard, { backgroundColor: tone.card, borderColor: tone.border }]}>
-      <Text style={[styles.statLabel, { color: tone.muted }]}>{label}</Text>
-      {value == null ? <Skeleton width={56} height={26} /> : <Text style={[styles.statValue, { color: tone.text }]}>{value}</Text>}
-    </View>
-  );
-}
 
 export default function AdminUsersScreen() {
   const ring = useFocusRing();
@@ -173,7 +161,7 @@ export default function AdminUsersScreen() {
       title: "Joined",
       width: 120,
       priority: 2,
-      render: (row) => <Text style={[styles.bodyCell, { color: tone.muted }]}>{formatWhen(row.createdAt)}</Text>,
+      render: (row) => <Text style={[styles.bodyCell, { color: tone.muted }]}>{formatDate(row.createdAt)}</Text>,
     },
   ];
 
@@ -187,11 +175,11 @@ export default function AdminUsersScreen() {
             { label: "Role", value: row.role },
             { label: "Email verified", value: row.emailVerified ? "Yes" : "No" },
             ...(row.role === "user"
-              ? [{ label: "Terms accepted", value: formatWhen(row.termsAcceptedAt) }]
+              ? [{ label: "Terms accepted", value: formatDate(row.termsAcceptedAt) }]
               : []),
-            { label: "Joined", value: formatWhen(row.createdAt) },
+            { label: "Joined", value: formatDate(row.createdAt) },
             ...(row.suspendedAt
-              ? [{ label: "Suspended", value: `${formatWhen(row.suspendedAt)} — ${row.suspendedReason || "no reason"}` }]
+              ? [{ label: "Suspended", value: `${formatDate(row.suspendedAt)} — ${row.suspendedReason || "no reason"}` }]
               : []),
             ...(row.passwordResetRequired ? [{ label: "Password reset", value: "Required at next sign-in" }] : []),
           ]}
@@ -267,6 +255,8 @@ export default function AdminUsersScreen() {
           <TextInput
             {...ring.handlers}
             value={users.search}
+            // Same cap as the server search limit
+            maxLength={120}
             onChangeText={users.setSearch}
             placeholder="Search by name or email"
             placeholderTextColor={tone.muted}
@@ -318,6 +308,7 @@ export default function AdminUsersScreen() {
                 value={pendingChange.firstName}
                 onChangeText={(firstName) => setPendingChange((p) => ({ ...p, firstName }))}
                 placeholder="First name"
+                maxLength={NAME_MAX}
                 placeholderTextColor={tone.muted}
                 style={[styles.reasonInput, styles.nameInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
               />
@@ -325,6 +316,7 @@ export default function AdminUsersScreen() {
                 value={pendingChange.lastName}
                 onChangeText={(lastName) => setPendingChange((p) => ({ ...p, lastName }))}
                 placeholder="Last name"
+                maxLength={NAME_MAX}
                 placeholderTextColor={tone.muted}
                 style={[styles.reasonInput, styles.nameInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
               />
@@ -334,6 +326,7 @@ export default function AdminUsersScreen() {
             value={reason}
             onChangeText={setReason}
             placeholder="Reason (required)"
+            maxLength={300}
             placeholderTextColor={tone.muted}
             style={[styles.reasonInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
             multiline
@@ -388,9 +381,6 @@ export default function AdminUsersScreen() {
 const styles = StyleSheet.create({
   ...adminStyles,
 
-  statCard: { flex: 1, minWidth: 150, borderWidth: 1, borderRadius: radii.md, padding: 16, gap: 4 },
-  statLabel: { fontSize: 10, fontWeight: "800", letterSpacing: 0.6 },
-  statValue: { fontSize: 24, fontWeight: "800" },
 
   primaryCell: { fontSize: 13, fontWeight: "700" },
   subCell: { fontSize: 11, marginTop: 1 },

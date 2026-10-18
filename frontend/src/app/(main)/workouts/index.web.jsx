@@ -1,19 +1,21 @@
+import EmptyState from "@/features/workouts/components/EmptyState";
 import ExercisePills from "@/features/workouts/components/ExercisePills";
 import ExerciseWorkoutTracker from "@/features/workouts/components/ExerciseWorkoutTracker";
+import FavoriteButton from "@/features/workouts/components/FavoriteButton";
 import { AddWorkoutModal, RoutineEditorModal, RoutinePlayerModal, ScheduleModal } from "@/features/workouts/components/PlanModals";
 import { FavoriteRoutines, PanelHeading, RecentPanel, relativeDay, RoutinesPanel, UpcomingPanel } from "@/features/workouts/components/PlanPanels";
-import { EmptyState, FavoriteButton, WorkoutTabs } from "@/features/workouts/components/PlanParts";
 import { WorkoutFilters, WorkoutImage } from "@/features/workouts/components/PlanTiles";
 import { WorkoutPrefsModal } from "@/features/workouts/components/WorkoutPrefsPicker";
+import WorkoutTabs from "@/features/workouts/components/WorkoutTabs";
 import {
   getWorkoutFallbackImage,
 } from "@/features/workouts/hooks/useWorkoutApi";
 import { PAGE_SIZE, useWorkouts } from "@/features/workouts/hooks/useWorkouts";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
 import Skeleton from "@/shared/components/Skeleton";
+import ActionButton from "@/shared/components/ui/ActionButton";
 import ConfirmModal from "@/shared/components/ui/ConfirmModal";
 import { useFocusRing } from "@/shared/components/ui/FormInput";
-import PlanButton from "@/shared/components/ui/PlanButton";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { useHeldWhileClosing } from "@/shared/hooks/useHeldWhileClosing";
 import {
@@ -148,6 +150,8 @@ export default function WorkoutsScreen() {
             placeholder="Search exercises, muscles…"
             placeholderTextColor={colors.textMuted}
             value={searchQuery}
+            // Same cap as the server search limit
+            maxLength={100}
             onChangeText={setSearchQuery}
           />
           {searchQuery.length > 0 && (
@@ -306,7 +310,7 @@ export default function WorkoutsScreen() {
           <Text style={[styles.resultCount, mutedText]}>
             {filtered.length} loaded
           </Text>
-          <PlanButton compact variant="secondary" label="Add workout" onPress={() => setAddOpen(true)} darkMode={darkMode} />
+          <ActionButton compact variant="secondary" label="Add workout" onPress={() => setAddOpen(true)} darkMode={darkMode} />
         </View>
       </View>
 
@@ -713,14 +717,14 @@ function ExerciseDetailModal({
               {/* Plan actions. Hidden when this run is a scheduled session */}
               {!planned && (
                 <View style={styles.detailActions}>
-                  <PlanButton
+                  <ActionButton
                     variant="secondary"
                     label={favorite ? "Favorited" : "Favorite"}
                     onPress={onToggleFavorite}
                     darkMode={darkMode}
                   />
-                  <PlanButton variant="secondary" label="Schedule" onPress={onSchedule} darkMode={darkMode} />
-                  {onDelete && <PlanButton variant="danger" label="Delete" onPress={onDelete} darkMode={darkMode} />}
+                  <ActionButton variant="secondary" label="Schedule" onPress={onSchedule} darkMode={darkMode} />
+                  {onDelete && <ActionButton variant="danger" label="Delete" onPress={onDelete} darkMode={darkMode} />}
                 </View>
               )}
               {planned && (

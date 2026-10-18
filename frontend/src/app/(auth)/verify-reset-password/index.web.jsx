@@ -8,7 +8,7 @@ import { verifyResetPasswordStyles } from "@/shared/theme/screenStyles";
 import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-export default function VerifyOtpScreen() {
+export default function VerifyResetPasswordScreen() {
   const colors = useAuthColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const form = useVerifyResetPassword();
@@ -21,7 +21,7 @@ export default function VerifyOtpScreen() {
         <Text style={styles.email}>{form.email || "your email"}</Text>
 
         <View style={styles.otpWrap}>
-          <OtpInputRow otp={form.otp} />
+          <OtpInputRow otp={form.otp} onSubmit={form.handleVerify} />
         </View>
 
         <FormAlert message={form.error} onDismiss={form.dismissError} style={styles.alert} />

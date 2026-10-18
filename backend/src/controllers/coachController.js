@@ -1,13 +1,13 @@
 const env = require('../../config/env');
 const ChatConversation = require('../models/chat/ChatConversation');
 const ChatMessage = require('../models/chat/ChatMessage');
-const User = require('../models/user/User');
 const { coachReply, toPlainText, HISTORY_TURNS } = require('../services/ai/chatProvider');
 const { describeSubject } = require('../services/ai/contextBuilder');
 const { transcribeAudio } = require('../services/ai/transcribe');
 const { health } = require('../services/ai/router');
 const { sendSuccess, ApiError, asyncHandler } = require('../utils/httpResponse');
 const { notify } = require('../services/notifications/notify');
+const { userTimeZone } = require('../services/user/userTimeZone');
 
 const SURFACE = 'coach';
 
@@ -44,11 +44,6 @@ function refOf(conversation) {
   if (conversation.scanRef?.scanId) return { scanId: conversation.scanRef.scanId };
   if (conversation.mealRef?.mealId) return { mealId: conversation.mealRef.mealId };
   return {};
-}
-
-async function userTimeZone(req) {
-  if (req.timeZone) return req.timeZone;
-  return (await User.getProfile(req.userId))?.timezone || undefined;
 }
 
 // POST /api/coach/chat -- scanId/mealId start a thread about that scan or meal

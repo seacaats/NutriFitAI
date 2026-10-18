@@ -27,7 +27,9 @@ export default function ResetPasswordScreen() {
             label="New Password"
             placeholder="New password"
             value={form.password}
+            maxLength={64}
             onChangeText={form.setPassword}
+            onSubmitEditing={form.onSubmitEditing}
             secureTextEntry
             showToggle
             visible={form.showPassword}
@@ -40,7 +42,9 @@ export default function ResetPasswordScreen() {
             label="Confirm New Password"
             placeholder="Re-enter new password"
             value={form.confirmPassword}
+            maxLength={64}
             onChangeText={form.setConfirmPassword}
+            onSubmitEditing={form.onSubmitEditing}
             secureTextEntry
             showToggle
             visible={form.showConfirmPassword}

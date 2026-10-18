@@ -36,7 +36,7 @@ export default function VerifyRegistrationScreen() {
           </View>
 
           <View style={styles.otpWrap}>
-            <OtpInputRow otp={form.otp} variant="primaryBorder" />
+            <OtpInputRow otp={form.otp} variant="primaryBorder" onSubmit={form.handleVerify} />
           </View>
 
           <FormAlert message={form.error} onDismiss={form.dismissError} style={styles.alert} />

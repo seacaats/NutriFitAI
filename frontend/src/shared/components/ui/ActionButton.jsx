@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
 
 // Primary (filled) or secondary (outlined) button. Text only, like every
 // other button in the app
-export default function PlanButton({ label, onPress, variant = "primary", disabled, loading, darkMode, compact = false }) {
+export default function ActionButton({ label, onPress, variant = "primary", disabled, loading, darkMode, compact = false }) {
   const tone = getScreenTones(darkMode);
   const primary = variant === "primary";
   const danger = variant === "danger";

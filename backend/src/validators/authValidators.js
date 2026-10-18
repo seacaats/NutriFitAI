@@ -11,6 +11,9 @@ const CUSTOM_OPTION_MAX = 50;
 // comma-joined into one string, with the same 2,000-character bound
 const DIET_PREFERENCES_MAX = 2000;
 
+// Longest email address (RFC 5321 allows 254)
+const EMAIL_MAX = 254;
+
 const AGE_MIN = 13;
 const AGE_MAX = 122;
 
@@ -24,7 +27,10 @@ const PASSWORD_MAX = 64;
 const NAME_RE = /^[\p{L}\p{M}][\p{L}\p{M} '.-]*$/u;
 const NAME_CHARSET_MESSAGE = "can only contain letters, spaces, hyphens (-), apostrophes (') and periods (.)";
 
-function personName(label, { required = false, max = 75 } = {}) {
+// Longest first or last name. Mirrors NAME_MAX in the frontend's authValidators.js
+const NAME_MAX = 75;
+
+function personName(label, { required = false, max = NAME_MAX } = {}) {
   let schema = z.string().trim();
   if (required) schema = schema.min(1, `Please enter your ${label.toLowerCase()}.`);
   return schema
@@ -77,7 +83,7 @@ const registerSchema = z.object({
   firstName: personName('First name', { required: true }),
   // Consider mononyms
   lastName: personName('Last name').optional(),
-  email: z.string().trim().email('Please enter a valid email address.').max(255),
+  email: z.string().trim().email('Please enter a valid email address.').max(EMAIL_MAX, 'Email is too long.'),
   password: passwordSchema,
   // Required at sign-up (contextBuilder's under-18 rules depend on it)
   age: ageSchema,
@@ -99,7 +105,7 @@ const registerSchema = z.object({
 const otpCode = z.string().trim().min(4).max(8);
 
 const verifyRegistrationSchema = z.object({
-  email: z.string().trim().email(),
+  email: z.string().trim().email().max(EMAIL_MAX),
   code: otpCode,
 });
 
@@ -141,23 +147,23 @@ const mfaChangeSchema = z.object({
 });
 
 const resendRegistrationOtpSchema = z.object({
-  email: z.string().trim().email(),
+  email: z.string().trim().email().max(EMAIL_MAX),
 });
 
 // Deliberately loose on password: accounts created before the no-spaces /
 // 64-char rules must still be able to sign in
 const loginSchema = z.object({
-  email: z.string().trim().email('Please enter a valid email address.'),
-  password: z.string().min(1, 'Please enter your password.'),
+  email: z.string().trim().email('Please enter a valid email address.').max(EMAIL_MAX),
+  password: z.string().min(1, 'Please enter your password.').max(200),
   rememberMe: z.boolean().optional().default(false),
 });
 
 const forgotPasswordSchema = z.object({
-  email: z.string().trim().email('Please enter a valid email address.'),
+  email: z.string().trim().email('Please enter a valid email address.').max(EMAIL_MAX),
 });
 
 const verifyPasswordResetSchema = z.object({
-  email: z.string().trim().email(),
+  email: z.string().trim().email().max(EMAIL_MAX),
   code: otpCode,
 });
 
@@ -173,6 +179,10 @@ module.exports = {
   healthConditions,
   AGE_MIN,
   AGE_MAX,
+  NAME_MAX,
+  EMAIL_MAX,
+  heightSchema,
+  weightSchema,
   personName,
   passwordSchema,
   ageSchema,

@@ -1,4 +1,8 @@
+import { Platform } from "react-native";
 import { colors, radii, shellColors, spacing, typography } from "./nutrifitai";
+
+// A long email has no spaces to wrap at, so on web it breaks anywhere instead of overflowing
+const breakAnywhere = Platform.OS === "web" ? { wordBreak: "break-all" } : null;
 
 /**
  * Per-screen style rules that were byte-identical between a screen's native
@@ -66,14 +70,14 @@ export const registerStyles = (colors) => ({
 export const verifyRegistrationStyles = (colors) => ({
   root: { flex: 1, backgroundColor: colors.bgMint },
   subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 10, textAlign: "center" },
-  email: { ...typography.bodyBold, color: colors.textPrimary, marginTop: 2 },
+  email: { ...typography.bodyBold, color: colors.textPrimary, marginTop: 2, textAlign: "center", ...breakAnywhere },
   hint: { ...typography.tiny, color: colors.textMuted, marginTop: 6, textAlign: "center" },
 });
 
 export const verifyResetPasswordStyles = (colors) => ({
   root: { flex: 1, backgroundColor: colors.bgMint },
   subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 10 },
-  email: { ...typography.bodyBold, color: colors.textPrimary, marginTop: 2 },
+  email: { ...typography.bodyBold, color: colors.textPrimary, marginTop: 2, textAlign: "center", ...breakAnywhere },
 });
 
 // ===========================================================================

@@ -19,6 +19,7 @@ import { useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { colors, getScreenPalette, getScreenTones, radii, screenTones, shellColors } from "@/shared/theme/nutrifitai";
 import { profileStyles } from "@/shared/theme/screenStyles";
+import { NAME_MAX } from "@/shared/utils/authValidators";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {
@@ -116,7 +117,6 @@ export default function ProfileScreen() {
 
       {saved && (
         <View style={styles.savedBanner}>
-          <Ionicons name="checkmark-circle-outline" size={15} color={shellColors.primary} />
           <Text style={styles.savedText}>Profile updated</Text>
         </View>
       )}
@@ -161,12 +161,12 @@ export default function ProfileScreen() {
             )}
           </View>
 
-          <View style={styles.flex1}>
+          <View style={[styles.flex1, { minWidth: 0 }]}>
             <View style={styles.rowGap}>
               {loading ? (
                 <Skeleton width={140} height={20} style={styles.onBanner} />
               ) : (
-                <Text style={styles.name}>{displayName}</Text>
+                <Text style={styles.name} numberOfLines={2}>{displayName}</Text>
               )}
             </View>
 
@@ -189,7 +189,7 @@ export default function ProfileScreen() {
               {loading ? (
                 <Skeleton width={160} height={12} style={styles.onBanner} />
               ) : (
-                <Text style={styles.metaTextUnderline}>{form.email || "—"}</Text>
+                <Text style={styles.metaTextUnderline} numberOfLines={1}>{form.email || "—"}</Text>
               )}
             </View>
 
@@ -218,15 +218,15 @@ export default function ProfileScreen() {
       <View style={[styles.card, card]}>
         <Text style={[styles.cardTitle, textColor]}>Personal Information</Text>
 
-        <ProfileInput label="First Name" required value={form.firstName} onChangeText={(v) => handleChange("firstName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
-        <ProfileInput label="Last Name" value={form.lastName} onChangeText={(v) => handleChange("lastName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput maxLength={NAME_MAX} label="First Name" required value={form.firstName} onChangeText={(v) => handleChange("firstName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput maxLength={NAME_MAX} label="Last Name" value={form.lastName} onChangeText={(v) => handleChange("lastName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
         {/* Email is read-only: changing it would invalidate email verification,
             so it needs its own re-verification flow rather than a silent edit. */}
         <ProfileInput label="Email" value={form.email} editing={false} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
 
-        <ProfileInput label="Age" required value={String(form.age ?? "")} onChangeText={(v) => handleChange("age", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
-        <ProfileInput label="Height (cm)" required value={String(form.height ?? "")} onChangeText={(v) => handleChange("height", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
-        <ProfileInput label="Weight (kg)" required value={String(form.weight ?? "")} onChangeText={(v) => handleChange("weight", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput maxLength={3} label="Age" required value={String(form.age ?? "")} onChangeText={(v) => handleChange("age", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput maxLength={6} label="Height (cm)" required value={String(form.height ?? "")} onChangeText={(v) => handleChange("height", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput maxLength={6} label="Weight (kg)" required value={String(form.weight ?? "")} onChangeText={(v) => handleChange("weight", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
 
         <ProfileSelect label="Sex" value={form.sex} options={SEXES} onSelect={(v) => handleChange("sex", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} loading={loading} />
       </View>
@@ -241,8 +241,8 @@ export default function ProfileScreen() {
         <ProfilePlanField label="Diet Preference" required value={form.dietPreference} options={DIET_PREFERENCES} multiple exclusive={NO_DIET_PREFERENCE} icon="nutrition-outline" placeholder="Select any that apply" otherPlaceholder="Your diet (e.g. Intermittent Fasting)" onChange={(v) => handleChange("dietPreference", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
         <ProfilePlanField label="Health Conditions" required value={form.healthConditions} options={healthConditionsFor(form.sex)} multiple icon="medkit-outline" placeholder="Select any that apply (or None)" otherPlaceholder="Your condition (e.g. Gout)" onChange={(v) => handleChange("healthConditions", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} note={HEALTH_CONDITIONS_NOTE} />
 
-        <ProfileInput label="Target Weight (kg)" value={String(form.targetWeight ?? "")} onChangeText={(v) => handleChange("targetWeight", v)} editing={editing} keyboardType="numeric" placeholder="Not set" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
-        <ProfileInput label="Weekly Pace (kg/week, 0.1–1)" value={String(form.weeklyPace ?? "")} onChangeText={(v) => handleChange("weeklyPace", v)} editing={editing} keyboardType="decimal-pad" placeholder="Not set" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput maxLength={6} label="Target Weight (kg)" value={String(form.targetWeight ?? "")} onChangeText={(v) => handleChange("targetWeight", v)} editing={editing} keyboardType="numeric" placeholder="Not set" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
+        <ProfileInput maxLength={4} label="Weekly Pace (kg/week, 0.1–1)" value={String(form.weeklyPace ?? "")} onChangeText={(v) => handleChange("weeklyPace", v)} editing={editing} keyboardType="decimal-pad" placeholder="Not set" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
         {isUser && (
           <ProfileWorkoutPrefs label="Workout Preferences" value={form.workoutPrefs} onChange={(v) => handleChange("workoutPrefs", v)} options={workoutOptions} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} loading={loading} darkMode={darkMode} />
         )}
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  name: { fontSize: 19, fontWeight: "800", color: colors.white },
+  name: { fontSize: 19, fontWeight: "800", color: colors.white, flexShrink: 1 },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
   avatarStagedRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
   avatarStagedBtn: {
@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 12, color: colors.white },
   avatarCol: { alignItems: "center", gap: 6 },
   removePhotoText: { fontSize: 11, fontWeight: "700", color: colors.white, textDecorationLine: "underline" },
-  metaTextUnderline: { fontSize: 12, color: colors.white, textDecorationLine: "underline" },
+  metaTextUnderline: { fontSize: 12, color: colors.white, textDecorationLine: "underline", flexShrink: 1 },
 
   // Cards
   card: { borderRadius: radii.sm, borderWidth: 1, padding: 16, marginTop: 12 },

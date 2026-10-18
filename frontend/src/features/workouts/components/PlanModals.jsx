@@ -1,8 +1,9 @@
 import ExerciseWorkoutTracker from "@/features/workouts/components/ExerciseWorkoutTracker";
 import { fetchCategories, fetchEquipment, fetchExerciseInfoPage, findWorkoutByName, getEnglishTranslation } from "@/features/workouts/hooks/useWorkoutApi";
+import ActionButton from "@/shared/components/ui/ActionButton";
 import ConfirmModal from "@/shared/components/ui/ConfirmModal";
 import { FormAlert, RingInput, useFocusRing } from "@/shared/components/ui/FormInput";
-import PlanButton from "@/shared/components/ui/PlanButton";
+import SheetModal from "@/shared/components/ui/SheetModal";
 import Stepper from "@/shared/components/ui/Stepper";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,8 +19,9 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Chip, PlanModal, SectionLabel } from "./PlanParts";
+import Chip from "./Chip";
 import { WorkoutFilters } from "./PlanTiles";
+import SectionLabel from "./SectionLabel";
 
 // Workouts dialogs: scheduling, the routine editor and the routine player
 
@@ -190,7 +192,7 @@ export function ScheduleModal({ visible, target, onClose, onSubmit, darkMode }) 
   }
 
   return (
-    <PlanModal
+    <SheetModal
       visible={visible}
       onClose={onClose}
       darkMode={darkMode}
@@ -198,8 +200,8 @@ export function ScheduleModal({ visible, target, onClose, onSubmit, darkMode }) 
       subtitle={target ? `${target.name} · within the next 7 days` : ""}
       footer={(
         <>
-          <PlanButton label="Cancel" variant="secondary" onPress={onClose} darkMode={darkMode} />
-          <PlanButton
+          <ActionButton label="Cancel" variant="secondary" onPress={onClose} darkMode={darkMode} />
+          <ActionButton
             label={target?.rescheduleId ? "Reschedule" : "Schedule"}
             onPress={submit}
             loading={saving}
@@ -240,7 +242,7 @@ export function ScheduleModal({ visible, target, onClose, onSubmit, darkMode }) 
       </Text>
 
       <FormAlert message={error} onDismiss={() => setError("")} />
-    </PlanModal>
+    </SheetModal>
   );
 }
 
@@ -378,7 +380,7 @@ export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmen
   const inputStyle = [editorStyles.input, { borderColor: tone.border, color: tone.text }];
 
   return (
-    <PlanModal
+    <SheetModal
       visible={visible}
       onClose={onClose}
       darkMode={darkMode}
@@ -386,8 +388,8 @@ export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmen
       subtitle="Your own, shown with the rest of the catalog"
       footer={(
         <>
-          <PlanButton label="Cancel" variant="secondary" onPress={onClose} darkMode={darkMode} />
-          <PlanButton label={added ? "Done" : "Add workout"} onPress={submit} loading={saving && !confirming} darkMode={darkMode} />
+          <ActionButton label="Cancel" variant="secondary" onPress={onClose} darkMode={darkMode} />
+          <ActionButton label={added ? "Done" : "Add workout"} onPress={submit} loading={saving && !confirming} darkMode={darkMode} />
         </>
       )}
     >
@@ -471,10 +473,10 @@ export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmen
       {photo ? (
         <View style={addStyles.photoRow}>
           <Image source={{ uri: photo.uri }} style={addStyles.photo} />
-          <PlanButton compact variant="secondary" label="Remove" onPress={() => setPhoto(null)} darkMode={darkMode} />
+          <ActionButton compact variant="secondary" label="Remove" onPress={() => setPhoto(null)} darkMode={darkMode} />
         </View>
       ) : (
-        <PlanButton compact variant="secondary" label="Choose a photo" onPress={pickPhoto} darkMode={darkMode} />
+        <ActionButton compact variant="secondary" label="Choose a photo" onPress={pickPhoto} darkMode={darkMode} />
       )}
 
       <SectionLabel darkMode={darkMode}>Description (optional)</SectionLabel>
@@ -500,7 +502,7 @@ export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmen
         onConfirm={() => save(true)}
         onCancel={() => setConfirming(false)}
       />
-    </PlanModal>
+    </SheetModal>
   );
 }
 
@@ -649,7 +651,7 @@ export function RoutineEditorModal({ visible, routine, onClose, onSave, darkMode
   const minutes = estimateMinutes(exercises);
 
   return (
-    <PlanModal
+    <SheetModal
       visible={visible}
       onClose={onClose}
       darkMode={darkMode}
@@ -658,8 +660,8 @@ export function RoutineEditorModal({ visible, routine, onClose, onSave, darkMode
       subtitle={minutes ? `${exercises.length} exercises · about ${minutes} min` : "Group exercises you do together"}
       footer={(
         <>
-          <PlanButton label="Cancel" variant="secondary" onPress={onClose} darkMode={darkMode} />
-          <PlanButton label="Save routine" onPress={save} loading={saving} darkMode={darkMode} />
+          <ActionButton label="Cancel" variant="secondary" onPress={onClose} darkMode={darkMode} />
+          <ActionButton label="Save routine" onPress={save} loading={saving} darkMode={darkMode} />
         </>
       )}
     >
@@ -690,6 +692,8 @@ export function RoutineEditorModal({ visible, routine, onClose, onSave, darkMode
         <TextInput
           {...ring.handlers}
           value={term}
+          // Same cap as the server search limit
+          maxLength={100}
           onChangeText={setTerm}
           placeholder="Search exercises to add (e.g. squat)"
           placeholderTextColor={tone.muted}
@@ -757,7 +761,7 @@ export function RoutineEditorModal({ visible, routine, onClose, onSave, darkMode
       )}
 
       <FormAlert message={error} onDismiss={() => setError("")} />
-    </PlanModal>
+    </SheetModal>
   );
 }
 
@@ -866,7 +870,7 @@ export function RoutinePlayerModal({ visible, routine: routineProp, plannedId, o
   const stepDone = doneSteps.includes(step);
 
   return (
-    <PlanModal
+    <SheetModal
       visible={visible}
       onClose={close}
       darkMode={darkMode}
@@ -875,8 +879,8 @@ export function RoutinePlayerModal({ visible, routine: routineProp, plannedId, o
       subtitle={exercises.length ? `Exercise ${step + 1} of ${exercises.length} · ${doneSteps.length} done` : ""}
       footer={(
         <>
-          <PlanButton label="End routine" variant="secondary" onPress={close} darkMode={darkMode} />
-          <PlanButton
+          <ActionButton label="End routine" variant="secondary" onPress={close} darkMode={darkMode} />
+          <ActionButton
             label={isLast ? "Finish" : stepDone ? "Next exercise" : "Skip exercise"}
             onPress={next}
             darkMode={darkMode}
@@ -918,7 +922,7 @@ export function RoutinePlayerModal({ visible, routine: routineProp, plannedId, o
       ) : (
         <Text style={{ color: tone.muted }}>This routine has no exercises.</Text>
       )}
-    </PlanModal>
+    </SheetModal>
   );
 }
 

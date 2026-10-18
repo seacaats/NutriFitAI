@@ -1,6 +1,6 @@
 const User = require('../../models/user/User');
 const { ROLES } = require('../../middleware/authMiddleware');
-const { deleteAccount } = require('../../services/accountDeletion');
+const { deleteAccount } = require('../../services/user/accountDeletion');
 const { sendSuccess, ApiError, asyncHandler } = require('../../utils/httpResponse');
 const { logAction, diffFields } = require('../../utils/audit-logs/auditLogger');
 const { notify } = require('../../services/notifications/notify');

@@ -1,14 +1,13 @@
-const { withTransaction } = require('../../config/mongo');
-const Workout = require('../models/workouts/Workout');
-const WorkoutCategory = require('../models/workouts/WorkoutCategory');
-const WorkoutSession = require('../models/workouts/WorkoutSession');
-const WorkoutRoutine = require('../models/workouts/WorkoutRoutine');
-const FavoriteWorkout = require('../models/workouts/FavoriteWorkout');
-const User = require('../models/user/User');
-const { asyncHandler, sendSuccess, ApiError } = require('../utils/httpResponse');
-const { today } = require('../utils/calendarDay');
-const storage = require('../utils/storage');
-const { looksLikeImage, EXT_BY_TYPE } = require('../utils/storage/keys');
+const { withTransaction } = require('../../../config/mongo');
+const Workout = require('../../models/workouts/Workout');
+const WorkoutCategory = require('../../models/workouts/WorkoutCategory');
+const WorkoutSession = require('../../models/workouts/WorkoutSession');
+const WorkoutRoutine = require('../../models/workouts/WorkoutRoutine');
+const FavoriteWorkout = require('../../models/workouts/FavoriteWorkout');
+const User = require('../../models/user/User');
+const { asyncHandler, sendSuccess, ApiError } = require('../../utils/httpResponse');
+const storage = require('../../utils/storage');
+const { looksLikeImage, EXT_BY_TYPE } = require('../../utils/storage/keys');
 
 // ===========================================================================
 // CATALOG -- the locally synced wger data, plus each user's own workouts
@@ -23,10 +22,6 @@ const { looksLikeImage, EXT_BY_TYPE } = require('../utils/storage/keys');
  * because an open, unauthenticated list endpoint is free bandwidth for anyone
  * who finds it.
  */
-
-// What a user may see: the wger catalog and their own workouts, never
-// someone else's. In the query, like the model filters further down
-const visibleTo = (userId) => ({ $or: [{ source: 'wger' }, { createdBy: userId }] });
 
 /** 60 is generous for a grid; the cap stops a client asking for the lot. */
 const DEFAULT_LIMIT = 20;
@@ -52,7 +47,7 @@ const listWorkouts = asyncHandler(async (req, res) => {
   const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
 
   // $and, so it can't clash with the $or of the equipment filter
-  const filter = { $and: [visibleTo(req.userId)] };
+  const filter = { $and: [Workout.visibleTo(req.userId)] };
 
   if (category) {
     const categoryId = parseInt(category, 10);
@@ -251,7 +246,7 @@ const getWorkout = asyncHandler(async (req, res) => {
     throw ApiError.badRequest('Invalid exercise id');
   }
 
-  const doc = await Workout.findOne({ _id: id, ...visibleTo(req.userId) }).lean();
+  const doc = await Workout.findOne({ _id: id, ...Workout.visibleTo(req.userId) }).lean();
   if (!doc) {
     throw ApiError.notFound('Exercise not found');
   }
@@ -263,7 +258,7 @@ const getWorkout = asyncHandler(async (req, res) => {
 // such as "-" ("push-up" = "push up" = "pushup"). Their own
 // wins over wger's, since a copy of their own is what blocks a second one
 async function findByName(name, userId) {
-  const rows = await Workout.find({ name, ...visibleTo(userId) }, 'name source')
+  const rows = await Workout.find({ name, ...Workout.visibleTo(userId) }, 'name source')
     .collation({ locale: 'en', strength: 1, alternate: 'shifted' }) // shifted: skip punctuation/spaces
     .limit(5)
     .lean();
@@ -434,392 +429,7 @@ const listCategories = asyncHandler(async (req, res) => {
   });
 });
 
-// ===========================================================================
-// SESSIONS -- the user's own logged workouts
-//
-// Kept in this file rather than its own: both halves are the workouts feature,
-// both are mounted under /api/workouts, and a second controller for three
-// handlers is a file to open rather than a boundary worth having.
-//
-// The distinction that DOES matter is the one these two halves embody: catalog
-// reads are shared and unscoped, session reads are per-user. That scoping lives
-// in the model's filter rather than in a check here -- the same reason
-// ChatConversation.findOwned does it. A predicate in the query cannot be
-// forgotten at a new call site; a guard in a controller can.
-// ===========================================================================
-
-/** Sunday-start week containing `day`, as calendar-day strings. */
-function weekBounds(day) {
-  const d = new Date(`${day}T12:00:00Z`);
-  const offset = d.getUTCDay();
-
-  const from = new Date(d);
-  from.setUTCDate(d.getUTCDate() - offset);
-
-  const to = new Date(from);
-  to.setUTCDate(from.getUTCDate() + 6);
-
-  const fmt = (x) => x.toISOString().slice(0, 10);
-  return { from: fmt(from), to: fmt(to) };
-}
-
-/**
- * The user's timezone decides what "today" and "this week" mean.
- *
- * Fetched rather than assumed: deriving the week from the server's clock puts a
- * Manila user's Monday-morning session in the wrong week for eight hours of
- * every day.
- */
-async function userTimeZone(req) {
-  // The request's own zone wins; the stored one covers old clients
-  if (req.timeZone) return req.timeZone;
-  const { userId } = req;
-  const profile = await User.getProfile(userId);
-  return profile?.timezone || undefined;
-}
-
-/**
- * POST /api/workouts/sessions
- *
- * One write, at the end of a workout. See the note in the model for why there
- * is no create-on-start and no per-set write.
- */
-const logSession = asyncHandler(async (req, res) => {
-  const { plannedId, ...result } = req.body;
-
-  // Started from the schedule: complete that planned row instead of adding one
-  const session = plannedId
-    ? await WorkoutSession.completePlanned(plannedId, req.userId, 'exercise', result)
-    : await WorkoutSession.createExerciseSession({ userId: req.userId, ...result });
-
-  if (!session) throw ApiError.notFound('Scheduled session not found');
-
-  return sendSuccess(res, {
-    statusCode: 201,
-    message: session.status === 'completed' ? 'Workout logged' : 'Partial workout logged',
-    data: session,
-  });
-});
-
-/**
- * GET /api/workouts/sessions?from=&to=
- *
- * Defaults to the current week in the user's timezone, which is what every
- * caller so far actually wants.
- */
-/**
- * GET /api/workouts/sessions
- *
- * Three uses, one endpoint:
- *   ?from=&to=            a calendar range (defaults to this week)
- *   ?limit=5              the most recent N, regardless of date
- *   ?exerciseRef=1573     this user's history for one exercise
- *
- * Kept as one route rather than three because they differ only in the filter,
- * and three endpoints returning the same shape is three things to keep in sync.
- *
- * `limit` and `exerciseRef` deliberately IGNORE the date range. "My last five
- * workouts" is not a date question -- someone who trained twice last month
- * should see those two, not an empty list because this week is blank.
- */
-const listSessions = asyncHandler(async (req, res) => {
-  const { exerciseRef, limit } = req.query;
-
-  if (exerciseRef) {
-    const sessions = await WorkoutSession.findRecentForExercise(
-      req.userId,
-      Number(exerciseRef),
-      limit ? Number(limit) : 5,
-    );
-    return sendSuccess(res, { data: { sessions, last: sessions[0] || null } });
-  }
-
-  if (limit) {
-    const offset = Math.max(0, Number(req.query.offset) || 0);
-    // `days` is opt-in, not a blanket floor on this branch: useWorkoutSessions
-    // also calls `?limit=5` for the "most recent, regardless of date" widget
-    // on the workouts tab/dashboard, and that one must still find a session
-    // from last month if that is genuinely the user's most recent. Only the
-    // dedicated history screen (useWorkoutHistory) sends `days`, to cap ITS
-    // page-able list to a rolling window instead of growing forever.
-    const days = req.query.days ? Number(req.query.days) : null;
-    const since = days ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : null;
-    const { sessions, total } = await WorkoutSession.findRecent(req.userId, {
-      limit: Number(limit),
-      offset,
-      since,
-    });
-
-    return sendSuccess(res, {
-      data: {
-        sessions,
-        total,
-        offset,
-        // Computed here rather than left to the client to infer from a short
-        // page: a page can be short because it is the last one OR because the
-        // limit divides evenly, and the client cannot tell those apart.
-        hasMore: offset + sessions.length < total,
-      },
-    });
-  }
-
-  const timeZone = await userTimeZone(req);
-  const defaults = weekBounds(today(timeZone));
-
-  const sessions = await WorkoutSession.findRange({
-    userId: req.userId,
-    from: req.query.from || defaults.from,
-    to: req.query.to || defaults.to,
-    timeZone,
-  });
-
-  return sendSuccess(res, { data: { sessions } });
-});
-
-/**
- * GET /api/workouts/sessions/summary
- *
- * Powers the dashboard card and the Workouts "This week" stats
- */
-const sessionSummary = asyncHandler(async (req, res) => {
-  const timeZone = await userTimeZone(req);
-  const { from, to } = weekBounds(today(timeZone));
-
-  const [summary, latest] = await Promise.all([
-    WorkoutSession.summariseRange({ userId: req.userId, from, to, timeZone }),
-    WorkoutSession.findLatest(req.userId),
-  ]);
-
-  return sendSuccess(res, {
-    data: {
-      weekStart: from,
-      weekEnd: to,
-
-      // Fully completed sessions; partials are reported separately so the
-      // user still sees the work they did.
-      completed: summary.completed,
-      started: summary.total,
-      totalSets: summary.totalSets,
-      totalMinutes: Math.round(summary.totalSeconds / 60),
-
-      latest,
-    },
-  });
-});
-
-// ===========================================================================
-// Routines, favorites and scheduling
-// ===========================================================================
-
-// Scheduling window: from now up to 7 days ahead. A minute of slack in the
-// past so a "now" picked on a slow phone isn't rejected
-const SCHEDULE_AHEAD_MS = 7 * 24 * 60 * 60 * 1000;
-const SCHEDULE_SLACK_MS = 60 * 1000;
-
-async function findExercise(exerciseRef, userId) {
-  return Workout.findOne({ _id: Number(exerciseRef), ...visibleTo(userId) }, 'name').lean();
-}
-
-async function requireRoutine(id, userId) {
-  const routine = await WorkoutRoutine.findVisible(id, userId);
-  if (!routine) throw ApiError.notFound('Routine not found');
-  return routine;
-}
-
-// ---- Routines -------------------------------------------------------------
-
-// GET /api/workouts/routines
-const listRoutines = asyncHandler(async (req, res) => {
-  const routines = await WorkoutRoutine.listVisible(req.userId);
-  return sendSuccess(res, { data: { routines } });
-});
-
-// GET /api/workouts/routines/:id
-const getRoutine = asyncHandler(async (req, res) => {
-  const routine = await requireRoutine(req.params.id, req.userId);
-  return sendSuccess(res, { data: routine });
-});
-
-// POST /api/workouts/routines
-const createRoutine = asyncHandler(async (req, res) => {
-  const routine = await WorkoutRoutine.createOwned(req.userId, req.body);
-  return sendSuccess(res, { statusCode: 201, message: 'Routine saved', data: routine });
-});
-
-// PATCH /api/workouts/routines/:id -- owner only; built-ins are read-only
-const updateRoutine = asyncHandler(async (req, res) => {
-  const routine = await WorkoutRoutine.updateOwned(req.params.id, req.userId, req.body);
-  if (!routine) throw ApiError.notFound('Routine not found');
-
-  // Keep favorite names in step with a renamed routine
-  if (req.body.title) await FavoriteWorkout.rename('routine', routine.id, routine.title);
-
-  return sendSuccess(res, { message: 'Routine updated', data: routine });
-});
-
-// DELETE /api/workouts/routines/:id -- also drops its favorites and plans
-const deleteRoutine = asyncHandler(async (req, res) => {
-  const removed = await WorkoutRoutine.removeOwned(req.params.id, req.userId);
-  if (!removed) throw ApiError.notFound('Routine not found');
-
-  await FavoriteWorkout.removeAllFor('routine', req.params.id);
-  await WorkoutSession.removePlannedForRoutine(req.params.id, req.userId);
-
-  return sendSuccess(res, { message: 'Routine deleted' });
-});
-
-// POST /api/workouts/routines/sessions -- one run of a routine
-const logRoutineSession = asyncHandler(async (req, res) => {
-  const { plannedId, exercises: results, ...result } = req.body;
-  const routine = await requireRoutine(result.routineId, req.userId);
-
-  // A plan keeps the exercises it was scheduled with, even if the routine
-  // changed since. Plans made before snapshots existed fall back to the routine
-  const planned = plannedId ? await WorkoutSession.findPlanned(plannedId, req.userId) : null;
-  const source = planned?.exercises?.length ? planned.exercises : routine.exercises;
-  if (results) {
-    result.exercises = WorkoutSession.snapshotExercises(source, results);
-    result.targetSets = result.exercises.length;
-    result.completedSets = result.exercises.filter((e) => e.done).length;
-  } else {
-    result.exercises = WorkoutSession.snapshotExercises(source);
-  }
-
-  const session = plannedId
-    ? await WorkoutSession.completePlanned(plannedId, req.userId, 'routine', result)
-    : await WorkoutSession.createRoutineSession({
-      userId: req.userId,
-      routineName: routine.title,
-      ...result,
-    });
-
-  if (!session) throw ApiError.notFound('Scheduled session not found');
-
-  return sendSuccess(res, {
-    statusCode: plannedId ? 200 : 201,
-    message: session.status === 'completed' ? 'Routine logged' : 'Partial routine logged',
-    data: session,
-  });
-});
-
-// ---- Favorites --------------------------------------------------------------
-
-// GET /api/workouts/favorites
-const listFavorites = asyncHandler(async (req, res) => {
-  const favorites = await FavoriteWorkout.list(req.userId);
-  return sendSuccess(res, { data: { favorites } });
-});
-
-// PUT /api/workouts/favorites -- idempotent add
-const addFavorite = asyncHandler(async (req, res) => {
-  const { kind, refId } = req.body;
-  let { name } = req.body;
-
-  // The referenced item must exist (and a routine must be visible to this user)
-  if (kind === 'routine') {
-    name = (await requireRoutine(refId, req.userId)).title;
-  } else {
-    const exercise = await findExercise(refId, req.userId);
-    if (!exercise) throw ApiError.notFound('Exercise not found');
-    name = exercise.name || name;
-  }
-
-  const favorite = await FavoriteWorkout.add(req.userId, { kind, refId: String(refId), name });
-  return sendSuccess(res, { message: 'Added to favorites', data: favorite });
-});
-
-// DELETE /api/workouts/favorites/:kind/:refId
-const removeFavorite = asyncHandler(async (req, res) => {
-  await FavoriteWorkout.drop(req.userId, req.params.kind, req.params.refId);
-  // Removing something that isn't a favorite is still the end state the client wants
-  return sendSuccess(res, { message: 'Removed from favorites' });
-});
-
-// ---- Scheduling -------------------------------------------------------------
-
-// GET /api/workouts/schedule -- planned sessions for the next 7 days
-const listSchedule = asyncHandler(async (req, res) => {
-  const until = new Date(Date.now() + SCHEDULE_AHEAD_MS);
-  const sessions = await WorkoutSession.listUpcoming(req.userId, { until });
-  return sendSuccess(res, { data: { sessions } });
-});
-
-// POST /api/workouts/schedule
-const createSchedule = asyncHandler(async (req, res) => {
-  const { kind, scheduledFor } = req.body;
-  const at = scheduledFor.getTime();
-  const now = Date.now();
-
-  if (at < now - SCHEDULE_SLACK_MS || at > now + SCHEDULE_AHEAD_MS) {
-    throw ApiError.badRequest('Workouts can only be scheduled within the next 7 days.', {
-      code: 'OUT_OF_WINDOW',
-    });
-  }
-
-  const planned = { userId: req.userId, kind, scheduledFor };
-
-  if (kind === 'routine') {
-    const routine = await requireRoutine(req.body.routineId, req.userId);
-    Object.assign(planned, {
-      routineId: routine.id,
-      routineName: routine.title,
-      // A routine's "sets" are its exercises, same as a routine run
-      targetSets: routine.exercises.length,
-      exercises: WorkoutSession.snapshotExercises(routine.exercises),
-    });
-  } else {
-    const exercise = await findExercise(req.body.exerciseRef, req.userId);
-    if (!exercise) throw ApiError.notFound('Exercise not found');
-    Object.assign(planned, {
-      exerciseRef: Number(req.body.exerciseRef),
-      exerciseName: exercise.name || req.body.exerciseName,
-      targetSets: req.body.targetSets ?? 3,
-      targetReps: req.body.targetReps ?? 10,
-    });
-  }
-
-  const session = await WorkoutSession.createPlanned(planned);
-  return sendSuccess(res, { statusCode: 201, message: 'Workout scheduled', data: session });
-});
-
-// DELETE /api/workouts/sessions/:id -- one logged session, exercise or routine
-const deleteSession = asyncHandler(async (req, res) => {
-  const removed = await WorkoutSession.removeLogged(req.params.id, req.userId);
-  if (!removed) throw ApiError.notFound('Session not found');
-  return sendSuccess(res, { message: 'Session deleted' });
-});
-
-// DELETE /api/workouts/sessions/day/:date -- a whole day, in the user's timezone
-const deleteSessionsOnDay = asyncHandler(async (req, res) => {
-  const removed = await WorkoutSession.removeLoggedOnDay(req.userId, req.params.date, await userTimeZone(req));
-  return sendSuccess(res, { data: { removed }, message: removed ? 'Sessions deleted' : 'Nothing to delete' });
-});
-
-// PATCH /api/workouts/schedule/:id -- new time for a planned or missed session,
-// same 7-day window as scheduling it
-const reschedule = asyncHandler(async (req, res) => {
-  const at = req.body.scheduledFor.getTime();
-  const now = Date.now();
-  if (at < now - SCHEDULE_SLACK_MS || at > now + SCHEDULE_AHEAD_MS) {
-    throw ApiError.badRequest('Workouts can only be scheduled within the next 7 days.', {
-      code: 'OUT_OF_WINDOW',
-    });
-  }
-
-  const session = await WorkoutSession.reschedulePlanned(req.params.id, req.userId, req.body.scheduledFor);
-  if (!session) throw ApiError.notFound('Scheduled session not found');
-  return sendSuccess(res, { message: 'Workout rescheduled', data: session });
-});
-
-// DELETE /api/workouts/schedule/:id
-const removeSchedule = asyncHandler(async (req, res) => {
-  const removed = await WorkoutSession.removePlanned(req.params.id, req.userId);
-  if (!removed) throw ApiError.notFound('Scheduled session not found');
-  return sendSuccess(res, { message: 'Removed from schedule' });
-});
-
 module.exports = {
-  // catalog
   listWorkouts,
   getWorkout,
   listCategories,
@@ -829,24 +439,4 @@ module.exports = {
   createWorkout,
   uploadWorkoutPhoto,
   deleteWorkout,
-  // sessions
-  logSession,
-  listSessions,
-  sessionSummary,
-  // routines, favorites, schedule
-  listRoutines,
-  getRoutine,
-  createRoutine,
-  updateRoutine,
-  deleteRoutine,
-  logRoutineSession,
-  listFavorites,
-  addFavorite,
-  removeFavorite,
-  listSchedule,
-  createSchedule,
-  reschedule,
-  removeSchedule,
-  deleteSession,
-  deleteSessionsOnDay,
 };

@@ -1,13 +1,15 @@
-import { Chip, PlanModal, SectionLabel } from "@/features/workouts/components/PlanParts";
 import { fetchCategories, fetchEquipment, fetchMuscles } from "@/features/workouts/hooks/useWorkoutApi";
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
 import Skeleton from "@/shared/components/Skeleton";
-import PlanButton from "@/shared/components/ui/PlanButton";
+import ActionButton from "@/shared/components/ui/ActionButton";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
+import SheetModal from "@/shared/components/ui/SheetModal";
 import { NO_WORKOUT_PREFS } from "@/shared/constants/goalOptions";
 import { radii } from "@/shared/theme/nutrifitai";
 import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
+import Chip from "./Chip";
+import SectionLabel from "./SectionLabel";
 
 // Workout preferences: the Workouts filters' categories, equipment and muscles, but
 // multi-select. Used by the onboarding and Profile. The Workouts screen
@@ -166,7 +168,7 @@ export function WorkoutPrefsModal({ visible, onClose, onSaved, options, darkMode
   }
 
   return (
-    <PlanModal
+    <SheetModal
       visible={visible}
       title="Workout preferences"
       subtitle="Matching exercises show first in Browse, with everything else after them."
@@ -174,14 +176,14 @@ export function WorkoutPrefsModal({ visible, onClose, onSaved, options, darkMode
       darkMode={darkMode}
       footer={(
         <>
-          <PlanButton variant="secondary" label="Reset" onPress={() => setValue(NO_WORKOUT_PREFS)} disabled={!value || saving} darkMode={darkMode} />
-          <PlanButton label="Save" onPress={save} loading={saving} disabled={!value} darkMode={darkMode} />
+          <ActionButton variant="secondary" label="Reset" onPress={() => setValue(NO_WORKOUT_PREFS)} disabled={!value || saving} darkMode={darkMode} />
+          <ActionButton label="Save" onPress={save} loading={saving} disabled={!value} darkMode={darkMode} />
         </>
       )}
     >
       <WorkoutPrefsPicker value={value} onChange={setValue} options={{ ...options, loading: options.loading || !value }} darkMode={darkMode} />
       <ScreenError message={error} onDismiss={() => setError("")} />
-    </PlanModal>
+    </SheetModal>
   );
 }
 

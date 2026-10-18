@@ -315,7 +315,7 @@ export default function DashboardLayout({
                 <Ionicons name="menu" size={22} color={c.sidebarText} />
               </Pressable>
               <View style={styles.headerText}>
-                <Text style={[styles.greeting, isMobile && styles.greetingMobile, { color: c.sidebarText }]}>
+                <Text numberOfLines={1} style={[styles.greeting, isMobile && styles.greetingMobile, { color: c.sidebarText }]}>
                   {greeting}, {loading ? "..." : firstName} 👋
                 </Text>
               </View>
@@ -379,7 +379,7 @@ export default function DashboardLayout({
                       )}
                     </View>
                     {!isCompact && (
-                      <Text style={[styles.profileName, { color: c.sidebarText }]}>
+                      <Text numberOfLines={1} style={[styles.profileName, { color: c.sidebarText }]}>
                         {loading ? "..." : user?.fullName || "Unknown User"}
                       </Text>
                     )}
@@ -580,7 +580,7 @@ function createStyles(radii, spacing) {
   profileBtn: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: radii.sm, padding: 6 },
   avatar: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   avatarImg: { width: "100%", height: "100%" },
-  profileName: { fontSize: 14, fontWeight: "700" },
+  profileName: { fontSize: 14, fontWeight: "700", maxWidth: 160 },
 
   // Shared backdrop — covers the whole right-side content area
   backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 30 },

@@ -1,22 +1,22 @@
-const { withTransaction } = require('../../config/mongo');
-const User = require('../models/user/User');
-const WeightLog = require('../models/user/WeightLog');
-const AuthChallenge = require('../models/auth/AuthChallenge');
-const AuthIdentity = require('../models/auth/AuthIdentity');
-const WaterLog = require('../models/water/WaterLog');
-const FoodScan = require('../models/food/FoodScan');
-const Meal = require('../models/food/Meal');
-const ChatConversation = require('../models/chat/ChatConversation');
-const ChatMessage = require('../models/chat/ChatMessage');
-const DailySteps = require('../models/steps/DailySteps');
-const Workout = require('../models/workouts/Workout');
-const FavoriteWorkout = require('../models/workouts/FavoriteWorkout');
-const WorkoutSession = require('../models/workouts/WorkoutSession');
-const WorkoutRoutine = require('../models/workouts/WorkoutRoutine');
-const Notification = require('../models/notifications/Notification');
-const PushToken = require('../models/notifications/PushToken');
-const storage = require('../utils/storage');
-const { clearStoredAvatar } = require('../utils/storage/avatarStore');
+const { withTransaction } = require('../../../config/mongo');
+const User = require('../../models/user/User');
+const WeightLog = require('../../models/user/WeightLog');
+const AuthChallenge = require('../../models/auth/AuthChallenge');
+const AuthIdentity = require('../../models/auth/AuthIdentity');
+const WaterLog = require('../../models/water/WaterLog');
+const FoodScan = require('../../models/food/FoodScan');
+const Meal = require('../../models/food/Meal');
+const ChatConversation = require('../../models/chat/ChatConversation');
+const ChatMessage = require('../../models/chat/ChatMessage');
+const DailySteps = require('../../models/steps/DailySteps');
+const Workout = require('../../models/workouts/Workout');
+const FavoriteWorkout = require('../../models/workouts/FavoriteWorkout');
+const WorkoutSession = require('../../models/workouts/WorkoutSession');
+const WorkoutRoutine = require('../../models/workouts/WorkoutRoutine');
+const Notification = require('../../models/notifications/Notification');
+const PushToken = require('../../models/notifications/PushToken');
+const storage = require('../../utils/storage/index');
+const { clearStoredAvatar } = require('../../utils/storage/avatarStore');
 
 // Collections keyed by userId. A new userId collection must be added here,
 // or deleting an account leaves its rows behind (see the notes at the end of migration 001).

@@ -7,14 +7,11 @@ const WorkoutCategory = require('../../models/workouts/WorkoutCategory');
 const FoodScan = require('../../models/food/FoodScan');
 const Meal = require('../../models/food/Meal');
 const WaterLog = require('../../models/water/WaterLog');
-const { activityStreak } = require('../activityStreak');
+const { activityStreak } = require('../progress/activityStreak');
 const { today, dayRangeToInstants, daysBetween } = require('../../utils/calendarDay');
 const { concernSection } = require('./safetyRules');
-
 // Same defaults the dashboard shows when the user hasn't set a goal
-// (progressController / waterController)
-const DEFAULT_DAILY_STEPS = 10000;
-const MIN_WATER_GOAL_ML = 2000;
+const { DEFAULT_DAILY_STEP_GOAL, MIN_WATER_GOAL_ML } = require('../../utils/goals/goalLimits');
 
 
 // Data gets pre-aggregated into short human-readable lines rather than dumped as raw JSON
@@ -442,7 +439,7 @@ async function buildCoachContext(userId, ref = {}, concerns = []) {
     .filter(([, g]) => g)
     .map(([name, g]) => `${name} ${fmt(g)} g`);
   if (macroTargets.length) facts.push(`Daily macro targets: ${macroTargets.join(', ')}`);
-  const stepTarget = goal?.dailySteps ?? DEFAULT_DAILY_STEPS;
+  const stepTarget = goal?.dailySteps ?? DEFAULT_DAILY_STEP_GOAL;
   const waterTarget = Math.max(goal?.dailyWaterMl ?? MIN_WATER_GOAL_ML, MIN_WATER_GOAL_ML);
   facts.push(`Daily step target: ${fmt(stepTarget)}${goal?.dailySteps ? '' : ' (default)'}`);
   facts.push(`Daily water target: ${fmt(waterTarget)} ml`);

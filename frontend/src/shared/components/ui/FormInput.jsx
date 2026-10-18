@@ -184,9 +184,10 @@ export function RingField({ style, children }) {
  * next failed submit sets a message again, rather than being hidden forever
  */
 const getTones = (c) => ({
-  error: { icon: "alert-circle", fg: c.danger, bg: c.dangerBg },
-  success: { icon: "checkmark-circle", fg: c.green700, bg: c.greenTint },
-  info: { icon: "information-circle", fg: c.textSecondary, bg: c.white },
+  // Only errors carry an icon (the X); success and info are text only
+  error: { icon: "close-circle", fg: c.danger, bg: c.dangerBg },
+  success: { icon: null, fg: c.green700, bg: c.greenTint },
+  info: { icon: null, fg: c.textSecondary, bg: c.white },
 });
 
 export function FormAlert({ message, onDismiss, tone = "error", style }) {
@@ -201,7 +202,7 @@ export function FormAlert({ message, onDismiss, tone = "error", style }) {
       accessibilityRole="alert"
       accessibilityLiveRegion="polite"
     >
-      <Ionicons name={t.icon} size={18} color={t.fg} style={alertStyles.icon} />
+      {t.icon && <Ionicons name={t.icon} size={18} color={t.fg} style={alertStyles.icon} />}
       <Text style={[alertStyles.text, { color: t.fg }]}>{message}</Text>
       {onDismiss && (
         <Pressable onPress={onDismiss} hitSlop={10} accessibilityLabel="Dismiss message" style={alertStyles.close}>

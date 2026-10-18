@@ -1,9 +1,9 @@
-import { GLASS_ML, MAX_GOAL_GLASSES, MIN_GOAL_GLASSES, useWater } from "@/features/water/hooks/useWater";
+import { GLASS_ML, MAX_DAY_ML, MAX_DRINK_ML, MAX_GOAL_GLASSES, MIN_GOAL_GLASSES, useWater } from "@/features/water/hooks/useWater";
 import { apiClient } from "@/shared/api/apiClient";
 import Skeleton from "@/shared/components/Skeleton";
+import ActionButton from "@/shared/components/ui/ActionButton";
 import ConfirmModal from "@/shared/components/ui/ConfirmModal";
 import { RingField, useFocusRing } from "@/shared/components/ui/FormInput";
-import PlanButton from "@/shared/components/ui/PlanButton";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import Stepper from "@/shared/components/ui/Stepper";
 import { useTheme } from "@/shared/context/ThemeContext";
@@ -37,6 +37,12 @@ export function dayLabel(day) {
   if (day === toLocalISODate(today)) return "Yesterday";
   return localDate(day).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
+
+// Digits only, stopping at the one-drink maximum
+const capDrink = (v) => {
+  const digits = v.replace(/\D/g, "").slice(0, 4);
+  return digits === "" ? "" : String(Math.min(Number(digits), MAX_DRINK_ML));
+};
 
 // 1750 -> "1.75 L", 400 -> "400 ml"
 export function formatMl(ml) {
@@ -169,7 +175,7 @@ export function WaterCard({ darkMode, style }) {
           <Skeleton width={170} height={14} style={styles.lineSkeleton} />
           <ProgressBar value={0} darkMode={darkMode} />
           <View style={styles.cardActions}>
-            <PlanButton compact label="1 glass" disabled darkMode={darkMode} />
+            <ActionButton compact label="1 glass" disabled darkMode={darkMode} />
           </View> 
         </>
       ) : (
@@ -184,10 +190,11 @@ export function WaterCard({ darkMode, style }) {
           </Text>
           <ProgressBar value={water.progress} darkMode={darkMode} />
           <View style={styles.cardActions}>
-            <PlanButton
+            <ActionButton
               compact
               label="1 glass"
               loading={water.saving}
+              disabled={!water.canAdd()}
               onPress={() => water.addWater()}
               darkMode={darkMode}
             />
@@ -223,7 +230,7 @@ export function WaterPanel({ darkMode }) {
   // placeholders while loading, each the size of what replaces it
   const loading = water.loading;
 
-  const customValid = /^\d+$/.test(custom) && Number(custom) >= 10 && Number(custom) <= 5000;
+  const customValid = /^\d+$/.test(custom) && Number(custom) >= 10 && Number(custom) <= MAX_DRINK_ML && water.canAdd(Number(custom));
 
   async function addCustom() {
     if (!customValid) return;
@@ -272,7 +279,7 @@ export function WaterPanel({ darkMode }) {
           )}
 
           <View style={styles.addRow}>
-            <PlanButton label="1 glass" onPress={() => water.addWater()} loading={water.saving} disabled={loading} darkMode={darkMode} />
+            <ActionButton label="1 glass" onPress={() => water.addWater()} loading={water.saving} disabled={loading || !water.canAdd()} darkMode={darkMode} />
             <View style={[styles.customBox, { borderColor: tone.border }, ring.style]}>
               <TextInput
                 {...ring.handlers}
@@ -280,7 +287,7 @@ export function WaterPanel({ darkMode }) {
                 onChangeText={(v) => {
                   const digits = v.replace(/\D/g, "").slice(0, 4);
                   if (digits === "") return setCustom("");
-                  setCustom(String(Math.min(Number(digits), 5000)));
+                  setCustom(String(Math.min(Number(digits), MAX_DRINK_ML)));
                 }}
                 onSubmitEditing={addCustom}
                 keyboardType="number-pad"
@@ -291,22 +298,31 @@ export function WaterPanel({ darkMode }) {
               />
               <Text style={[styles.small, { color: tone.muted }]}>ml</Text>
             </View>
-            <PlanButton variant="secondary" label="Add" onPress={addCustom} disabled={!customValid || water.saving} darkMode={darkMode} />
+            <ActionButton variant="secondary" label="Add" onPress={addCustom} disabled={!customValid || water.saving} darkMode={darkMode} />
           </View>
           {custom !== "" && !customValid && (
-            <Text style={[styles.small, { color: tone.muted }]}>Enter between 10 and 5,000 ml.</Text>
+            <Text style={[styles.small, { color: tone.muted }]}>
+              {Number(custom) >= 10 && Number(custom) <= MAX_DRINK_ML
+                ? `That would pass ${MAX_DAY_ML.toLocaleString()} ml for today.`
+                : `Enter between 10 and ${MAX_DRINK_ML.toLocaleString()} ml.`}
+            </Text>
+          )}
+          {!loading && !water.canAdd() && (
+            <Text style={[styles.small, { color: tone.muted }]}>
+              You've reached {MAX_DAY_ML.toLocaleString()} ml today. More than that isn't recommended.
+            </Text>
           )}
         </View>
 
         {/* Goal */}
         <View style={[styles.card, styles.narrowCard, item, card]}>
           <Text style={[styles.sectionTitle, { color: tone.text }]}>Daily goal</Text>
-          <Text style={[styles.sectionSubtitle, { color: tone.muted }]}>At least {MIN_GOAL_GLASSES} glasses a day</Text>
+          <Text style={[styles.sectionSubtitle, { color: tone.muted }]}>{MIN_GOAL_GLASSES} to {MAX_GOAL_GLASSES} glasses a day</Text>
           <View style={styles.goalRow}>
             <Stepper label="Glasses" value={goalGlasses} onChange={setGoalGlasses} min={MIN_GOAL_GLASSES} max={MAX_GOAL_GLASSES} darkMode={darkMode} />
             <Text style={[styles.small, { color: tone.muted }]}>= {formatMl(goalGlasses * GLASS_ML)}</Text>
           </View>
-          <PlanButton label="Save goal" onPress={() => water.setGoal(goalGlasses * GLASS_ML)} disabled={loading || !goalChanged || water.saving} darkMode={darkMode} />
+          <ActionButton label="Save goal" onPress={() => water.setGoal(goalGlasses * GLASS_ML)} disabled={loading || !goalChanged || water.saving} darkMode={darkMode} />
         </View>
       </View>
 
@@ -419,12 +435,16 @@ export function WaterDayEditModal({ visible, date, onClose, onSaved }) {
   }, [visible, date]);
 
   const add = (ml) => setRows((r) => [...r, { key: `new-${Date.now()}-${r.length}`, ml: ml ? String(ml) : "" }]);
-  const change = (key, ml) => setRows((r) => r.map((row) => (row.key === key ? { ...row, ml: ml.replace(/\D/g, "").slice(0, 4) } : row)));
+  const change = (key, ml) => setRows((r) => r.map((row) => (row.key === key ? { ...row, ml: capDrink(ml) } : row)));
   const remove = (key) => setRows((r) => r.filter((row) => row.key !== key));
 
   const amounts = rows.map((r) => Number(r.ml));
-  const valid = rows.every((r) => /^\d+$/.test(r.ml) && Number(r.ml) >= 10 && Number(r.ml) <= 5000) && rows.length <= 40;
-  const total = valid ? amounts.reduce((a, b) => a + b, 0) : null;
+  const sum = amounts.reduce((a, b) => a + b, 0);
+  const rowsValid = rows.every((r) => /^\d+$/.test(r.ml) && Number(r.ml) >= 10 && Number(r.ml) <= MAX_DRINK_ML) && rows.length <= 40;
+  const valid = rowsValid && sum <= MAX_DAY_ML;
+  const total = rowsValid ? sum : null;
+  // No room for another glass: a full day, or 40 drinks
+  const full = rows.length >= 40 || sum + GLASS_ML > MAX_DAY_ML;
 
   async function save() {
     setSaving(true);
@@ -444,7 +464,9 @@ export function WaterDayEditModal({ visible, date, onClose, onSaved }) {
       visible={visible}
       tone="confirm"
       title={`Edit water · ${date ? dayLabel(date) : ""}`}
-      message={error || (total != null ? `${rows.length} drink${rows.length === 1 ? "" : "s"} · ${formatMl(total)}` : "Each drink is 10 to 5,000 ml.")}
+      message={error || (total != null
+        ? `${rows.length} drink${rows.length === 1 ? "" : "s"} · ${formatMl(total)}${total > MAX_DAY_ML ? ` (up to ${formatMl(MAX_DAY_ML)} a day)` : ""}`
+        : `Each drink is 10 to ${MAX_DRINK_ML.toLocaleString()} ml.`)}
       confirmLabel="Update"
       confirmDisabled={loading || !valid}
       loading={saving}
@@ -470,6 +492,7 @@ export function WaterDayEditModal({ visible, date, onClose, onSaved }) {
                 <TextInput
                   {...ring.handlers}
                   value={row.ml}
+                  maxLength={4}
                   onChangeText={(v) => change(row.key, v)}
                   keyboardType="number-pad"
                   placeholder="ml"
@@ -486,8 +509,8 @@ export function WaterDayEditModal({ visible, date, onClose, onSaved }) {
             </View>
           ))}
           <View style={styles.addRow}>
-            <PlanButton compact label="1 glass" onPress={() => add(GLASS_ML)} darkMode={darkMode} />
-            <PlanButton compact variant="secondary" label="Custom" onPress={() => add(null)} darkMode={darkMode} />
+            <ActionButton compact label="1 glass" onPress={() => add(GLASS_ML)} disabled={full} darkMode={darkMode} />
+            <ActionButton compact variant="secondary" label="Custom" onPress={() => add(null)} disabled={rows.length >= 40 || sum >= MAX_DAY_ML} darkMode={darkMode} />
           </View>
         </View>
       )}

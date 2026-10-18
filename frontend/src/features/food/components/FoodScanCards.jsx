@@ -1,11 +1,11 @@
 import { MEAL_TYPES, photoName, RECENT_MEALS, saveNutritionGoals } from "@/features/food/hooks/useFoodScanner";
 import { ApiClientError } from "@/shared/api/apiClient";
 import Skeleton from "@/shared/components/Skeleton";
+import ActionButton from "@/shared/components/ui/ActionButton";
 import { RingField, RingInput } from "@/shared/components/ui/FormInput";
-import PlanButton from "@/shared/components/ui/PlanButton";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import Stepper from "@/shared/components/ui/Stepper";
-import { NUTRITION_GOAL_FIELDS as GOAL_FIELDS, nutritionGoalProblem as goalProblem, MIN_SERVINGS } from "@/shared/constants/goalOptions";
+import { NUTRITION_GOAL_FIELDS as GOAL_FIELDS, nutritionGoalProblem as goalProblem, MAX_SERVINGS, MIN_SERVINGS } from "@/shared/constants/goalOptions";
 import { chipTints, colors, getScreenTones, shellColors } from "@/shared/theme/nutrifitai";
 import { toLocalISODate } from "@/shared/utils/dates";
 import { Ionicons } from "@expo/vector-icons";
@@ -263,6 +263,7 @@ export function ScanResultCard({ scanner, darkMode, onScanAnother, style, loadin
                     value={pick.servings}
                     onChange={(v) => scanner.setServings(item.itemId, v)}
                     min={MIN_SERVINGS}
+                    max={MAX_SERVINGS}
                     step={0.5}
                     editable
                     darkMode={darkMode}
@@ -470,7 +471,7 @@ export function NutritionGoalsCard({ meals, darkMode, style, loading = false }) 
           <Text style={[styles.cardTitle, { color: tone.text }]}>Daily Goals</Text>
           <Text style={[styles.muted, { color: tone.muted }]}>Targets for each day. Leave one empty for none.</Text>
         </View>
-        <PlanButton
+        <ActionButton
           compact
           label={done && !changed ? "Saved" : "Save"}
           onPress={save}

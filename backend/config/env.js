@@ -53,6 +53,12 @@ module.exports = {
     expoAccessToken: process.env.EXPO_ACCESS_TOKEN || null,
   },
 
+  analytics: {
+    // Time zone the daily rollup counts days in (services/analytics/dailyRollup.js).
+    // Admin Analytics reads the rollup only for viewers in this zone
+    rollupTimeZone: process.env.ANALYTICS_TIME_ZONE || 'Asia/Manila',
+  },
+
   audit: {
     // HMAC key for details.emailHash / details.tokenHash. Changing it breaks
     // matching against older rows, not the rows themselves

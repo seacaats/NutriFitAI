@@ -33,6 +33,8 @@ export default function OptionSelect({
   otherValue,
   onOtherChange,
   otherPlaceholder,
+  // Diet and health are joined into one long field, so each custom entry gets more room
+  otherMaxLength = 100,
   size,
   style,
   // Optional { surface, border, text } for dark surfaces (the profile page)
@@ -86,6 +88,7 @@ export default function OptionSelect({
           size={size}
           icon="create-outline"
           placeholder={otherPlaceholder}
+          maxLength={otherMaxLength}
           value={otherValue}
           onChangeText={onOtherChange}
           style={styles.otherInput}

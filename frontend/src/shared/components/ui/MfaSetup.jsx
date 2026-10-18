@@ -1,6 +1,6 @@
 import { apiClient } from "@/shared/api/apiClient";
+import ActionButton from "@/shared/components/ui/ActionButton";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
-import PlanButton from "@/shared/components/ui/PlanButton";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
@@ -105,6 +105,7 @@ export default function MfaSetup({ method, enabled, recoveryCodesLeft = 0, onCha
       icon="lock-closed-outline"
       placeholder="Your password"
       value={password}
+      maxLength={200}
       onChangeText={setPassword}
       secureTextEntry
       showToggle
@@ -130,8 +131,8 @@ export default function MfaSetup({ method, enabled, recoveryCodesLeft = 0, onCha
 
   const actions = (primary, secondary) => (
     <View style={styles.actions}>
-      <PlanButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
-      {primary && <PlanButton compact label={primary.label} onPress={primary.onPress} loading={busy} darkMode={darkMode} />}
+      <ActionButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
+      {primary && <ActionButton compact label={primary.label} onPress={primary.onPress} loading={busy} darkMode={darkMode} />}
       {secondary}
     </View>
   );
@@ -154,9 +155,9 @@ export default function MfaSetup({ method, enabled, recoveryCodesLeft = 0, onCha
         {step === "idle" && (email || enabled) && (
           <View style={[styles.actions, narrow && styles.actionsStart]}>
             {email && (enabled
-              ? <PlanButton compact variant="secondary" label="Turn off" onPress={() => begin("password", "disable")} darkMode={darkMode} />
-              : <PlanButton compact label="Turn on" onPress={() => begin("password")} darkMode={darkMode} />)}
-            {!email && <PlanButton compact variant="secondary" label="New recovery codes" onPress={() => begin("regen")} darkMode={darkMode} />}
+              ? <ActionButton compact variant="secondary" label="Turn off" onPress={() => begin("password", "disable")} darkMode={darkMode} />
+              : <ActionButton compact label="Turn on" onPress={() => begin("password")} darkMode={darkMode} />)}
+            {!email && <ActionButton compact variant="secondary" label="New recovery codes" onPress={() => begin("regen")} darkMode={darkMode} />}
           </View>
         )}
       </View>
@@ -194,7 +195,7 @@ export default function MfaSetup({ method, enabled, recoveryCodesLeft = 0, onCha
             ))}
           </View>
           <View style={styles.actions}>
-            <PlanButton compact label="I've saved them" onPress={() => { setRecovery([]); setStep("idle"); }} darkMode={darkMode} />
+            <ActionButton compact label="I've saved them" onPress={() => { setRecovery([]); setStep("idle"); }} darkMode={darkMode} />
           </View>
         </View>
       )}

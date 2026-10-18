@@ -6,7 +6,7 @@ const USER_ID_BASE = 1000000;
 
 // Exercise catalog: wger's, filled by scripts/sync-workouts.js, plus the
 // workouts users add themselves. Same shape for both, told apart by `source`.
-// workoutsController queries it natively (with .lean())
+// the workouts controllers query it natively (with .lean())
 
 // _id is wger's own numeric exercise id, not ObjectId to maintain consistency
 // with frontend code and other collections which already use it. User
@@ -70,6 +70,12 @@ workoutSchema.statics.createForUser = async function createForUser(userId, field
 // Returns what it removed (for its photo), or null
 workoutSchema.statics.removeOwned = function removeOwned(id, userId, client) {
   return this.findOneAndDelete({ _id: id, source: 'user', createdBy: userId }, opts(client)).lean();
+};
+
+// What a user may see: the wger catalog and their own workouts, never
+// someone else's. Used inside queries, so it can't be forgotten afterwards
+workoutSchema.statics.visibleTo = function visibleTo(userId) {
+  return { $or: [{ source: 'wger' }, { createdBy: userId }] };
 };
 
 // Indexes are created by migrations (001, 005), not declared here

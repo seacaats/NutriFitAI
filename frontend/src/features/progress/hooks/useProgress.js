@@ -129,6 +129,10 @@ export function useProgress() {
       workouts: past.map((b, i) => ({ ...bucketLabel(data.period, b, i), value: b.workouts })),
       weightPoints: weight.points.map((p) => ({ label: fmt(p.date, { month: "short", day: "numeric" }), value: p.weightKg })),
       weight,
+      // Projected date formatted here, like the other days
+      weightTrend: data.weightTrend
+        ? { ...data.weightTrend, projectedLabel: data.weightTrend.projectedDate ? fmt(data.weightTrend.projectedDate, { month: "short", day: "numeric", year: "numeric" }) : null }
+        : null,
       totals,
       targets,
       goals,

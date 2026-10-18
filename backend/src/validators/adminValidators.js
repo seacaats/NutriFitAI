@@ -80,7 +80,7 @@ const adminReasonSchema = z.object({ reason }).strict();
 // verification flow to change through
 const adminProfileSchema = z
   .object({
-    firstName: personName('First name').optional(),
+    firstName: personName('First name', { required: true }).optional(),
     lastName: personName('Last name').nullable().optional(),
     reason,
   })

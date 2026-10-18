@@ -1,6 +1,6 @@
 const { z } = require('zod');
 
-const { ageSchema, sexSchema, personName, customOption, dietPreferences, healthConditions, passwordSchema } = require('./authValidators');
+const { ageSchema, heightSchema, weightSchema, sexSchema, personName, customOption, dietPreferences, healthConditions, passwordSchema } = require('./authValidators');
 const { nutritionTargets } = require('./foodValidators');
 const { stepGoalSchema } = require('./stepsValidators');
 const { waterGoalSchema } = require('./waterValidators');
@@ -8,6 +8,15 @@ const { waterGoalSchema } = require('./waterValidators');
 // `.nullable()` means "clear this field", `.optional()` means "leave it alone".
 // Field rules are shared with registerSchema so the two can't drift apart.
 // Only what registration leaves optional (last name, sex) can be cleared
+
+function isTimeZone(zone) {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // "22:00", 24-hour
 const clockTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a 24-hour time like 22:00.');
@@ -65,15 +74,16 @@ const updateProfileSchema = z
     // Required at sign-up: can be changed, not cleared
     age: ageSchema.optional(),
     sex: sexSchema.nullable().optional(),
-    heightCm: z.number().positive().max(300).optional(),
-    weightKg: z.number().positive().max(500).optional(),
+    heightCm: heightSchema.optional(),
+    weightKg: weightSchema.optional(),
     // Known slug or custom text, same as registration's "Other" option
     activityLevel: customOption('Activity level').optional(),
     // Multi-select, comma-joined like healthConditions
     dietPreference: dietPreferences.optional(),
     healthConditions: healthConditions.optional(),
     fitnessGoal: customOption('Fitness goal').optional(),
-    timezone: z.string().trim().max(50).nullable().optional(),
+    // IANA name like "Asia/Manila", checked the same way authMiddleware does
+    timezone: z.string().trim().max(50).refine(isTimeZone, 'Not a valid time zone.').nullable().optional(),
     notificationsEnabled: z.boolean().optional(),
     notificationPrefs: notificationPrefsSchema.optional(),
     ...preferenceFields,

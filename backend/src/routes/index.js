@@ -31,7 +31,7 @@ const router = Router();
 const userOnly = [requireAuth, requireRole('user')];
 
 router.use('/auth', authRoutes);
-router.use('/profile', profileRoutes);
+router.use('/profile', requireAuth, profileRoutes);
 router.use('/notifications', requireAuth, notificationRoutes);
 router.use('/steps', ...userOnly, stepsRoutes);
 router.use('/coach', ...userOnly, coachRoutes);

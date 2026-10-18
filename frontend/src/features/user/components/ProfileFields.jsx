@@ -1,7 +1,7 @@
-import { OptionField } from "@/features/auth/components/OptionSelect";
 import WorkoutPrefsPicker, { describeWorkoutPrefs } from "@/features/workouts/components/WorkoutPrefsPicker";
 import Skeleton from "@/shared/components/Skeleton";
 import { RingInput } from "@/shared/components/ui/FormInput";
+import { OptionField } from "@/shared/components/ui/OptionSelect";
 import { colors, radii } from "@/shared/theme/nutrifitai";
 import { profileStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
@@ -13,7 +13,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-n
 const isWeb = Platform.OS === "web";
 
 // A field without onChangeText (e.g. email) stays read-only while editing
-export function ProfileInput({ label, required, value, onChangeText, editing, card, textColor, inputBg, disabledBg, keyboardType = "default", placeholder, multiline = false, loading }) {
+export function ProfileInput({ label, required, value, onChangeText, editing, card, textColor, inputBg, disabledBg, keyboardType = "default", placeholder, multiline = false, maxLength, loading }) {
   const editable = editing && !!onChangeText;
   return (
     <View style={styles.field}>
@@ -27,6 +27,7 @@ export function ProfileInput({ label, required, value, onChangeText, editing, ca
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
         multiline={multiline}
+        maxLength={maxLength}
         style={[
           styles.input,
           multiline && styles.inputMultiline,

@@ -1,8 +1,8 @@
-import { PlanModal } from "@/features/workouts/components/PlanParts";
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
+import ActionButton from "@/shared/components/ui/ActionButton";
 import NumberBox from "@/shared/components/ui/NumberBox";
-import PlanButton from "@/shared/components/ui/PlanButton";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
+import SheetModal from "@/shared/components/ui/SheetModal";
 import { decimalOrNull, WEEKLY_PACE, weightTargetProblem } from "@/shared/constants/goalOptions";
 import { getScreenTones } from "@/shared/theme/nutrifitai";
 import { useEffect, useState } from "react";
@@ -66,17 +66,17 @@ export function TargetWeightModal({ visible, goals, currentKg, onClose, onSaved,
   }
 
   return (
-    <PlanModal
+    <SheetModal
       visible={visible}
       title="Weight target"
       subtitle="Both optional. Leave a box empty to clear it."
       onClose={onClose}
       darkMode={darkMode}
-      footer={<PlanButton label="Save" onPress={save} loading={saving} darkMode={darkMode} />}
+      footer={<ActionButton label="Save" onPress={save} loading={saving} darkMode={darkMode} />}
     >
       <TargetWeightFields target={target} pace={pace} onTarget={setTarget} onPace={setPace} currentKg={currentKg} onSubmit={save} darkMode={darkMode} />
       <ScreenError message={error} onDismiss={() => setError("")} />
-    </PlanModal>
+    </SheetModal>
   );
 }
 

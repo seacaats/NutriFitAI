@@ -3,7 +3,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { Chip, SectionLabel } from "./PlanParts";
+import Chip from "./Chip";
+import SectionLabel from "./SectionLabel";
 
 // Workout tiles (cover, body, grid) and the catalog filters
 

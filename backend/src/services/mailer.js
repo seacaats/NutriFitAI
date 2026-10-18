@@ -245,8 +245,8 @@ async function sendOtpEmail(to, code, purpose) {
     note: `This code expires in ${env.otp.ttlMinutes} minutes. If you didn't request it, you can safely ignore this email.`,
   });
 
-  // The code in the subject keeps each email in its own thread
-  return deliver(to, `${copy.subject} (${code})`, html, `OTP for ${to} (${purpose}): ${code}`, `${purpose}:${code}`);
+  // Subject stays code-free so the code isn't visible in inbox previews or notifications
+  return deliver(to, copy.subject, html, `OTP for ${to} (${purpose}): ${code}`, `${purpose}:${code}`);
 }
 
 // Sent when someone registers with an email that already has a verified account

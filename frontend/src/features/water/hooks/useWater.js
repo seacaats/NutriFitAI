@@ -1,5 +1,5 @@
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
-import { GLASS_ML, WATER_GOAL } from "@/shared/constants/goalOptions";
+import { GLASS_ML, WATER_GOAL, WATER_LIMITS } from "@/shared/constants/goalOptions";
 import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { useCallback, useEffect, useState } from "react";
 
@@ -7,6 +7,8 @@ import { useCallback, useEffect, useState } from "react";
 export { GLASS_ML };
 export const MIN_GOAL_GLASSES = WATER_GOAL.minGlasses;
 export const MAX_GOAL_GLASSES = WATER_GOAL.maxGlasses;
+export const MAX_DRINK_ML = WATER_LIMITS.maxDrinkMl;
+export const MAX_DAY_ML = WATER_LIMITS.maxDayMl;
 
 function messageOf(err, fallback) {
   return err instanceof ApiClientError ? err.message : fallback;
@@ -90,6 +92,8 @@ export function useWater() {
     glasses: totalMl / GLASS_ML,
     goalGlasses: goalMl / GLASS_ML,
     progress: goalMl ? Math.min(totalMl / goalMl, 1) : 0,
+    // False once today's total would pass the daily ceiling
+    canAdd: (ml = GLASS_ML) => totalMl + ml <= MAX_DAY_ML,
     addWater,
     removeEntry,
     setGoal,

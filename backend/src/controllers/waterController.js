@@ -4,16 +4,9 @@ const User = require('../models/user/User');
 const { asyncHandler, sendSuccess, ApiError } = require('../utils/httpResponse');
 const { today, addDays, dayRangeToInstants } = require('../utils/calendarDay');
 const { notify } = require('../services/notifications/notify');
-
-// One glass = 250 ml. The goal is stored in ml (goals.dailyWaterMl) and
-// never set below 8 glasses
-const GLASS_ML = 250;
-const MIN_GOAL_ML = 8 * GLASS_ML;
-
-async function userTimeZone(req) {
-  if (req.timeZone) return req.timeZone;
-  return (await User.getProfile(req.userId))?.timezone || undefined;
-}
+const { MAX_DAY_ML } = require('../validators/waterValidators');
+const { userTimeZone } = require('../services/user/userTimeZone');
+const { GLASS_ML, MIN_WATER_GOAL_ML, MAX_WATER_GOAL_ML } = require('../utils/goals/goalLimits');
 
 // Today's entries and total, the goal, and a total per day for the
 // `days` days ending on `to` (today by default; oldest first, zero-filled)
@@ -35,7 +28,9 @@ async function buildWaterPayload(req, days = 7, to = null) {
   return {
     date: day,
     glassMl: GLASS_ML,
-    goalMl: Math.max(goal?.dailyWaterMl ?? MIN_GOAL_ML, MIN_GOAL_ML),
+    // Clamped both ways: goals saved before the 4 L ceiling still read as valid
+    goalMl: Math.min(Math.max(goal?.dailyWaterMl ?? MIN_WATER_GOAL_ML, MIN_WATER_GOAL_ML), MAX_WATER_GOAL_ML),
+    maxDayMl: MAX_DAY_ML,
     totalMl: totals[day] || 0,
     entries,
     days: Array.from({ length: days }, (_, i) => {
@@ -53,7 +48,20 @@ const getWater = asyncHandler(async (req, res) => {
 
 // POST /api/water -- defaults to one glass
 const logWater = asyncHandler(async (req, res) => {
-  await WaterLog.add(req.userId, req.body.amountMl ?? GLASS_ML);
+  const amountMl = req.body.amountMl ?? GLASS_ML;
+  // A day's total stays under the ceiling, however many drinks it took
+  const timeZone = await userTimeZone(req);
+  const day = today(timeZone);
+  const { start, end } = dayRangeToInstants(day, day, timeZone);
+  const entries = await WaterLog.listBetween(req.userId, start, end);
+  const total = entries.reduce((sum, e) => sum + e.amountMl, 0);
+  if (total + amountMl > MAX_DAY_ML) {
+    throw ApiError.badRequest(
+      `That would pass ${MAX_DAY_ML.toLocaleString('en-US')} ml for today. Drinking that much water is not recommended.`,
+      { code: 'WATER_DAY_LIMIT' },
+    );
+  }
+  await WaterLog.add(req.userId, amountMl);
   const data = await buildWaterPayload(req);
   // Once per day: the dedupe key makes later glasses that day a no-op.
   // Not awaited, notify never throws
@@ -116,4 +124,4 @@ const setWaterDay = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Water updated', data });
 });
 
-module.exports = { getWater, logWater, removeWater, setWaterGoal, getWaterDay, setWaterDay, GLASS_ML, MIN_GOAL_ML };
+module.exports = { getWater, logWater, removeWater, setWaterGoal, getWaterDay, setWaterDay };

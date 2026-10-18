@@ -28,7 +28,7 @@ export default function VerifyRegistrationScreen() {
         <Text style={styles.hint}>Unverified accounts are removed after 48 hours.</Text>
 
         <View style={styles.otpWrap}>
-          <OtpInputRow otp={form.otp} variant="primaryBorder" />
+          <OtpInputRow otp={form.otp} variant="primaryBorder" onSubmit={form.handleVerify} />
         </View>
 
         <FormAlert message={form.error} onDismiss={form.dismissError} style={styles.alert} />

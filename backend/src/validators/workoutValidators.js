@@ -17,7 +17,7 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(60).optional(),
   offset: z.coerce.number().int().min(0).optional(),
   // Which of the few shuffled orders to use for the "Picked for you" list.
-  // Mirrors SHUFFLE_VARIANTS in workoutsController.js
+  // Mirrors SHUFFLE_VARIANTS in controllers/workouts/catalogController.js
   shuffle: z.coerce.number().int().min(1).max(8).optional(),
 }).strict();
 
@@ -53,7 +53,7 @@ const sessionRangeSchema = z.object({
   offset: z.coerce.number().int().min(0).optional(),
 
   // Opt-in rolling window, alongside limit -- the dedicated history screen
-  // sends this to cap its page-able list (see workoutsController.listSessions).
+  // sends this to cap its page-able list (see sessionsController.listSessions).
   // Omitted by other `limit` callers (e.g. the "5 most recent" dashboard
   // widget), which want the true most-recent session regardless of age.
   days: z.coerce.number().int().positive().max(365).optional(),

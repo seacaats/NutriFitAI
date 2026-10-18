@@ -2,10 +2,10 @@ import { useLogout } from "@/features/auth/hooks/useLogout";
 import { disableDevice, getPushState, registerDevice } from "@/features/notifications/push";
 import { useSettings } from "@/features/user/hooks/useSettings";
 import Skeleton from "@/shared/components/Skeleton";
+import ActionButton from "@/shared/components/ui/ActionButton";
 import ConfirmModal from "@/shared/components/ui/ConfirmModal";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import MfaSetup from "@/shared/components/ui/MfaSetup";
-import PlanButton from "@/shared/components/ui/PlanButton";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import TimeStepper, { formatTime, QUIET_END, QUIET_START } from "@/shared/components/ui/TimeStepper";
 import { useAuth } from "@/shared/context/AuthContext";
@@ -164,7 +164,7 @@ function ChangePassword({ settings, darkMode }) {
           </Text>
         </View>
         {step === "idle" && (
-          <PlanButton
+          <ActionButton
             compact
             variant="secondary"
             label="Change password"
@@ -182,6 +182,7 @@ function ChangePassword({ settings, darkMode }) {
             icon="lock-closed-outline"
             placeholder="Current password"
             value={current}
+            maxLength={200}
             onChangeText={setCurrent}
             secureTextEntry
             showToggle
@@ -191,8 +192,8 @@ function ChangePassword({ settings, darkMode }) {
           />
           <ScreenError message={error} onDismiss={() => setError("")} />
           <View style={styles.formActions}>
-            <PlanButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
-            <PlanButton compact label="Continue" onPress={verify} loading={busy} darkMode={darkMode} />
+            <ActionButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
+            <ActionButton compact label="Continue" onPress={verify} loading={busy} darkMode={darkMode} />
           </View>
         </View>
       )}
@@ -203,6 +204,7 @@ function ChangePassword({ settings, darkMode }) {
             icon="lock-closed-outline"
             placeholder="New password"
             value={next}
+            maxLength={64}
             onChangeText={setNext}
             secureTextEntry
             showToggle
@@ -214,6 +216,7 @@ function ChangePassword({ settings, darkMode }) {
             icon="lock-closed-outline"
             placeholder="Confirm new password"
             value={confirm}
+            maxLength={64}
             onChangeText={setConfirm}
             secureTextEntry
             visible={show}
@@ -221,8 +224,8 @@ function ChangePassword({ settings, darkMode }) {
           />
           <ScreenError message={error} onDismiss={() => setError("")} />
           <View style={styles.formActions}>
-            <PlanButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
-            <PlanButton compact label="Save password" onPress={review} darkMode={darkMode} />
+            <ActionButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
+            <ActionButton compact label="Save password" onPress={review} darkMode={darkMode} />
           </View>
         </View>
       )}
@@ -326,7 +329,7 @@ function NotificationSettings({ settings, loading, darkMode }) {
           hint={pushStatus ? PUSH_STATUS_TEXT[pushStatus] : "Get notifications on this phone even when the app is closed."}
           darkMode={darkMode}
         >
-          <PlanButton
+          <ActionButton
             compact
             variant="secondary"
             label={pushStatus === "granted" ? "Turn off" : "Turn on"}
@@ -398,7 +401,7 @@ function DeleteAccount({ settings, onDeleted, isAdmin, darkMode }) {
         {/* Right-aligned, even when the long hint pushes it onto its own line */}
         {!open && (
           <View style={styles.endAction}>
-            <PlanButton compact variant="danger" label="Delete account" onPress={() => setOpen(true)} darkMode={darkMode} />
+            <ActionButton compact variant="danger" label="Delete account" onPress={() => setOpen(true)} darkMode={darkMode} />
           </View>
         )}
       </View>
@@ -409,6 +412,7 @@ function DeleteAccount({ settings, onDeleted, isAdmin, darkMode }) {
             icon="alert-circle-outline"
             placeholder="Type DELETE"
             value={typed}
+            maxLength={6}
             onChangeText={setTyped}
             autoCapitalize="characters"
           />
@@ -416,6 +420,7 @@ function DeleteAccount({ settings, onDeleted, isAdmin, darkMode }) {
             icon="lock-closed-outline"
             placeholder="Current password"
             value={password}
+            maxLength={200}
             onChangeText={setPassword}
             secureTextEntry
             showToggle
@@ -428,6 +433,7 @@ function DeleteAccount({ settings, onDeleted, isAdmin, darkMode }) {
               icon="shield-checkmark-outline"
               placeholder="Authenticator or recovery code"
               value={code}
+              maxLength={24}
               onChangeText={setCode}
               autoCapitalize="none"
               autoCorrect={false}
@@ -435,8 +441,8 @@ function DeleteAccount({ settings, onDeleted, isAdmin, darkMode }) {
           )}
           <ScreenError message={error} onDismiss={() => setError("")} />
           <View style={styles.formActions}>
-            <PlanButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
-            <PlanButton compact variant="danger" label="Delete my account" onPress={review} darkMode={darkMode} />
+            <ActionButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
+            <ActionButton compact variant="danger" label="Delete my account" onPress={review} darkMode={darkMode} />
           </View>
         </View>
       )}
@@ -554,7 +560,7 @@ export default function SettingsPanel() {
         </Row>
 
         <Row label="Sign out" hint="Sign out of NutriFitAI on this device." darkMode={darkMode} last>
-          <PlanButton compact variant="danger" label="Sign out" onPress={logout} darkMode={darkMode} />
+          <ActionButton compact variant="danger" label="Sign out" onPress={logout} darkMode={darkMode} />
         </Row>
       </Section>
 

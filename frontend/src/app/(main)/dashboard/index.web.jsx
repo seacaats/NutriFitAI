@@ -8,7 +8,7 @@ import Skeleton from "@/shared/components/Skeleton";
 import AreaChartMini from "@/shared/components/charts/AreaChartMini";
 import DonutChart from "@/shared/components/charts/DonutChart";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
-import PlanButton from "@/shared/components/ui/PlanButton";
+import ActionButton from "@/shared/components/ui/ActionButton";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { chipTints, colors, getChipTint, getScreenPalette, getScreenTones, radii, screenTones, shellColors } from "@/shared/theme/nutrifitai";
@@ -109,11 +109,11 @@ export default function DashboardScreen() {
           </View>
           {/* Labelled, same as the phone's card */}
           <View style={styles.waterAction}>
-            <PlanButton
+            <ActionButton
               compact
               label="1 glass"
               loading={water.saving}
-              disabled={water.loading}
+              disabled={water.loading || !water.canAdd()}
               onPress={() => water.addWater()}
               darkMode={darkMode}
             />

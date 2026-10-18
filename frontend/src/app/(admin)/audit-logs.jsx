@@ -1,15 +1,20 @@
 import { SeverityBadge } from "@/features/admin/components/Badges";
-import DataTable, { DetailGrid, FilterRow, Pager } from "@/features/admin/components/DataTable";
+import DataTable from "@/features/admin/components/DataTable";
+import DetailGrid from "@/features/admin/components/DetailGrid";
+import FilterRow from "@/features/admin/components/FilterRow";
+import Pager from "@/features/admin/components/Pager";
+import RowNotesAndHold from "@/features/admin/components/RowNotesAndHold";
 import { BY_USER, HELD, useAuditLogs, useUserSearch } from "@/features/admin/hooks/useAuditLogs";
 import Skeleton from "@/shared/components/Skeleton";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
-import { RingInput, useFocusRing } from "@/shared/components/ui/FormInput";
+import { useFocusRing } from "@/shared/components/ui/FormInput";
 import { useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { adminStyles } from "@/shared/theme/screenStyles";
+import { formatClockTime, formatMonthDay, formatTimestamp } from "@/shared/utils/formatDate";
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -23,35 +28,7 @@ import {
 } from "react-native";
 
 // Server decides which rows and fields each role sees, and words them
-// (message + fields). audit_logs.createdAt is an instant, a separate concern
-// from the CALENDAR DAYS rule established and followed
-
-function formatTimestamp(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatDateOnly(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-function formatTimeOnly(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-}
+// (message + fields)
 
 // Rows this close to their TTL get a badge, so a superadmin can hold them in time
 const EXPIRY_WARNING_DAYS = 30;
@@ -63,114 +40,6 @@ const LIGHT_SKELETON_ON_PAGE = "#dfe3e8";
 function daysLeft(expiresAt) {
   if (!expiresAt) return null;
   return Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86400000);
-}
-
-/**
- * The drawer's notes thread and hold control for one row. Its own component
- * so each open drawer keeps its own draft and status.
- *
- * Notes: admins and superadmins, append-only (a correction is a new note).
- * Hold: superadmin only, needs a reason, and is itself audited
- */
-function RowNotesAndHold({ row, log, isSuper, tone }) {
-  const [notes, setNotes] = useState(null);
-  const [draft, setDraft] = useState("");
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState(null);
-
-  // listNotes is stable (useCallback), so this refetches only when the row
-  // or its note count changes, not on every parent render
-  const { listNotes } = log;
-  useEffect(() => {
-    let cancelled = false;
-    listNotes(row.id)
-      .then((data) => { if (!cancelled) setNotes(data); })
-      .catch(() => { if (!cancelled) setNotes([]); });
-    return () => { cancelled = true; };
-  }, [row.id, row.noteCount, listNotes]);
-
-  const submit = async (action) => {
-    setBusy(true);
-    const result = await action();
-    setBusy(false);
-    setNotice(result);
-    if (result.ok) { setDraft(""); setReason(""); }
-  };
-
-  return (
-    <View style={[styles.notesBox, { borderColor: tone.border }]}>
-      <Text style={[styles.changesTitle, { color: tone.muted }]}>NOTES</Text>
-      {notes === null ? (
-        <View style={styles.noteSkeleton}>
-          <Skeleton width="40%" height={11} />
-          <Skeleton width="85%" height={12} />
-        </View>
-      ) : notes.length === 0 ? (
-        <Text style={[styles.noteMeta, { color: tone.muted }]}>No notes yet.</Text>
-      ) : (
-        notes.map((note) => (
-          <View key={note.id} style={styles.note}>
-            <Text style={[styles.noteMeta, { color: tone.muted }]}>
-              {note.author || "Unknown"} · {formatTimestamp(note.createdAt)}
-            </Text>
-            <Text selectable style={[styles.noteBody, { color: tone.text }]}>{note.body}</Text>
-          </View>
-        ))
-      )}
-      <View style={styles.noteForm}>
-        <RingInput
-          value={draft}
-          onChangeText={setDraft}
-          placeholder="Add a note for other admins"
-          placeholderTextColor={tone.muted}
-          multiline
-          maxLength={1000}
-          style={[styles.noteInput, { backgroundColor: tone.card, borderColor: tone.border, color: tone.text }]}
-        />
-        <Pressable
-          onPress={() => submit(() => log.addNote(row.id, draft.trim()))}
-          disabled={busy || !draft.trim()}
-          style={[styles.smallBtn, { borderColor: tone.border }, (busy || !draft.trim()) && styles.btnDisabled]}
-        >
-          <Text style={[styles.smallBtnText, { color: tone.text }]}>Add note</Text>
-        </Pressable>
-      </View>
-
-      {isSuper && (
-        <View style={[styles.holdRow, { borderTopColor: tone.border }]}>
-          <Text style={[styles.noteMeta, { color: tone.muted }]}>
-            {row.held
-              ? "Held: this entry is kept after it expires."
-              : "Hold this entry to keep it after it expires."}
-          </Text>
-          <View style={styles.noteForm}>
-            <RingInput
-              value={reason}
-              onChangeText={setReason}
-              placeholder={row.held ? "Reason for releasing (required)" : "Reason for holding (required)"}
-              placeholderTextColor={tone.muted}
-              // Same box as the note above: wraps, then scrolls
-              multiline
-              maxLength={300}
-              style={[styles.noteInput, { backgroundColor: tone.card, borderColor: tone.border, color: tone.text }]}
-            />
-            <Pressable
-              onPress={() => submit(() => (row.held ? log.release(row.id, reason.trim()) : log.hold(row.id, reason.trim())))}
-              disabled={busy || reason.trim().length < 3}
-              style={[styles.smallBtn, { borderColor: tone.border }, (busy || reason.trim().length < 3) && styles.btnDisabled]}
-            >
-              <Text style={[styles.smallBtnText, { color: tone.text }]}>{row.held ? "Release hold" : "Hold"}</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
-
-      {notice && (
-        <Text style={[styles.noteMeta, { color: notice.ok ? tone.muted : colors.danger }]}>{notice.message}</Text>
-      )}
-    </View>
-  );
 }
 
 const CATEGORY_LABELS = {
@@ -267,8 +136,8 @@ export default function AuditLogsScreen() {
       width: 132,
       render: (row) => (
         <View>
-          <Text style={[styles.whenDate, { color: tone.text }]}>{formatDateOnly(row.createdAt)}</Text>
-          <Text style={[styles.whenTime, { color: tone.muted }]}>{formatTimeOnly(row.createdAt)}</Text>
+          <Text style={[styles.whenDate, { color: tone.text }]}>{formatMonthDay(row.createdAt)}</Text>
+          <Text style={[styles.whenTime, { color: tone.muted }]}>{formatClockTime(row.createdAt)}</Text>
           {/* A held row is kept regardless, so it needs no warning */}
           {!row.held && daysLeft(row.expiresAt) !== null && daysLeft(row.expiresAt) <= EXPIRY_WARNING_DAYS && (
             <Text style={[styles.whenTime, { color: colors.danger }]}>
@@ -484,6 +353,8 @@ export default function AuditLogsScreen() {
                   <TextInput
                     {...ring.handlers}
                     value={searchTerm}
+                    // Same cap as the server search limit
+                    maxLength={120}
                     onChangeText={setSearchTerm}
                     placeholder="Search a user by name or email (e.g. juan@example.com)"
                     placeholderTextColor={tone.muted}
@@ -664,16 +535,7 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
   changeHidden: { textDecorationLine: "none", fontStyle: "italic" },
 
-  notesBox: { borderWidth: 1, borderRadius: radii.sm, padding: 12, gap: 8 },
-  note: { gap: 2 },
-  noteMeta: { fontSize: 11 },
-  noteBody: { fontSize: 13, lineHeight: 18 },
   // Wraps under the input on a narrow screen
-  noteForm: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: 8 },
-  noteInput: { flexGrow: 1, flexBasis: 220, minWidth: 0, borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
-  smallBtn: { borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12, paddingVertical: 9 },
-  smallBtnText: { fontSize: 12, fontWeight: "700" },
-  holdRow: { borderTopWidth: 1, paddingTop: 10, gap: 8 },
   exportBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -686,6 +548,5 @@ const styles = StyleSheet.create({
   exportText: { fontSize: 13, fontWeight: "700" },
   exportNotice: { fontSize: 12, marginBottom: 12 },
   btnDisabled: { opacity: 0.5 },
-  noteSkeleton: { gap: 6 },
   filterSkeleton: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
 });

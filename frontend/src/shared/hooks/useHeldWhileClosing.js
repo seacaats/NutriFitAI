@@ -6,7 +6,7 @@ import { useRef } from "react";
  * Callers clear a dialog's data (the selected exercise, the routine being
  * edited) in the same moment they close it, so without this the content
  * empties out for the half-second before the dialog is gone. Used by every
- * dialog that shows a caller's data: ConfirmModal, PlanModal, the routine
+ * dialog that shows a caller's data: ConfirmModal, SheetModal, the routine
  * details and the exercise details.
  *
  *   const shown = useHeldWhileClosing(visible, { exercise, lastSession });

@@ -1,7 +1,7 @@
 import Skeleton from "@/shared/components/Skeleton";
+import ActionButton from "@/shared/components/ui/ActionButton";
 import ServerImage from "@/shared/components/ui/ServerImage";
 import ConfirmModal from "@/shared/components/ui/ConfirmModal";
-import PlanButton from "@/shared/components/ui/PlanButton";
 import { resolveMediaUrl } from "@/shared/services/mediaUrl";
 import { colors, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { toLocalISODate } from "@/shared/utils/dates";
@@ -68,7 +68,7 @@ export function CardHeader({ title, tone, darkMode, onViewAll }) {
   return (
     <View style={styles.rowBetween}>
       <Text style={[styles.cardTitle, { color: tone.text }]}>{title}</Text>
-      <PlanButton compact variant="secondary" label="Full history" onPress={onViewAll} darkMode={darkMode} />
+      <ActionButton compact variant="secondary" label="Full history" onPress={onViewAll} darkMode={darkMode} />
     </View>
   );
 }

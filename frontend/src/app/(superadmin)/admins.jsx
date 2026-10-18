@@ -1,5 +1,7 @@
 import { RoleBadge } from "@/features/admin/components/Badges";
-import DataTable, { DetailGrid, Pager } from "@/features/admin/components/DataTable";
+import DataTable from "@/features/admin/components/DataTable";
+import DetailGrid from "@/features/admin/components/DetailGrid";
+import Pager from "@/features/admin/components/Pager";
 import { useAdminUsers } from "@/features/admin/hooks/useAdminUsers";
 import Skeleton from "@/shared/components/Skeleton";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
@@ -8,6 +10,7 @@ import { useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { adminStyles } from "@/shared/theme/screenStyles";
+import { formatDate } from "@/shared/utils/formatDate";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
@@ -38,13 +41,6 @@ const ACTION_COPY = {
     busy: "Demoting…",
   },
 };
-
-function formatWhen(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-}
 
 export default function SuperadminAdminsScreen() {
   const ring = useFocusRing();
@@ -109,7 +105,7 @@ export default function SuperadminAdminsScreen() {
       title: "Account since",
       width: 130,
       priority: 3,
-      render: (row) => <Text style={[styles.bodyCell, { color: tone.muted }]}>{formatWhen(row.createdAt)}</Text>,
+      render: (row) => <Text style={[styles.bodyCell, { color: tone.muted }]}>{formatDate(row.createdAt)}</Text>,
     },
   ];
 
@@ -124,7 +120,7 @@ export default function SuperadminAdminsScreen() {
             { label: "Email", value: row.email },
             { label: "Access level", value: row.role },
             { label: "Email verified", value: row.emailVerified ? "Yes" : "No" },
-            { label: "Account since", value: formatWhen(row.createdAt) },
+            { label: "Account since", value: formatDate(row.createdAt) },
           ]}
         />
 
@@ -212,6 +208,8 @@ export default function SuperadminAdminsScreen() {
           <TextInput
             {...ring.handlers}
             value={admins.search}
+            // Same cap as the server search limit
+            maxLength={120}
             onChangeText={admins.setSearch}
             placeholder="Search admins by name or email"
             placeholderTextColor={tone.muted}
@@ -256,6 +254,7 @@ export default function SuperadminAdminsScreen() {
             value={reason}
             onChangeText={setReason}
             placeholder="Reason (required)"
+            maxLength={300}
             placeholderTextColor={tone.muted}
             style={[styles.reasonInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
             multiline

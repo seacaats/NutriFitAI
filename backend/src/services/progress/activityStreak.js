@@ -1,9 +1,9 @@
-const Meal = require('../models/food/Meal');
-const WaterLog = require('../models/water/WaterLog');
-const DailySteps = require('../models/steps/DailySteps');
-const WorkoutSession = require('../models/workouts/WorkoutSession');
-const User = require('../models/user/User');
-const { addDays, dayRangeToInstants, today } = require('../utils/calendarDay');
+const Meal = require('../../models/food/Meal');
+const WaterLog = require('../../models/water/WaterLog');
+const DailySteps = require('../../models/steps/DailySteps');
+const WorkoutSession = require('../../models/workouts/WorkoutSession');
+const User = require('../../models/user/User');
+const { addDays, dayRangeToInstants, today } = require('../../utils/calendarDay');
 
 // The one streak count: the Progress tile and the streak notifications
 // (services/notifications/reminders.js) both read it, so they always agree

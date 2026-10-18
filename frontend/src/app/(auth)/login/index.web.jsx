@@ -1,5 +1,5 @@
 import GoogleIcon from "@/features/auth/components/GoogleIcon";
-import { MfaChallenge } from "@/features/auth/components/OtpInputRow";
+import { MfaChallenge } from "@/features/auth/components/MfaChallenge";
 import { useLoginForm } from "@/features/auth/hooks/useLoginForm";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
@@ -69,7 +69,9 @@ export default function LoginScreen() {
               placeholder="Email"
               value={form.email}
               onChangeText={form.setEmail}
+              onSubmitEditing={form.onSubmitEditing}
               keyboardType="email-address"
+              maxLength={254}
               autoCapitalize="none"
               style={styles.fieldSpacing}
             />
@@ -79,7 +81,9 @@ export default function LoginScreen() {
               icon="lock-closed-outline"
               placeholder="Password"
               value={form.password}
+              maxLength={200}
               onChangeText={form.setPassword}
+              onSubmitEditing={form.onSubmitEditing}
               secureTextEntry
               showToggle
               visible={form.showPassword}

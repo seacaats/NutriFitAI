@@ -29,9 +29,10 @@ const macro = (label) => z.coerce.number().min(0, `${label} can't be negative.`)
 // so a client can't log different values than the model returned
 const mealItemSchema = z.object({
   scanItemId: objectId,
-  // No ceiling: portions vary too much to guess one
+  // Generous, but bounded so a typo can't log a million calories
   servings: z.coerce.number()
     .min(0.25, 'Servings start at a quarter.')
+    .max(50, 'Servings can be up to 50.')
     .default(1),
   caloriesKcal: macro('Calories'),
   proteinG: macro('Protein'),
@@ -63,7 +64,7 @@ const target = (label, unit, min, max) => {
 
 // Shared with the setup wizard's onboardingSchema (profileValidators.js)
 const nutritionTargets = {
-  dailyCaloriesKcal: target('Calories', 'kcal', 500, 10000),
+  dailyCaloriesKcal: target('Calories', 'kcal', 1000, 5000),
   dailyProteinG: target('Protein', 'g', 1, 500),
   dailyCarbsG: target('Carbs', 'g', 1, 1000),
   dailyFatG: target('Fat', 'g', 1, 400),

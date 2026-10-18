@@ -43,9 +43,9 @@ export default function DashboardScreen() {
     <DashboardLayout>
       {/* Header */}
       <View style={styles.headerRow}>
-        <View>
+        <View style={styles.headerName}>
           <Text style={[styles.greeting, textColor]}>{getGreeting()},</Text>
-          <Text style={[styles.greetingName, textColor]}>
+          <Text style={[styles.greetingName, textColor]} numberOfLines={1}>
             {loading ? "..." : firstName}!👋
           </Text>
         </View>
@@ -177,6 +177,8 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },
   greeting: { fontSize: 20, fontWeight: "700" },
   greetingName: { fontSize: 26, fontWeight: "800", marginTop: 2 },
+  // Takes the row's free width, so a long name ends in "…" before the bell
+  headerName: { flex: 1, minWidth: 0, paddingRight: 12 },
 
   card: { borderRadius: radii.sm, borderWidth: 1, padding: 14, marginBottom: 12 },
   cardTitle: { fontSize: 14, fontWeight: "700", marginBottom: 8 },

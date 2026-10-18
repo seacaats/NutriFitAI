@@ -1,3 +1,4 @@
+import StatCard from "@/features/admin/components/StatCard";
 import { useAdminAnalytics } from "@/features/admin/hooks/useAdminAnalytics";
 import Skeleton from "@/shared/components/Skeleton";
 import AreaChartMini from "@/shared/components/charts/AreaChartMini";
@@ -36,19 +37,18 @@ const USAGE_ROWS = [
   { key: "coachMessages", label: "Coach messages", icon: "hardware-chip-outline" },
 ];
 
+// New accounts, in the order they move through the app. Each step counts only
+// the accounts that passed the ones before it
+const FUNNEL_ROWS = [
+  { key: "signedUp", label: "Signed up" },
+  { key: "verified", label: "Verified email" },
+  { key: "onboarded", label: "Finished onboarding" },
+  { key: "logged", label: "Logged a meal, water or workout" },
+  { key: "returned", label: "Came back on a later day" },
+];
+
 // A y-axis top a little above the highest point, never below `min`
 const ceilTo = (n, step, min = step) => Math.max(min, Math.ceil(n / step) * step);
-
-// `loading` is the first load only: placeholders where the numbers go
-function StatCard({ label, value, hint, tone, loading }) {
-  return (
-    <View style={[styles.statCard, { backgroundColor: tone.card, borderColor: tone.border }]}>
-      <Text style={[styles.statLabel, { color: tone.muted }]}>{label}</Text>
-      {loading ? <Skeleton width={70} height={26} /> : <Text style={[styles.statValue, { color: tone.text }]}>{value}</Text>}
-      {loading ? <Skeleton width={90} height={11} /> : !!hint && <Text style={[styles.statHint, { color: tone.muted }]}>{hint}</Text>}
-    </View>
-  );
-}
 
 function Panel({ title, note, children, tone, style }) {
   return (
@@ -58,6 +58,33 @@ function Panel({ title, note, children, tone, style }) {
         {!!note && <Text style={[styles.panelNote, { color: tone.muted }]}>{note}</Text>}
       </View>
       {children}
+    </View>
+  );
+}
+
+// Bars of how many new accounts reached each step, against the sign-ups
+function Funnel({ activation, tone, loading }) {
+  const steps = activation?.steps;
+  if (loading) return <Skeleton width={220} height={15} />;
+  if (!steps?.signedUp) {
+    return <Text style={[styles.funnelEmpty, { color: tone.muted }]}>No accounts old enough to measure yet. It updates through the day.</Text>;
+  }
+  return (
+    <View>
+      {FUNNEL_ROWS.map((r) => {
+        const share = Math.round((steps[r.key] / steps.signedUp) * 100);
+        return (
+          <View key={r.key} style={styles.funnelRow}>
+            <View style={styles.funnelTop}>
+              <Text style={[styles.funnelLabel, { color: tone.text }]}>{r.label}</Text>
+              <Text style={[styles.funnelValue, { color: tone.text }]}>{steps[r.key].toLocaleString()} · {share}%</Text>
+            </View>
+            <View style={[styles.funnelTrack, { backgroundColor: tone.border }]}>
+              <View style={[styles.funnelFill, { width: `${share}%` }]} />
+            </View>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -189,6 +216,16 @@ export default function AdminAnalyticsScreen() {
         </Panel>
       </View>
 
+      {/* Accounts at least a week old, so each has had time to log and return */}
+      <Panel
+        title="New-user funnel"
+        note={v?.activation?.steps?.signedUp ? `${v.activation.steps.signedUp.toLocaleString()} accounts, at least a week old` : "Accounts at least a week old"}
+        tone={tone}
+        style={styles.funnelPanel}
+      >
+        <Funnel activation={v?.activation} tone={tone} loading={first} />
+      </Panel>
+
       <View style={[styles.row, narrow && styles.column]}>
         {/* What people used this week */}
         <Panel title="Feature use" note="Last 7 days" tone={tone} style={panelFlex}>
@@ -219,10 +256,6 @@ const styles = StyleSheet.create({
   refreshBtn: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: shellColors.primary, borderRadius: radii.sm, paddingHorizontal: 14, paddingVertical: 9 },
   refreshText: { fontSize: 13, fontWeight: "700", color: colors.white },
 
-  statCard: { flex: 1, minWidth: 150, borderWidth: 1, borderRadius: radii.md, padding: 16, gap: 4 },
-  statLabel: { fontSize: 10, fontWeight: "800", letterSpacing: 0.6 },
-  statValue: { fontSize: 24, fontWeight: "800" },
-  statHint: { fontSize: 11, fontWeight: "600" },
 
   row: { flexDirection: "row", gap: 12, marginBottom: 12 },
   column: { flexDirection: "column" },
@@ -236,6 +269,15 @@ const styles = StyleSheet.create({
   usageRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 },
   usageLabel: { flex: 1, minWidth: 0, fontSize: 13, fontWeight: "600" },
   usageValue: { fontSize: 15, fontWeight: "800" },
+
+  funnelPanel: { marginBottom: 12 },
+  funnelRow: { paddingVertical: 6 },
+  funnelTop: { flexDirection: "row", justifyContent: "space-between", gap: 8, marginBottom: 6 },
+  funnelLabel: { flex: 1, minWidth: 0, fontSize: 13, fontWeight: "600" },
+  funnelValue: { fontSize: 13, fontWeight: "800" },
+  funnelTrack: { height: 8, borderRadius: 4, overflow: "hidden" },
+  funnelFill: { height: 8, borderRadius: 4, backgroundColor: shellColors.primary },
+  funnelEmpty: { fontSize: 13 },
 
   breakdown: { flexDirection: "row", alignItems: "center", gap: 16, flexWrap: "wrap" },
   donutValue: { fontSize: 16, fontWeight: "800", textAlign: "center" },

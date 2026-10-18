@@ -8,7 +8,8 @@ const { Schema } = mongoose;
 const waterLogSchema = new Schema(
   {
     userId: USER_REF,
-    amountMl: { type: Number, required: true, min: 1, max: 5000 },
+    // Mirrors MAX_DRINK_ML in validators/waterValidators.js
+    amountMl: { type: Number, required: true, min: 1, max: 1500 },
     loggedAt: { type: Date, default: () => new Date() },
   },
   { versionKey: false, collection: 'water_logs' },

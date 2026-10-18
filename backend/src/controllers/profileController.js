@@ -8,12 +8,12 @@ const { hashPassword, verifyPassword } = require('../utils/auth/password');
 const { logAction, diffFields } = require('../utils/audit-logs/auditLogger');
 const { notify } = require('../services/notifications/notify');
 
-const { normalizeGoal } = require('../utils/goalNormalizer');
+const { normalizeGoal } = require('../utils/goals/goalNormalizer');
 const { sendSuccess, ApiError, asyncHandler } = require('../utils/httpResponse');
 const { saveUploadedAvatar, clearStoredAvatar, toPublicAvatarUrl } = require('../utils/storage/avatarStore');
-const { deleteAccount: deleteAccountData } = require('../services/accountDeletion');
+const { deleteAccount: deleteAccountData } = require('../services/user/accountDeletion');
 const { clearRefreshCookie } = require('../utils/auth/refreshCookie');
-const { assertNotMfaLocked, checkAuthenticatorCode, rejectAuthenticatorCode, noteRecoveryUsed } = require('./authController');
+const { assertNotMfaLocked, checkAuthenticatorCode, rejectAuthenticatorCode, noteRecoveryUsed } = require('../services/auth/mfa');
 
 
 // Used by GET /profile and response returned after PATCH /profile since

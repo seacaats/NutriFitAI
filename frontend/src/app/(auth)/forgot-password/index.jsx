@@ -47,7 +47,9 @@ export default function ForgotPasswordScreen() {
             placeholder="Enter your email address"
             value={form.email}
             onChangeText={form.setEmail}
+            onSubmitEditing={form.onSubmitEditing}
             keyboardType="email-address"
+            maxLength={254}
             autoCapitalize="none"
             style={styles.fieldSpacing}
           />

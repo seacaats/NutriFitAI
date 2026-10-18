@@ -10,13 +10,13 @@
 
 // min/max mirror nutritionTargets in the backend's foodValidators.js
 export const NUTRITION_GOAL_FIELDS = [
-  { key: "dailyCaloriesKcal", label: "Calories", unit: "kcal", icon: "flame", tint: "orange", min: 500, max: 10000 },
+  { key: "dailyCaloriesKcal", label: "Calories", unit: "kcal", icon: "flame", tint: "orange", min: 1000, max: 5000 },
   { key: "dailyProteinG", label: "Protein", unit: "g", icon: "fish", tint: "green", min: 1, max: 500 },
   { key: "dailyCarbsG", label: "Carbs", unit: "g", icon: "nutrition", tint: "blue", min: 1, max: 1000 },
   { key: "dailyFatG", label: "Fat", unit: "g", icon: "water", tint: "purple", min: 1, max: 400 },
 ];
 
-// "Calories must be between 500 and 10,000 kcal.", or "" when every filled field is in range
+// "Calories must be between 1,000 and 5,000 kcal.", or "" when every filled field is in range
 export function nutritionGoalProblem(values) {
   const bad = NUTRITION_GOAL_FIELDS.filter(
     (f) => values[f.key] && (Number(values[f.key]) < f.min || Number(values[f.key]) > f.max),
@@ -28,9 +28,13 @@ export function nutritionGoalProblem(values) {
 
 export const STEP_GOAL = { min: 1000, max: 50000, step: 500, default: 10000 };
 
-// In glasses of GLASS_ML: 8 (2,000 ml) to 40 (10,000 ml)
+// In glasses of GLASS_ML: 8 (2,000 ml) to 16 (4,000 ml). Recommended intake is
+// about 2-3.7 L a day, so a goal stops at 4 L
 export const GLASS_ML = 250;
-export const WATER_GOAL = { minGlasses: 8, maxGlasses: 40 };
+export const WATER_GOAL = { minGlasses: 8, maxGlasses: 16 };
+// One drink, and a whole day's total. Past 5 L a day is not recommended.
+// Mirror MAX_DRINK_ML and MAX_DAY_ML in the backend's waterValidators.js
+export const WATER_LIMITS = { maxDrinkMl: 1500, maxDayMl: 5000 };
 
 export const TARGET_WEIGHT = { min: 20, max: 500 };
 
@@ -60,9 +64,11 @@ export function weightTargetProblem(targetText, paceText) {
 // "" -> null, "0.5" -> 0.5
 export const decimalOrNull = (text) => (String(text ?? "").trim() ? Number(text) : null);
 
-// Food servings: any amount from a quarter up, no ceiling. Mirrors
+// Food servings: a quarter up to 50. Mirrors
 // mealItemSchema in foodValidators.js
 export const MIN_SERVINGS = 0.25;
+// Mirrors the servings limit in the backend's foodValidators.js
+export const MAX_SERVINGS = 50;
 
 export const COACH_TONES = [
   { value: "friendly", label: "Friendly", icon: "happy-outline", hint: "Warm and conversational." },
@@ -93,5 +99,5 @@ export function suggestCalories({ age, sex, heightCm, weightKg, activityLevel, f
   // A custom activity level is treated as lightly active
   const kcal = bmr * (ACTIVITY_FACTORS[activityLevel] || 1.375) + (GOAL_ADJUST[fitnessGoal] || 0);
   // Never below 1,200, same floor the coach keeps to
-  return Math.round(Math.max(1200, Math.min(10000, kcal)) / 50) * 50;
+  return Math.round(Math.max(1200, Math.min(5000, kcal)) / 50) * 50;
 }

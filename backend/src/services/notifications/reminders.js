@@ -7,7 +7,8 @@ const PushToken = require('../../models/notifications/PushToken');
 const { checkReceipts } = require('./pushSender');
 const { notify, localTime } = require('./notify');
 const { today, dayRangeToInstants, addDays } = require('../../utils/calendarDay');
-const { activityStreak } = require('../activityStreak');
+const { activityStreak } = require('../progress/activityStreak');
+const { MIN_WATER_GOAL_ML, DEFAULT_DAILY_STEP_GOAL } = require('../../utils/goals/goalLimits');
 
 // Runs every RUN_EVERY_MS from server.js. Each reminder has a local start
 // time and fires on the run that lands inside [at, at + RUN_EVERY_MS), so it
@@ -17,8 +18,6 @@ const RUN_EVERY_MS = 15 * 60 * 1000;
 const STALE_TOKEN_MS = 60 * 24 * 60 * 60 * 1000;
 
 // Goal fallbacks, the same ones the water and steps screens use
-const DEFAULT_WATER_ML = 2000;
-const DEFAULT_STEPS = 10000;
 
 // `due` skips the reminder when the user already did the thing
 const DAILY_REMINDERS = [
@@ -26,13 +25,13 @@ const DAILY_REMINDERS = [
     key: 'water-midday',
     at: '12:00',
     type: 'water_reminder',
-    due: async (user, day, timeZone, goal) => (await waterToday(user, day, timeZone)) < (goal?.dailyWaterMl ?? DEFAULT_WATER_ML) / 2,
+    due: async (user, day, timeZone, goal) => (await waterToday(user, day, timeZone)) < (goal?.dailyWaterMl ?? MIN_WATER_GOAL_ML) / 2,
   },
   {
     key: 'water-afternoon',
     at: '15:00',
     type: 'water_reminder',
-    due: async (user, day, timeZone, goal) => (await waterToday(user, day, timeZone)) < (goal?.dailyWaterMl ?? DEFAULT_WATER_ML) / 2,
+    due: async (user, day, timeZone, goal) => (await waterToday(user, day, timeZone)) < (goal?.dailyWaterMl ?? MIN_WATER_GOAL_ML) / 2,
   },
   {
     key: 'steps',
@@ -40,7 +39,7 @@ const DAILY_REMINDERS = [
     type: 'steps_reminder',
     due: async (user, day, timeZone, goal) => {
       const row = await DailySteps.findByDate({ userId: user.id, activityDate: day });
-      return Number(row?.stepCount || 0) < (goal?.dailySteps ?? DEFAULT_STEPS);
+      return Number(row?.stepCount || 0) < (goal?.dailySteps ?? DEFAULT_DAILY_STEP_GOAL);
     },
   },
   {
@@ -105,7 +104,7 @@ async function runDailyReminders(at) {
 // ---- Streaks ----
 // Checked each morning against yesterday, so today never breaks a streak
 // before the user has had the chance to log. The count is the same one the
-// Progress tile shows (services/activityStreak.js)
+// Progress tile shows (services/progress/activityStreak.js)
 const STREAK_CHECK_AT = '08:00';
 const STREAK_MILESTONES = [3, 7, 30];
 

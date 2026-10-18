@@ -237,11 +237,11 @@ function useScanner({ onMealLogged } = {}) {
     setSelection((cur) => ({ ...cur, [itemId]: { ...cur[itemId], servings } }));
   }, []);
 
-  // Only for foods the nutrition table lacks. Kept as typed text
+  // Only for foods the nutrition table lacks. Kept as typed text, stopping at the server's 5,000 limit
   const setManual = useCallback((itemId, key, value) => {
     setSelection((cur) => ({
       ...cur,
-      [itemId]: { ...cur[itemId], manual: { ...cur[itemId]?.manual, [key]: value.replace(/[^0-9.]/g, "") } },
+      [itemId]: { ...cur[itemId], manual: { ...cur[itemId]?.manual, [key]: Number(value.replace(/[^0-9.]/g, "")) > 5000 ? "5000" : value.replace(/[^0-9.]/g, "") } },
     }));
   }, []);
 

@@ -5,8 +5,8 @@ import DonutChart from "@/shared/components/charts/DonutChart";
 import Skeleton from "@/shared/components/Skeleton";
 import { paceLabel } from "@/shared/constants/goalOptions";
 import { goalValueToLabel } from "@/shared/constants/profileOptions";
-import { formatNumber } from "@/shared/utils/dates";
 import { chipTints, colors, getChipTint, getScreenPalette, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
+import { formatNumber } from "@/shared/utils/dates";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
@@ -268,6 +268,24 @@ export function MacrosCard({ progress, darkMode, style }) {
 
 /* ------------------------------ Weight ------------------------------ */
 
+const TREND_STATUS = { ahead: "Ahead of pace", on_track: "On track", behind: "Behind pace" };
+
+// The smoothed weight with its weekly rate, then where that leaves the target.
+// A very fast change gets a neutral note, never a status
+function trendLines(trend, hasTarget) {
+  const rate = trend.weeklyRateKg;
+  const lines = [`Trend ${trend.trendKg} kg · ${Math.abs(rate) < 0.05 ? "steady" : `${rate < 0 ? "▼" : "▲"} ${Math.abs(rate)} kg / week`}`];
+  if (trend.fast) lines.push("Your weight is changing quickly. It may be worth checking in with a doctor or dietitian.");
+  // Reached shows even next to the quick-change note, the note stays first
+  if (trend.reached) lines.push("You're at your target weight.");
+  else if (!trend.fast) {
+    if (trend.status) lines.push(`${TREND_STATUS[trend.status]}${trend.projectedLabel ? ` · target around ${trend.projectedLabel}` : ""}`);
+    else if (hasTarget && !trend.projectedLabel) lines.push("Not trending towards your target yet.");
+    else if (trend.projectedLabel) lines.push(`Target around ${trend.projectedLabel}`);
+  }
+  return lines;
+}
+
 export function WeightCard({ progress, darkMode, chartHeight = 120, style }) {
   const { card, textColor } = getScreenPalette(darkMode);
   const { view, loaded } = progress;
@@ -343,6 +361,11 @@ export function WeightCard({ progress, darkMode, chartHeight = 120, style }) {
           <Text style={styles.targetAction}>{targetText ? "Edit" : "Set target"}</Text>
         </Pressable>
       )}
+
+      {/* Smoothed trend and projection, once there are enough weigh-ins */}
+      {loaded && view.weightTrend && trendLines(view.weightTrend, view.goals.targetWeightKg != null).map((line, i) => (
+        <Text key={i} style={[styles.trendText, textColor]}>{line}</Text>
+      ))}
 
       <View style={styles.chartWrap}>{body}</View>
 
@@ -488,6 +511,7 @@ const styles = StyleSheet.create({
   bigNum: { fontSize: 20, fontWeight: "800" },
   weightChange: { fontSize: 12, fontWeight: "600", marginTop: 2 },
   weightChangeSkeleton: { marginTop: 4 },
+  trendText: { fontSize: 12, fontWeight: "600", marginTop: 6 },
   targetRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10, borderRadius: radii.sm, paddingHorizontal: 10, paddingVertical: 8 },
   targetText: { flex: 1, fontSize: 12, fontWeight: "600" },
   targetAction: { fontSize: 12, fontWeight: "800", color: shellColors.primary },

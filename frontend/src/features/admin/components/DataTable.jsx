@@ -1,9 +1,9 @@
 import Skeleton from "@/shared/components/Skeleton";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import { useTheme } from "@/shared/context/ThemeContext";
-import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
+import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 /**
  * The table used by every admin screen.
@@ -248,88 +248,6 @@ export default function DataTable({
   );
 }
 
-/**
- * Label/value pairs for a row's expanded drawer. Wraps rather than scrolls
- */
-export function DetailGrid({ items }) {
-  const { darkMode } = useTheme();
-  const tone = getScreenTones(darkMode);
-
-  return (
-    <View style={styles.detailGrid}>
-      {items
-        .filter((item) => item && item.value !== undefined && item.value !== null && item.value !== "")
-        .map((item) => (
-          <View key={item.label} style={styles.detailItem}>
-            <Text style={[styles.detailLabel, { color: tone.muted }]}>{item.label}</Text>
-            {/* selectable so an id or an IP can be copied out of the drawer --
-                the single most common thing anyone does with either. */}
-            <Text selectable style={[styles.detailValue, { color: tone.text }]}>{item.value}</Text>
-          </View>
-        ))}
-    </View>
-  );
-}
-
-/** Page picker. Hidden entirely at one page */
-export function Pager({ page, pageCount, total, onChange, unit = "rows" }) {
-  const { darkMode } = useTheme();
-  const tone = getScreenTones(darkMode);
-  if (pageCount <= 1) return null;
-
-  const Btn = ({ icon, disabled, onPress, label }) => (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityLabel={label}
-      style={[styles.pagerBtn, { borderColor: tone.border }, disabled && styles.pagerBtnDisabled]}
-    >
-      <Ionicons name={icon} size={16} color={disabled ? tone.muted : tone.text} />
-    </Pressable>
-  );
-
-  return (
-    <View style={styles.pager}>
-      <Text style={[styles.pagerText, { color: tone.muted }]}>
-        Page {page} of {pageCount} · {total} {unit}
-      </Text>
-      <View style={styles.pagerBtns}>
-        <Btn icon="chevron-back" label="Previous page" disabled={page <= 1} onPress={() => onChange(page - 1)} />
-        <Btn icon="chevron-forward" label="Next page" disabled={page >= pageCount} onPress={() => onChange(page + 1)} />
-      </View>
-    </View>
-  );
-}
-
-/** Horizontally scrollable filter pills. */
-export function FilterRow({ options, value, onChange }) {
-  const { darkMode } = useTheme();
-  const tone = getScreenTones(darkMode);
-
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-      {options.map((option) => {
-        const active = value === option.value;
-        return (
-          <Pressable
-            key={option.value ?? "__all"}
-            onPress={() => onChange(option.value)}
-            style={[
-              styles.filterPill,
-              { borderColor: tone.border, backgroundColor: tone.card },
-              active && { backgroundColor: shellColors.primary, borderColor: shellColors.primary },
-            ]}
-          >
-            <Text style={[styles.filterText, { color: active ? colors.white : tone.muted }]}>
-              {option.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
-  );
-}
-
 const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: radii.md, overflow: "hidden" },
 
@@ -348,13 +266,6 @@ const styles = StyleSheet.create({
   stackValue: { flex: 1, minWidth: 0 },
 
   expanded: { paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1 },
-  // Items wrap two-up on a phone and grow on wider screens. flexShrink and
-  // maxWidth let a long value (a user agent, an ID) wrap inside its item
-  // instead of pushing the drawer wider than the screen
-  detailGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
-  detailItem: { flexGrow: 1, flexShrink: 1, flexBasis: 140, minWidth: 0, maxWidth: "100%", gap: 2 },
-  detailLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase" },
-  detailValue: { fontSize: 13 },
 
   stateWrap: { alignItems: "center", gap: 8, paddingVertical: 48, paddingHorizontal: 24 },
   stateIcon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
@@ -363,13 +274,4 @@ const styles = StyleSheet.create({
   retryBtn: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
   retryText: { fontSize: 13, fontWeight: "700", color: shellColors.primary },
 
-  pager: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, flexWrap: "wrap" },
-  pagerText: { fontSize: 12 },
-  pagerBtns: { flexDirection: "row", gap: 8 },
-  pagerBtn: { borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12, paddingVertical: 8 },
-  pagerBtnDisabled: { opacity: 0.4 },
-
-  filterRow: { flexDirection: "row", gap: 8, paddingVertical: 2 },
-  filterPill: { borderWidth: 1, borderRadius: radii.pill, paddingHorizontal: 14, paddingVertical: 7 },
-  filterText: { fontSize: 12, fontWeight: "700" },
 });

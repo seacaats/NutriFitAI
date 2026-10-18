@@ -1,9 +1,11 @@
 import { deleteSession, deleteSessionsOnDay, fetchExerciseInfo, getEnglishTranslation, getExerciseImages, getMuscleNames } from "@/features/workouts/hooks/useWorkoutApi";
 import { useExerciseImages } from "@/features/workouts/hooks/useWorkoutSessions";
+import { groupByDay } from "@/features/workouts/utils/groupByDay";
 import { requireOnline } from "@/shared/api/apiClient";
 import Skeleton from "@/shared/components/Skeleton";
+import ActionButton from "@/shared/components/ui/ActionButton";
 import ConfirmModal from "@/shared/components/ui/ConfirmModal";
-import PlanButton from "@/shared/components/ui/PlanButton";
+import SheetModal from "@/shared/components/ui/SheetModal";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { useHeldWhileClosing } from "@/shared/hooks/useHeldWhileClosing";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
@@ -11,9 +13,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import EmptyState from "./EmptyState";
+import FavoriteButton from "./FavoriteButton";
 import { estimateMinutes } from "./PlanModals";
-import { EmptyState, FavoriteButton, groupByDay, PlanModal, SectionLabel } from "./PlanParts";
 import { Cover, COVER_HEIGHT, coverImagesFor, Tile, TileBody, TileGrid, tileStyles } from "./PlanTiles";
+import SectionLabel from "./SectionLabel";
 
 // The Workouts page panels: favorites, recent sessions, routines and upcoming
 
@@ -128,8 +132,8 @@ export function FavoriteRoutines({ plan, onStartRoutine, onSchedule, onEdit, dar
             >
               {routine && (
                 <>
-                  <PlanButton compact label="Start" onPress={() => onStartRoutine(routine)} darkMode={darkMode} />
-                  <PlanButton compact variant="secondary" label="Schedule" onPress={() => onSchedule(target)} darkMode={darkMode} />
+                  <ActionButton compact label="Start" onPress={() => onStartRoutine(routine)} darkMode={darkMode} />
+                  <ActionButton compact variant="secondary" label="Schedule" onPress={() => onSchedule(target)} darkMode={darkMode} />
                 </>
               )}
             </TileBody>
@@ -345,7 +349,7 @@ export function RecentPanel({ sessions, loading, onSeeAll, onGoBrowse, onChanged
   const header = (
     <View style={panelStyles.panelHeader}>
       <SectionLabel darkMode={darkMode}>Latest workouts</SectionLabel>
-      <PlanButton compact variant="secondary" label="Full history" onPress={onSeeAll} darkMode={darkMode} />
+      <ActionButton compact variant="secondary" label="Full history" onPress={onSeeAll} darkMode={darkMode} />
     </View>
   );
 
@@ -358,7 +362,7 @@ export function RecentPanel({ sessions, loading, onSeeAll, onGoBrowse, onChanged
         icon="time-outline"
         title="No workouts yet"
         body="Finished and partly finished workouts show up here."
-        action={<PlanButton variant="secondary" label="Browse exercises" onPress={onGoBrowse} darkMode={darkMode} />}
+        action={<ActionButton variant="secondary" label="Browse exercises" onPress={onGoBrowse} darkMode={darkMode} />}
         darkMode={darkMode}
       />
     );
@@ -412,7 +416,7 @@ export function RoutinesPanel({ plan, onNew, onEdit, onStart, onSchedule, darkMo
   const [viewing, setViewing] = useState(null);
   const imageOf = useExerciseImages(plan.routines.flatMap((r) => r.exercises.map((e) => e.exerciseRef)));
 
-  const newButton = <PlanButton label="New routine" onPress={onNew} darkMode={darkMode} />;
+  const newButton = <ActionButton label="New routine" onPress={onNew} darkMode={darkMode} />;
 
   // The New routine button works before the list arrives; only the count waits
   if (plan.loading && !plan.routines.length) {
@@ -477,12 +481,12 @@ export function RoutinesPanel({ plan, onNew, onEdit, onStart, onSchedule, darkMo
                   <Text numberOfLines={2} style={[panelStyles.meta, { color: tone.muted }]}>{routine.description}</Text>
                 )}
               >
-                <PlanButton compact label="Start" onPress={() => onStart(routine)} darkMode={darkMode} />
-                <PlanButton compact variant="secondary" label="Schedule" onPress={() => onSchedule(target)} darkMode={darkMode} />
+                <ActionButton compact label="Start" onPress={() => onStart(routine)} darkMode={darkMode} />
+                <ActionButton compact variant="secondary" label="Schedule" onPress={() => onSchedule(target)} darkMode={darkMode} />
                 {!routine.builtIn && (
                   <>
-                    <PlanButton compact variant="secondary" label="Edit" onPress={() => onEdit(routine)} darkMode={darkMode} />
-                    <PlanButton compact variant="danger" label="Delete" onPress={() => setPendingDelete(routine)} darkMode={darkMode} />
+                    <ActionButton compact variant="secondary" label="Edit" onPress={() => onEdit(routine)} darkMode={darkMode} />
+                    <ActionButton compact variant="danger" label="Delete" onPress={() => setPendingDelete(routine)} darkMode={darkMode} />
                   </>
                 )}
               </TileBody>
@@ -530,7 +534,7 @@ export function RoutinesPanel({ plan, onNew, onEdit, onStart, onSchedule, darkMo
 // action shows only when its handler is passed
 export function RoutineDetailsModal({ visible, routine: routineProp, imageOf, onClose, onStart, onSchedule, onEdit, darkMode }) {
   const tone = getScreenTones(darkMode);
-  // Kept while the dialog closes, like PlanModal's own content
+  // Kept while the dialog closes, like SheetModal's own content
   const routine = useHeldWhileClosing(visible, routineProp);
   if (!routine) return null;
 
@@ -538,7 +542,7 @@ export function RoutineDetailsModal({ visible, routine: routineProp, imageOf, on
   const meta = [`${routine.exercises.length} exercises`, minutes ? `about ${minutes} min` : null].filter(Boolean).join(" · ");
 
   return (
-    <PlanModal
+    <SheetModal
       visible={visible}
       onClose={onClose}
       darkMode={darkMode}
@@ -547,12 +551,12 @@ export function RoutineDetailsModal({ visible, routine: routineProp, imageOf, on
       footer={(
         <>
           {!routine.builtIn && onEdit && (
-            <PlanButton label="Edit" variant="secondary" onPress={() => onEdit(routine)} darkMode={darkMode} />
+            <ActionButton label="Edit" variant="secondary" onPress={() => onEdit(routine)} darkMode={darkMode} />
           )}
           {onSchedule && (
-            <PlanButton label="Schedule" variant="secondary" onPress={() => onSchedule(routine)} darkMode={darkMode} />
+            <ActionButton label="Schedule" variant="secondary" onPress={() => onSchedule(routine)} darkMode={darkMode} />
           )}
-          {onStart && <PlanButton label="Start" onPress={() => onStart(routine)} darkMode={darkMode} />}
+          {onStart && <ActionButton label="Start" onPress={() => onStart(routine)} darkMode={darkMode} />}
         </>
       )}
     >
@@ -575,7 +579,7 @@ export function RoutineDetailsModal({ visible, routine: routineProp, imageOf, on
           <Text style={[detailStyles.sets, { color: tone.muted }]}>{`${e.targetSets} × ${e.targetReps}`}</Text>
         </View>
       ))}
-    </PlanModal>
+    </SheetModal>
   );
 }
 
@@ -614,7 +618,7 @@ export function ExerciseSessionModal({ visible, session: sessionProp, onClose, d
   const description = info ? getEnglishTranslation(info).description.replace(/<[^>]*>/g, "").trim() : "";
 
   return (
-    <PlanModal visible={visible} onClose={onClose} darkMode={darkMode} title={session.exerciseName} subtitle={done}>
+    <SheetModal visible={visible} onClose={onClose} darkMode={darkMode} title={session.exerciseName} subtitle={done}>
       {/* Same shape as what loads: photo, category, muscles, how-to */}
       {loading ? (
         <>
@@ -641,7 +645,7 @@ export function ExerciseSessionModal({ visible, session: sessionProp, onClose, d
           <Text style={[detailStyles.description, { color: tone.muted }]}>{description}</Text>
         </>
       )}
-    </PlanModal>
+    </SheetModal>
   );
 }
 
@@ -694,7 +698,7 @@ export function UpcomingPanel({ plan, onStart, onReschedule, onGoBrowse, onOpenE
         icon="calendar-outline"
         title="Nothing scheduled"
         body="Schedule an exercise or routine for any time in the next 7 days and it will show up here."
-        action={<PlanButton variant="secondary" label="Browse exercises" onPress={onGoBrowse} darkMode={darkMode} />}
+        action={<ActionButton variant="secondary" label="Browse exercises" onPress={onGoBrowse} darkMode={darkMode} />}
         darkMode={darkMode}
       />
     );
@@ -749,11 +753,11 @@ export function UpcomingPanel({ plan, onStart, onReschedule, onGoBrowse, onOpenE
             </Text>
           )}
         >
-          <PlanButton compact label={isMissed ? "Start late" : "Start"} onPress={() => onStart(session)} darkMode={darkMode} />
+          <ActionButton compact label={isMissed ? "Start late" : "Start"} onPress={() => onStart(session)} darkMode={darkMode} />
           {isMissed && (
-            <PlanButton compact variant="secondary" label="Reschedule" onPress={() => onReschedule(session)} darkMode={darkMode} />
+            <ActionButton compact variant="secondary" label="Reschedule" onPress={() => onReschedule(session)} darkMode={darkMode} />
           )}
-          <PlanButton compact variant="secondary" label="Remove" onPress={() => plan.unschedule(session.id)} darkMode={darkMode} />
+          <ActionButton compact variant="secondary" label="Remove" onPress={() => plan.unschedule(session.id)} darkMode={darkMode} />
         </TileBody>
       </Tile>
     );

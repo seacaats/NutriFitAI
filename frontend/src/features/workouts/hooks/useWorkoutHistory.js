@@ -1,6 +1,6 @@
 import { routineForSession, useSessionDeletes } from "@/features/workouts/components/PlanPanels";
-import { groupByDay } from "@/features/workouts/components/PlanParts";
 import { useExerciseImages } from "@/features/workouts/hooks/useWorkoutSessions";
+import { groupByDay } from "@/features/workouts/utils/groupByDay";
 import { apiClient, ApiClientError, requireOnline } from "@/shared/api/apiClient";
 import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { useCallback, useEffect, useState } from "react";

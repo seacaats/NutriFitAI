@@ -7,6 +7,7 @@ const env = require('../config/env');
 const routes = require('./routes');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandlerMiddleware');
 const { readTimeZone } = require('./middleware/authMiddleware');
+const { getResolved } = require('./utils/network/publicUrl');
 
 const app = express();
 
@@ -65,9 +66,13 @@ if (env.storage.driver === 'local') app.use(
 );
 
 
-// Fetches server health, with details such as LAN address and tunnel if any.
+// Health check. Production gets only liveness: LAN IP, tunnel URL and the
+// resolved host are dev conveniences for phones on the local network and
+// would otherwise be public, unauthenticated reconnaissance.
 app.get('/health', (req, res) => {
-  const { getResolved } = require('./utils/network/publicUrl');
+  if (env.nodeEnv === 'production') {
+    return res.json({ success: true, data: { status: 'ok' } });
+  }
   const reachable = getResolved();
   return res.json({
     success: true,

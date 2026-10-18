@@ -5,9 +5,7 @@ const { sendSuccess, asyncHandler, ApiError } = require('../utils/httpResponse')
 const { today } = require('../utils/calendarDay');
 const { logAction } = require('../utils/audit-logs/auditLogger');
 const { notify } = require('../services/notifications/notify');
-
-// Daily step goal fallback
-const DEFAULT_DAILY_STEP_GOAL = 10000;
+const { DEFAULT_DAILY_STEP_GOAL } = require('../utils/goals/goalLimits');
 
 // Converts step/distance values from the database's string format into real numbers
 function toClientRow(row) {

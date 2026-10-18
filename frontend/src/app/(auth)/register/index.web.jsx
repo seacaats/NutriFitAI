@@ -1,4 +1,3 @@
-import OptionSelect from "@/features/auth/components/OptionSelect";
 import {
   ACTIVITY_OPTIONS,
   DIET_PREFERENCES,
@@ -7,10 +6,12 @@ import {
   useRegisterForm,
 } from "@/features/auth/hooks/useRegisterForm";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
+import OptionSelect from "@/shared/components/ui/OptionSelect";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
 import { useAuthColors } from "@/shared/context/ThemeContext";
 import { radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { registerStyles } from "@/shared/theme/screenStyles";
+import { EMAIL_MAX, NAME_MAX } from "@/shared/utils/authValidators";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router } from "expo-router";
@@ -65,16 +66,18 @@ export default function RegisterScreen() {
                     required
                     icon="person-outline"
                     placeholder="First name (e.g. Juan)"
-                    value={form.firstName}
+                    maxLength={NAME_MAX} value={form.firstName}
                     onChangeText={form.setFirstName}
+                    onSubmitEditing={form.onSubmitEditing}
                     style={!compact && styles.thirdField}
                   />
                   <FormInput size="sm"
                     label="Last Name"
                     optional
                     placeholder="Last name (e.g. Dela Cruz)"
-                    value={form.lastName}
+                    maxLength={NAME_MAX} value={form.lastName}
                     onChangeText={form.setLastName}
+                    onSubmitEditing={form.onSubmitEditing}
                     style={!compact && styles.thirdField}
                   />
                 </View>
@@ -84,8 +87,9 @@ export default function RegisterScreen() {
                   required
                   icon="mail-outline"
                   placeholder="Email (e.g. name@example.com)"
-                  value={form.email}
+                  maxLength={EMAIL_MAX} value={form.email}
                   onChangeText={form.setEmail}
+                  onSubmitEditing={form.onSubmitEditing}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   style={styles.accountFieldSpacing}
@@ -97,7 +101,9 @@ export default function RegisterScreen() {
                   icon="lock-closed-outline"
                   placeholder="Password (min. 8 characters)"
                   value={form.password}
+                  maxLength={64}
                   onChangeText={form.setPassword}
+                  onSubmitEditing={form.onSubmitEditing}
                   secureTextEntry
                   showToggle
                   visible={form.showPassword}
@@ -112,7 +118,9 @@ export default function RegisterScreen() {
                   icon="lock-closed-outline"
                   placeholder="Re-enter password"
                   value={form.confirmPassword}
+                  maxLength={64}
                   onChangeText={form.setConfirmPassword}
+                  onSubmitEditing={form.onSubmitEditing}
                   secureTextEntry
                   showToggle
                   visible={form.showConfirmPassword}
@@ -144,17 +152,17 @@ export default function RegisterScreen() {
                 {/* Age / Height / Weight: one row, or on small screens age on its own row with height and weight below, like the phone */}
                 {compact ? (
                   <>
-                    <FormInput size="sm" label="Age" required icon="calendar-outline" placeholder="Age" value={form.age} onChangeText={form.setAge} keyboardType="number-pad" style={styles.fieldSpacing} />
+                    <FormInput size="sm" label="Age" required icon="calendar-outline" placeholder="Age" maxLength={3} value={form.age} onChangeText={form.setAge} onSubmitEditing={form.onSubmitEditing} keyboardType="number-pad" style={styles.fieldSpacing} />
                     <View style={[styles.row, styles.fieldSpacing]}>
-                      <FormInput size="sm" label="Height (cm)" required icon="resize-outline" placeholder="Height (cm)" value={form.height} onChangeText={form.setHeight} keyboardType="decimal-pad" style={styles.thirdField} />
-                      <FormInput size="sm" label="Weight (kg)" required icon="barbell-outline" placeholder="Weight (kg)" value={form.weight} onChangeText={form.setWeight} keyboardType="decimal-pad" style={styles.thirdField} />
+                      <FormInput size="sm" label="Height (cm)" required icon="resize-outline" placeholder="Height (cm)" maxLength={6} value={form.height} onChangeText={form.setHeight} onSubmitEditing={form.onSubmitEditing} keyboardType="decimal-pad" style={styles.thirdField} />
+                      <FormInput size="sm" label="Weight (kg)" required icon="barbell-outline" placeholder="Weight (kg)" maxLength={6} value={form.weight} onChangeText={form.setWeight} onSubmitEditing={form.onSubmitEditing} keyboardType="decimal-pad" style={styles.thirdField} />
                     </View>
                   </>
                 ) : (
                   <View style={[styles.row, styles.fieldSpacing]}>
-                    <FormInput size="sm" label="Age" required icon="calendar-outline" placeholder="Age" value={form.age} onChangeText={form.setAge} keyboardType="number-pad" style={styles.thirdField} />
-                    <FormInput size="sm" label="Height (cm)" required icon="resize-outline" placeholder="Height (cm)" value={form.height} onChangeText={form.setHeight} keyboardType="decimal-pad" style={styles.thirdField} />
-                    <FormInput size="sm" label="Weight (kg)" required icon="barbell-outline" placeholder="Weight (kg)" value={form.weight} onChangeText={form.setWeight} keyboardType="decimal-pad" style={styles.thirdField} />
+                    <FormInput size="sm" label="Age" required icon="calendar-outline" placeholder="Age" maxLength={3} value={form.age} onChangeText={form.setAge} onSubmitEditing={form.onSubmitEditing} keyboardType="number-pad" style={styles.thirdField} />
+                    <FormInput size="sm" label="Height (cm)" required icon="resize-outline" placeholder="Height (cm)" maxLength={6} value={form.height} onChangeText={form.setHeight} onSubmitEditing={form.onSubmitEditing} keyboardType="decimal-pad" style={styles.thirdField} />
+                    <FormInput size="sm" label="Weight (kg)" required icon="barbell-outline" placeholder="Weight (kg)" maxLength={6} value={form.weight} onChangeText={form.setWeight} onSubmitEditing={form.onSubmitEditing} keyboardType="decimal-pad" style={styles.thirdField} />
                   </View>
                 )}
 
@@ -220,7 +228,7 @@ export default function RegisterScreen() {
                   onSelect={form.selectActivity}
                   otherValue={form.activityOther}
                   onOtherChange={form.setActivityOther}
-                  otherPlaceholder="Your activity (e.g. Shift work, on my feet)"
+                  otherPlaceholder="Your activity (e.g. Shift work, on my feet)" otherMaxLength={50}
                   style={styles.fieldSpacing}
                 />
 
@@ -237,7 +245,7 @@ export default function RegisterScreen() {
                   onSelect={form.selectGoal}
                   otherValue={form.goalOther}
                   onOtherChange={form.setGoalOther}
-                  otherPlaceholder="Your goal (e.g. Run a 10K)"
+                  otherPlaceholder="Your goal (e.g. Run a 10K)" otherMaxLength={50}
                   style={styles.fieldSpacing}
                 />
 

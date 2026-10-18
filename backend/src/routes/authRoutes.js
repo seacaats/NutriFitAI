@@ -1,6 +1,6 @@
 const { Router } = require('express');
 
-const controller = require('../controllers/authController');
+const controller = require('../controllers/auth');
 const { validateBody } = require('../middleware/validateMiddleware');
 const { requireAuth } = require('../middleware/authMiddleware');
 const { allowOauthPopup } = require('../middleware/oauthHeadersMiddleware');

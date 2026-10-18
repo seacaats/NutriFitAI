@@ -1,7 +1,7 @@
 import { apiClient } from "@/shared/api/apiClient";
 import Skeleton from "@/shared/components/Skeleton";
+import ActionButton from "@/shared/components/ui/ActionButton";
 import { RingInput } from "@/shared/components/ui/FormInput";
-import PlanButton from "@/shared/components/ui/PlanButton";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import Stepper from "@/shared/components/ui/Stepper";
 import { STEP_GOAL } from "@/shared/constants/goalOptions";
@@ -110,7 +110,7 @@ export function TodayStepsCard({ todaySteps, onSaved, onEdit, style, loading = f
 
       <View style={styles.quickRow}>
         {QUICK_ADDS.map((n) => (
-          <PlanButton key={n} compact variant="secondary" label={`+${n.toLocaleString()}`} onPress={() => add(n)} disabled={saving} darkMode={darkMode} />
+          <ActionButton key={n} compact variant="secondary" label={`+${n.toLocaleString()}`} onPress={() => add(n)} disabled={saving || current + n > MAX_STEPS} darkMode={darkMode} />
         ))}
       </View>
 
@@ -120,15 +120,18 @@ export function TodayStepsCard({ todaySteps, onSaved, onEdit, style, loading = f
           onChangeText={(v) => {
             const digits = v.replace(/\D/g, "").slice(0, 5);
             if (digits === "") return setCustom("");
-            setCustom(String(Math.min(Number(digits), 20000)));
+            setCustom(String(Math.min(Number(digits), MAX_STEPS)));
           }}
           placeholder="Other amount"
           placeholderTextColor="#9ca3af"
           keyboardType="number-pad"
           style={[styles.input, styles.quickInput, { color: tone.text, borderColor: tone.border }]}
         />
-        <PlanButton compact label="Add" onPress={() => add(Number(custom))} loading={saving} disabled={!customValid} darkMode={darkMode} />
+        <ActionButton compact label="Add" onPress={() => add(Number(custom))} loading={saving} disabled={!customValid} darkMode={darkMode} />
       </View>
+      {current >= MAX_STEPS && (
+        <Text style={[styles.rowMeta, { color: tone.muted }]}>Daily maximum of {MAX_STEPS.toLocaleString()} steps reached.</Text>
+      )}
       <ScreenError message={error} onDismiss={() => setError("")} />
     </View>
   );
@@ -168,7 +171,7 @@ export function StepGoalCard({ goal, onSaved, style }) {
       <Text style={[styles.rowMeta, { color: tone.muted }]}>Steps to aim for each day</Text>
       <Stepper label="Steps" value={value} onChange={setValue} min={STEP_GOAL.min} max={STEP_GOAL.max} step={STEP_GOAL.step} darkMode={darkMode} />
       <ScreenError message={error} onDismiss={() => setError("")} />
-      <PlanButton label="Save goal" onPress={save} loading={saving} disabled={value === goal} darkMode={darkMode} />
+      <ActionButton label="Save goal" onPress={save} loading={saving} disabled={value === goal} darkMode={darkMode} />
     </View>
   );
 }

@@ -5,25 +5,18 @@ const WorkoutSession = require('../models/workouts/WorkoutSession');
 const WeightLog = require('../models/user/WeightLog');
 const User = require('../models/user/User');
 const { asyncHandler, sendSuccess } = require('../utils/httpResponse');
-const { activityStreak } = require('../services/activityStreak');
+const { activityStreak } = require('../services/progress/activityStreak');
+const { weightTrend, LOOKBACK_DAYS } = require('../services/progress/weightTrend');
 const {
-  today, addDays, dayRangeToInstants, weekStart, monthStart,
+  today, addDays, dayRangeToInstants, weekStart, monthStart, daysBetween,
 } = require('../utils/calendarDay');
-
+const { userTimeZone } = require('../services/user/userTimeZone');
+const { round1 } = require('../utils/numbers');
 // Same fallbacks the steps and water screens use
-const DEFAULT_DAILY_STEP_GOAL = 10000;
-const MIN_WATER_GOAL_ML = 2000;
-
-
-async function userTimeZone(req) {
-  if (req.timeZone) return req.timeZone;
-  return (await User.getProfile(req.userId))?.timezone || undefined;
-}
+const { DEFAULT_DAILY_STEP_GOAL, MIN_WATER_GOAL_ML, MAX_WATER_GOAL_ML } = require('../utils/goals/goalLimits');
 
 // Inclusive day count, both "YYYY-MM-DD"
-function daysBetween(from, to) {
-  return Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86400000) + 1;
-}
+const daysInclusive = (from, to) => daysBetween(from, to) + 1;
 
 /**
  * The period's first and last day. `offset` steps back whole periods:
@@ -102,7 +95,6 @@ async function weightFor(userId, from, to, timeZone, { vsPrevious = false } = {}
   return { points, startKg, currentKg, changeKg };
 }
 
-const round1 = (n) => Math.round(n * 10) / 10;
 
 // GET /api/progress?period=week|month|3m|year&offset=0
 const getProgress = asyncHandler(async (req, res) => {
@@ -115,9 +107,9 @@ const getProgress = asyncHandler(async (req, res) => {
   const { start, end } = dayRangeToInstants(from, to, timeZone);
   // Days of the period that have happened. The whole period once it's past
   const lastDay = to < day ? to : day;
-  const elapsedDays = from > day ? 0 : daysBetween(from, lastDay);
+  const elapsedDays = from > day ? 0 : daysInclusive(from, lastDay);
 
-  const [meals, water, steps, workouts, weight, streak, goal, profile] = await Promise.all([
+  const [meals, water, steps, workouts, weight, streak, goal, profile, trendRows] = await Promise.all([
     Meal.dailyTotals(req.userId, from, to),
     WaterLog.dailyTotals(req.userId, start, end, timeZone),
     DailySteps.findRange({ userId: req.userId, from, to }),
@@ -126,8 +118,21 @@ const getProgress = asyncHandler(async (req, res) => {
     activityStreak(req.userId, day, timeZone),
     User.getActiveGoal(req.userId),
     User.getProfile(req.userId),
+    // The trend is about now, so only the current period works it out
+    offset === 0
+      ? WeightLog.findSince(req.userId, dayRangeToInstants(addDays(day, -LOOKBACK_DAYS), day, timeZone).start)
+      : null,
   ]);
   const stepsByDay = Object.fromEntries(steps.map((s) => [s.activityDate, Number(s.stepCount) || 0]));
+  const trend = trendRows
+    ? weightTrend({
+      rows: trendRows,
+      targetKg: profile?.targetWeightKg ?? null,
+      paceKg: profile?.weeklyPaceKg ?? null,
+      timeZone,
+      day,
+    })
+    : null;
 
   // One pass over the days fills both the buckets and the period totals
   const totals = { caloriesKcal: 0, proteinG: 0, carbsG: 0, fatG: 0, steps: 0, waterMl: 0, workouts: 0, mealDays: 0 };
@@ -156,7 +161,7 @@ const getProgress = asyncHandler(async (req, res) => {
   });
 
   const dailySteps = goal?.dailySteps ?? DEFAULT_DAILY_STEP_GOAL;
-  const dailyWaterMl = Math.max(goal?.dailyWaterMl ?? MIN_WATER_GOAL_ML, MIN_WATER_GOAL_ML);
+  const dailyWaterMl = Math.min(Math.max(goal?.dailyWaterMl ?? MIN_WATER_GOAL_ML, MIN_WATER_GOAL_ML), MAX_WATER_GOAL_ML);
 
   return sendSuccess(res, {
     data: {
@@ -192,6 +197,8 @@ const getProgress = asyncHandler(async (req, res) => {
       },
       buckets,
       weight,
+      // Smoothed weight, weekly rate and projected target date. Null with too few weigh-ins
+      weightTrend: trend,
       streak,
     },
   });

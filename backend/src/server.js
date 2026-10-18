@@ -10,6 +10,8 @@ const { SEVERITIES } = require('./utils/audit-logs/actions');
 const { logSystemAction } = require('./utils/audit-logs/auditLogger');
 const { runReminders, RUN_EVERY_MS: REMINDERS_EVERY_MS } = require('./services/notifications/reminders');
 const { verifyMailer } = require('./services/mailer');
+const { runDailyRollup, RUN_EVERY_MS: ROLLUP_EVERY_MS } = require('./services/analytics/dailyRollup');
+const { runActivationFunnel, RUN_EVERY_MS: FUNNEL_EVERY_MS } = require('./services/analytics/activationFunnel');
 
 // Force mongodb connection before listening to requests through mongo.js
 // which sets bufferCommands:false which automatically rejects them
@@ -17,6 +19,8 @@ let server;
 let purgeTimer;
 let chainTimer;
 let reminderTimer;
+let rollupTimer;
+let funnelTimer;
 
 // Scan photos past SCAN_RETENTION_DAYS are deleted; the scan document and
 // the nutrition snapshotted on meals stay. Runs on boot, then every 6 hours.
@@ -113,6 +117,17 @@ async function start() {
   chainTimer = setInterval(checkAuditChains, CHAIN_CHECK_EVERY_MS);
   chainTimer.unref();
 
+  // Daily totals for admin Analytics: on boot to catch up after downtime, then
+  // every 6 hours. Each run recounts the last few finished days
+  runDailyRollup();
+  rollupTimer = setInterval(runDailyRollup, ROLLUP_EVERY_MS);
+  rollupTimer.unref();
+
+  // New-user funnel for admin Analytics, counted the same way: on boot, then every 6 hours
+  runActivationFunnel();
+  funnelTimer = setInterval(runActivationFunnel, FUNNEL_EVERY_MS);
+  funnelTimer.unref();
+
   // Reminders every 15 minutes. Not run on boot: a restart mid-window would
   // otherwise send the same window early (the dedupe key still stops repeats)
   reminderTimer = setInterval(runReminders, REMINDERS_EVERY_MS);
@@ -134,6 +149,8 @@ async function shutdown(signal) {
   clearInterval(purgeTimer);
   clearInterval(chainTimer);
   clearInterval(reminderTimer);
+  clearInterval(rollupTimer);
+  clearInterval(funnelTimer);
   try {
     if (server) await new Promise((resolve) => server.close(resolve));
     await close();

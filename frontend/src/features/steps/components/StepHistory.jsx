@@ -247,6 +247,7 @@ export function StepDayEditModal({ visible, date, current, onClose, onSaved }) {
 
   const count = Number(value);
   const valid = /^\d+$/.test(value) && count <= MAX_STEPS;
+  const tooMany = /^\d+$/.test(value) && count > MAX_STEPS;
 
   async function save() {
     if (!valid) return;
@@ -267,7 +268,9 @@ export function StepDayEditModal({ visible, date, current, onClose, onSaved }) {
       visible={visible}
       tone="confirm"
       title="Edit steps"
-      message={error || "Saved as a manual entry, so your phone won't overwrite it. Enter 0 for a day without steps."}
+      message={error || (tooMany
+        ? `A day can hold up to ${MAX_STEPS.toLocaleString()} steps.`
+        : `Saved as a manual entry, so your phone won't overwrite it. Up to ${MAX_STEPS.toLocaleString()} steps; enter 0 for a day without steps.`)}
       confirmLabel="Update"
       confirmDisabled={!valid}
       loading={saving}
@@ -283,7 +286,11 @@ export function StepDayEditModal({ visible, date, current, onClose, onSaved }) {
           <TextInput
             {...ring.handlers}
             value={value}
-            onChangeText={(v) => setValue(v.replace(/\D/g, "").slice(0, 6))}
+            // Same cap as "Other amount" on the Steps card: typing past it stops at the max
+            onChangeText={(v) => {
+              const digits = v.replace(/\D/g, "").slice(0, 5);
+              setValue(digits === "" ? "" : String(Math.min(Number(digits), MAX_STEPS)));
+            }}
             keyboardType="number-pad"
             placeholder="Steps"
             placeholderTextColor={tone.muted}

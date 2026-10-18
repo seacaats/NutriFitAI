@@ -1,6 +1,7 @@
 import { useOtpInput } from "@/features/auth/hooks/useOtpInput";
 import { useResendCooldown } from "@/features/auth/hooks/useResendCooldown";
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
+import { useEnterToSubmit } from "@/shared/hooks/useEnterToSubmit";
 import { isValidEmail, validateOtp, validatePassword } from "@/shared/utils/authValidators";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useRef, useState } from "react";
@@ -19,13 +20,16 @@ export function useForgotPasswordForm() {
   const submittingRef = useRef(false);
   const [error, setError] = useState("");
 
+  function validateEmail() {
+    if (!email.trim()) return "Please enter the email you used to create your account.";
+    if (!isValidEmail(email)) return "Please enter a valid email address.";
+    return "";
+  }
+
   async function handleSubmit() {
-    if (!email.trim()) {
-      setError("Please enter the email you used to create your account.");
-      return;
-    }
-    if (!isValidEmail(email)) {
-      setError("Please enter a valid email address.");
+    const validationError = validateEmail();
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -56,7 +60,10 @@ export function useForgotPasswordForm() {
 
   const dismissError = () => setError("");
 
-  return { email, setEmail, loading, error, dismissError, handleSubmit, goToLogin };
+  // Enter in the email field sends the code
+  const { canSubmit, onSubmitEditing } = useEnterToSubmit({ submit: handleSubmit, validate: validateEmail, loading });
+
+  return { email, setEmail, loading, error, dismissError, handleSubmit, canSubmit, onSubmitEditing, goToLogin };
 }
 
 /** Password-reset OTP screen state, shared by the web and native screens */
@@ -176,23 +183,20 @@ export function useResetPasswordForm() {
   const dismissError = () => setError("");
   const dismissSuccess = () => setSuccess("");
 
-  async function handleSubmit() {
+  function validateReset() {
     const passwordError = validatePassword(password);
-    if (passwordError) {
-      setError(passwordError);
-      return;
-    }
-    if (!confirmPassword) {
-      setError("Please confirm your new password.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError("Passwords don't match.");
-      return;
-    }
+    if (passwordError) return passwordError;
+    if (!confirmPassword) return "Please confirm your new password.";
+    if (password !== confirmPassword) return "Passwords don't match.";
     // The token is a route param, so it's missing on a direct visit or reload
-    if (!resetToken) {
-      setError("Your reset session has expired. Please start over from Forgot password.");
+    if (!resetToken) return "Your reset session has expired. Please start over from Forgot password.";
+    return "";
+  }
+
+  async function handleSubmit() {
+    const validationError = validateReset();
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -220,6 +224,9 @@ export function useResetPasswordForm() {
     }
   }
 
+  // Enter in either password field resets the password
+  const { canSubmit, onSubmitEditing } = useEnterToSubmit({ submit: handleSubmit, validate: validateReset, loading });
+
   return {
     email,
     password,
@@ -236,5 +243,7 @@ export function useResetPasswordForm() {
     dismissSuccess,
     loading,
     handleSubmit,
+    canSubmit,
+    onSubmitEditing,
   };
 }

@@ -13,6 +13,10 @@ const PASSWORD_MIN_LENGTH = 8;
 // toward 16, but anything up to this is accepted
 const PASSWORD_MAX_LENGTH = 64;
 
+// Longest first/last name and email. Mirror NAME_MAX and EMAIL_MAX in the backend's authValidators.js
+export const NAME_MAX = 75;
+export const EMAIL_MAX = 254;
+
 // Age bounds, mirrors registerSchema / updateProfileSchema
 // Mirrors AGE_MIN and AGE_MAX in the backend's authValidators.js
 export const AGE_MIN = 13;
@@ -22,11 +26,12 @@ export const PASSWORD_HINT =
   "Tip: mix upper & lowercase letters, numbers and symbols, or just make it longer (up to 16 characters).";
 
 export function isValidEmail(value) {
-  return EMAIL_RE.test(String(value || "").trim());
+  const email = String(value || "").trim();
+  return email.length <= EMAIL_MAX && EMAIL_RE.test(email);
 }
 
 // Returns an error string, or "" when the name is acceptable
-export function validateName(value, { label, required = false, max = 75 }) {
+export function validateName(value, { label, required = false, max = NAME_MAX }) {
   const name = String(value || "").trim();
   if (!name) return required ? `Please enter your ${label.toLowerCase()}.` : "";
   if (name.length > max) return `${label} is too long.`;

@@ -2,8 +2,8 @@ import { OnboardingStepBody } from "@/features/onboarding/components/OnboardingS
 import { useOnboarding } from "@/features/onboarding/hooks/useOnboarding";
 import { useWorkoutOptions } from "@/features/workouts/components/WorkoutPrefsPicker";
 import Skeleton from "@/shared/components/Skeleton";
+import ActionButton from "@/shared/components/ui/ActionButton";
 import ConfirmModal from "@/shared/components/ui/ConfirmModal";
-import PlanButton from "@/shared/components/ui/PlanButton";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import { useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
@@ -91,7 +91,7 @@ export default function OnboardingScreen() {
             {/* Back on the left, Skip and Next (or Finish) on the right */}
             <View style={[styles.footer, { borderTopColor: tone.border }]}>
               {index > 0 ? (
-                <PlanButton variant="secondary" label="Back" onPress={onboarding.back} disabled={saving} darkMode={darkMode} />
+                <ActionButton variant="secondary" label="Back" onPress={onboarding.back} disabled={saving} darkMode={darkMode} />
               ) : <View />}
               <View style={styles.footerEnd}>
                 {!isReview && (
@@ -99,7 +99,7 @@ export default function OnboardingScreen() {
                     <Text style={[styles.skipText, { color: tone.muted }]}>Skip</Text>
                   </Pressable>
                 )}
-                <PlanButton
+                <ActionButton
                   label={isReview ? "Finish" : "Next"}
                   onPress={onSubmit}
                   loading={saving}

@@ -10,7 +10,7 @@ import { useMemo } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-export default function VerifyOtpScreen() {
+export default function VerifyResetPasswordScreen() {
   const colors = useAuthColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const form = useVerifyResetPassword();
@@ -34,7 +34,7 @@ export default function VerifyOtpScreen() {
           </View>
 
           <View style={styles.otpWrap}>
-            <OtpInputRow otp={form.otp} />
+            <OtpInputRow otp={form.otp} onSubmit={form.handleVerify} />
           </View>
 
           <FormAlert message={form.error} onDismiss={form.dismissError} style={styles.alert} />

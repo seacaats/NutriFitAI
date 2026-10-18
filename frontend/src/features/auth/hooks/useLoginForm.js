@@ -2,6 +2,7 @@ import { useOtpInput } from "@/features/auth/hooks/useOtpInput";
 import { useResendCooldown } from "@/features/auth/hooks/useResendCooldown";
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
 import { useAuth } from "@/shared/context/AuthContext";
+import { useEnterToSubmit } from "@/shared/hooks/useEnterToSubmit";
 import {
   buildGoogleAuthUrl,
   googleErrorMessage,
@@ -290,21 +291,19 @@ export function useLoginForm() {
     }
   }
 
+  /** First problem with the sign-in fields, or "" when they can be submitted */
+  function validateLogin() {
+    if (!email.trim() && !password) return "Please enter your email and password.";
+    if (!email.trim()) return "Please enter your email address.";
+    if (!isValidEmail(email)) return "Please enter a valid email address.";
+    if (!password) return "Please enter your password.";
+    return "";
+  }
+
   async function handleLogin() {
-    if (!email.trim() && !password) {
-      setError("Please enter your email and password.");
-      return;
-    }
-    if (!email.trim()) {
-      setError("Please enter your email address.");
-      return;
-    }
-    if (!isValidEmail(email)) {
-      setError("Please enter a valid email address.");
-      return;
-    }
-    if (!password) {
-      setError("Please enter your password.");
+    const validationError = validateLogin();
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -614,6 +613,9 @@ export function useLoginForm() {
 
   const dismissError = () => setError("");
 
+  // Enter in the email or password field signs in
+  const { canSubmit, onSubmitEditing } = useEnterToSubmit({ submit: handleLogin, validate: validateLogin, loading });
+
   return {
     email,
     setEmail,
@@ -629,6 +631,8 @@ export function useLoginForm() {
     error,
     dismissError,
     handleLogin,
+    canSubmit,
+    onSubmitEditing,
     mfa,
     mfaCode,
     setMfaCode,
