@@ -14,7 +14,7 @@ import {
 import { useAuth } from "@/shared/context/AuthContext";
 import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { resolveMediaUrl } from "@/shared/services/mediaUrl";
-import { AGE_MAX, AGE_MIN, isValidEmail, validateName, validateNumber } from "@/shared/utils/authValidators";
+import { AGE_MAX, AGE_MIN, isValidEmail, validateName, validateNumber } from "@/shared/utils/formValidators";
 import * as ImagePicker from "expo-image-picker";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";

@@ -3,7 +3,7 @@ const { z } = require('zod');
 const { ROLES } = require('../middleware/authMiddleware');
 const { CATEGORIES } = require('../utils/audit-logs/actions');
 const { MAX_PAGE_SIZE } = require('../models/audit-logs/AuditLog');
-const { personName } = require('./authValidators');
+const { personName } = require('./shared/fieldSchemas');
 
 // Fetched from the model to avoid conflicts with the database
 const pagination = {

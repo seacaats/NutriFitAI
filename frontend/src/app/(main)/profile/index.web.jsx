@@ -25,7 +25,7 @@ import {
   shellColors,
 } from "@/shared/theme/nutrifitai";
 import { profileStyles } from "@/shared/theme/screenStyles";
-import { NAME_MAX } from "@/shared/utils/authValidators";
+import { NAME_MAX } from "@/shared/utils/formValidators";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {

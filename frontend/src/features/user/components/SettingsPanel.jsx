@@ -11,7 +11,7 @@ import TimeStepper, { formatTime, QUIET_END, QUIET_START } from "@/shared/compon
 import { useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
-import { validatePassword } from "@/shared/utils/authValidators";
+import { validatePassword } from "@/shared/utils/formValidators";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { Platform, Pressable, StyleSheet, Switch, Text, View } from "react-native";

@@ -2,7 +2,7 @@ import { useOtpInput } from "@/features/auth/hooks/useOtpInput";
 import { useResendCooldown } from "@/features/auth/hooks/useResendCooldown";
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
 import { useEnterToSubmit } from "@/shared/hooks/useEnterToSubmit";
-import { isValidEmail, validateOtp, validatePassword } from "@/shared/utils/authValidators";
+import { isValidEmail, validateOtp, validatePassword } from "@/shared/utils/formValidators";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useRef, useState } from "react";
 

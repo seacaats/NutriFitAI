@@ -43,7 +43,7 @@ const COACH_TONES = ['friendly', 'direct', 'motivational'];
 
 const profileSchema = new Schema(
   {
-    // Same 13-122 as authValidators.js
+    // Same 13-122 as validators/shared/fieldSchemas.js
     age: { type: Number, min: 13, max: 122 },
     ageRecordedOn: CALENDAR_DAY,
     sex: { type: String, enum: ['male', 'female', null], default: null },

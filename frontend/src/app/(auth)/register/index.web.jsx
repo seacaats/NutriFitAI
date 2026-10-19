@@ -11,7 +11,7 @@ import PrimaryButton from "@/shared/components/ui/PrimaryButton";
 import { useAuthColors } from "@/shared/context/ThemeContext";
 import { radii, spacing, typography } from "@/shared/theme/nutrifitai";
 import { registerStyles } from "@/shared/theme/screenStyles";
-import { EMAIL_MAX, NAME_MAX } from "@/shared/utils/authValidators";
+import { EMAIL_MAX, NAME_MAX } from "@/shared/utils/formValidators";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router } from "expo-router";

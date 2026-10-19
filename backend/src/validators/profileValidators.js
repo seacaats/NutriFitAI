@@ -1,6 +1,6 @@
 const { z } = require('zod');
 
-const { ageSchema, heightSchema, weightSchema, sexSchema, personName, customOption, dietPreferences, healthConditions, passwordSchema } = require('./authValidators');
+const { ageSchema, heightSchema, weightSchema, sexSchema, personName, customOption, dietPreferences, healthConditions, passwordSchema } = require('./shared/fieldSchemas');
 const { nutritionTargets } = require('./foodValidators');
 const { stepGoalSchema } = require('./stepsValidators');
 const { waterGoalSchema } = require('./waterValidators');

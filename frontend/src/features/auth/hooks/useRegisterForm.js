@@ -26,7 +26,7 @@ import {
   validateNumber,
   validateOtp,
   validatePassword,
-} from "@/shared/utils/authValidators";
+} from "@/shared/utils/formValidators";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 

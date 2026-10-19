@@ -11,7 +11,7 @@ import { ROLES, useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { adminStyles } from "@/shared/theme/screenStyles";
-import { NAME_MAX } from "@/shared/utils/authValidators";
+import { NAME_MAX } from "@/shared/utils/formValidators";
 import { formatDate } from "@/shared/utils/formatDate";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";

@@ -1,11 +1,11 @@
-//Shared client-side validation helpers for the auth screens. Mirrors backend authValidators.js
+// Shared client-side validation helpers for the form screens. Mirrors backend authValidators.js
 
 // Deliberately permissive — the server (and the confirmation email) is the
 // real authority; this only catches obvious typos before a request is sent
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 // Letters (any script, incl. accents like "ñ"), plus spaces, hyphens,
-// apostrophes and periods. Must start with a letter. Mirrors NAME_RE on the backend
+// apostrophes and periods. Must start with a letter. Mirrors NAME_RE in the backend's validators/shared/fieldSchemas.js
 const NAME_RE = /^[\p{L}\p{M}][\p{L}\p{M} '.-]*$/u;
 
 const PASSWORD_MIN_LENGTH = 8;
@@ -13,12 +13,12 @@ const PASSWORD_MIN_LENGTH = 8;
 // toward 16, but anything up to this is accepted
 const PASSWORD_MAX_LENGTH = 64;
 
-// Longest first/last name and email. Mirror NAME_MAX and EMAIL_MAX in the backend's authValidators.js
+// Longest first/last name and email. Mirror NAME_MAX and EMAIL_MAX in the backend's validators/shared/fieldSchemas.js
 export const NAME_MAX = 75;
 export const EMAIL_MAX = 254;
 
 // Age bounds, mirrors registerSchema / updateProfileSchema
-// Mirrors AGE_MIN and AGE_MAX in the backend's authValidators.js
+// Mirrors AGE_MIN and AGE_MAX in the backend's validators/shared/fieldSchemas.js
 export const AGE_MIN = 13;
 export const AGE_MAX = 122;
 

@@ -12,7 +12,7 @@ import {
 } from "@/shared/services/googleAuth";
 import { listenForGoogleResult, resetGoogleAuthChannel } from "@/shared/utils/authChannel";
 import { setAccessToken } from "@/shared/utils/authStorage";
-import { isValidEmail } from "@/shared/utils/authValidators";
+import { isValidEmail } from "@/shared/utils/formValidators";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Platform } from "react-native";

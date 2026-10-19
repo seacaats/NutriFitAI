@@ -1,7 +1,7 @@
 /**
  *   - GOALS values <-> backend src/utils/goalNormalizer.js's GOALS list
- *   - SEXES values <-> backend src/validators/authValidators.js's SEXES enum
- *   - ACTIVITY_LEVELS <-> backend validators/authValidators.js's ACTIVITY_LEVELS
+ *   - SEXES values <-> backend src/validators/shared/fieldSchemas.js's SEXES enum
+ *   - ACTIVITY_LEVELS <-> backend accepts any value up to CUSTOM_OPTION_MAX (validators/shared/fieldSchemas.js)
  *
  * Goal and activity level also accept a custom value (the "Other" option on
  * the register screen), stored verbatim. Label <-> value helpers therefore
