@@ -3,10 +3,8 @@ const { CALENDAR_DAY_RE } = require('../utils/calendarDay');
 
 
 const STEP_SOURCES = ['healthkit', 'health_connect', 'device_sensor'];
-// Phone syncs can report a lot (long hikes); typed entries are capped lower.
-// Mirrors MAX_STEPS in the frontend's StepCards.jsx
-const MAX_STEPS_PER_DAY = 200000;
-const MAX_MANUAL_STEPS = 20000;
+// Same ceiling for typed and synced days. Mirrors MAX_STEPS in the frontend's StepCards.jsx
+const MAX_STEPS_PER_DAY = 20000;
 
 const MAX_SYNC_DAYS = 31;
 
@@ -41,7 +39,8 @@ const syncStepsSchema = z
         z
           .object({
             activityDate: notFarFuture,
-            stepCount: z.number().int().min(0).max(MAX_STEPS_PER_DAY),
+            // A phone reporting more is set to the ceiling instead of failing the whole sync
+            stepCount: z.number().int().min(0).transform((n) => Math.min(n, MAX_STEPS_PER_DAY)),
             distanceMeters: z.number().min(0).max(1000000).nullable().optional(),
           })
           .strict(),
@@ -76,7 +75,7 @@ const stepRangeSchema = z
 const manualStepsSchema = z
   .object({
     activityDate: notFarFuture,
-    stepCount: z.number().int().min(0).max(MAX_MANUAL_STEPS, `Steps can be up to ${MAX_MANUAL_STEPS.toLocaleString('en-US')} a day.`),
+    stepCount: z.number().int().min(0).max(MAX_STEPS_PER_DAY, `Steps can be up to ${MAX_STEPS_PER_DAY.toLocaleString('en-US')} a day.`),
   })
   .strict();
 

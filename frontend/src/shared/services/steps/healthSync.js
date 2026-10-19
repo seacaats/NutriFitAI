@@ -1,5 +1,8 @@
-import { Pedometer } from "expo-sensors";
 import { addDays, daysBetween, eachDay, todayISO } from "@/shared/utils/dates";
+import { Pedometer } from "expo-sensors";
+
+// Most steps one day can hold. Mirrors MAX_STEPS in StepCards.jsx and the server's limit
+const MAX_STEPS_PER_DAY = 20000;
 
 /**
  * iOS step source, and the default this file resolves to on any platform
@@ -110,7 +113,7 @@ const healthSync = {
           const result = await Pedometer.getStepCountAsync(from, to);
           const steps = Number(result?.steps);
           if (!Number.isFinite(steps)) return null;
-          return { activityDate: isoDate, stepCount: Math.max(0, Math.round(steps)) };
+          return { activityDate: isoDate, stepCount: Math.min(MAX_STEPS_PER_DAY, Math.max(0, Math.round(steps))) };
         } catch {
           return null;
         }

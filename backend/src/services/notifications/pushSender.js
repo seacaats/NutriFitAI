@@ -1,5 +1,6 @@
 const env = require('../../../config/env');
 const PushToken = require('../../models/notifications/PushToken');
+const User = require('../../models/user/User');
 const { logSystemAction } = require('../../utils/audit-logs/auditLogger');
 
 // Expo Push API: one POST per batch of up to 100 messages, one ticket back
@@ -18,10 +19,47 @@ const RECEIPT_MAX_AGE_MS = 23 * 60 * 60 * 1000;
 const pendingReceipts = new Map(); // ticketId -> { token, userId, kind, sentAt }
 
 function headers() {
-  const h = { 'Content-Type': 'application/json', Accept: 'application/json' };
+  const h = { 'Content-Type': 'application/json', Accept: 'application/json', 'Accept-Encoding': 'gzip, deflate' };
   // Only needed when "enhanced push security" is turned on in the Expo project
   if (env.push.expoAccessToken) h.Authorization = `Bearer ${env.push.expoAccessToken}`;
   return h;
+}
+
+// logSystemAction doesn't look names up, so a failed push names its user here.
+// Without it the audit line reads "an unidentified user"
+async function auditPush({ action, token, userId, details }) {
+  let target = {};
+  try {
+    const user = await User.getById(userId);
+    target = { targetLabel: User.displayName(user), targetRole: user?.role ?? null };
+  } catch {
+    // Unnamed entry beats no entry
+  }
+  await logSystemAction({
+    action,
+    targetType: 'user',
+    targetId: userId,
+    ...target,
+    details,
+    hash: { tokenHash: token },
+  });
+}
+
+const auditFailure = ({ token, userId, kind, reason }) => auditPush({
+  action: 'notification.delivery.failed', token, userId, details: { kind, reason },
+});
+
+// One POST of up to 100 messages. On failure the error carries Expo's own
+// reason next to the status, so the audit row says why (a bare 403 doesn't)
+async function postMessages(messages) {
+  const res = await fetch(EXPO_PUSH_URL, { method: 'POST', headers: headers(), body: JSON.stringify(messages) });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !Array.isArray(json?.data)) {
+    const why = json?.errors?.[0];
+    const detail = why ? `: ${[why.code, why.message].filter(Boolean).join(' ')}`.slice(0, 200) : '';
+    throw Object.assign(new Error(`Expo push HTTP ${res.status}${detail}`), { status: res.status });
+  }
+  return json.data;
 }
 
 // One failed device: a dead token is dropped, anything else is audited.
@@ -29,21 +67,10 @@ function headers() {
 async function handleError({ token, userId, kind, details, message }) {
   if (details?.error === 'DeviceNotRegistered') {
     await PushToken.removeToken(token).catch(() => {});
-    await logSystemAction({
-      action: 'notification.push_token.invalidated',
-      targetType: 'user',
-      targetId: userId,
-      hash: { tokenHash: token },
-    });
+    await auditPush({ action: 'notification.push_token.invalidated', token, userId });
     return;
   }
-  await logSystemAction({
-    action: 'notification.delivery.failed',
-    targetType: 'user',
-    targetId: userId,
-    details: { kind, reason: details?.error || message || 'Unknown' },
-    hash: { tokenHash: token },
-  });
+  await auditFailure({ token, userId, kind, reason: details?.error || message || 'Unknown' });
 }
 
 /**
@@ -77,22 +104,24 @@ async function sendPush({ userId, kind, title, body, link = null }) {
 
     let tickets;
     try {
-      const res = await fetch(EXPO_PUSH_URL, { method: 'POST', headers: headers(), body: JSON.stringify(messages) });
-      const json = await res.json();
-      if (!res.ok || !Array.isArray(json.data)) throw new Error(`Expo push HTTP ${res.status}`);
-      tickets = json.data;
+      tickets = await postMessages(messages);
     } catch (err) {
-      // The whole batch failed (network, Expo down): one row per device
-      for (const t of batch) {
-        await logSystemAction({
-          action: 'notification.delivery.failed',
-          targetType: 'user',
-          targetId: userId,
-          details: { kind, reason: err.message },
-          hash: { tokenHash: t.token },
-        });
+      if (err.status >= 400 && err.status < 500 && messages.length > 1) {
+        // Expo refused the batch (one device can be enough). Send them one by
+        // one so the good devices still get it; a failed one is audited below
+        tickets = [];
+        for (const m of messages) {
+          try {
+            tickets.push(...(await postMessages([m])));
+          } catch (one) {
+            tickets.push({ status: 'error', message: one.message });
+          }
+        }
+      } else {
+        // The whole batch failed (network, Expo down): one row per device
+        for (const t of batch) await auditFailure({ token: t.token, userId, kind, reason: err.message });
+        continue;
       }
-      continue;
     }
 
     for (let j = 0; j < tickets.length; j += 1) {

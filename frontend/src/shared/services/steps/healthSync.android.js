@@ -10,6 +10,9 @@ import {
 
 import { addDays, eachDay, todayISO } from "@/shared/utils/dates";
 
+// Most steps one day can hold. Mirrors MAX_STEPS in StepCards.jsx and the server's limit
+const MAX_STEPS_PER_DAY = 20000;
+
 /**
  * Android step source, backed by Health Connect
  * Same four-function contract as the iOS file so the screens never branch.
@@ -175,7 +178,7 @@ const healthSync = {
         const activityDate = requestedDays[index];
         if (!activityDate) return null;
 
-        return { activityDate, stepCount: Math.max(0, Math.round(Number(total))) };
+        return { activityDate, stepCount: Math.min(MAX_STEPS_PER_DAY, Math.max(0, Math.round(Number(total)))) };
       })
       // Buckets with no samples are dropped rather than zeroed: same reasoning
       // as iOS, a gap is not a claim of zero movement.

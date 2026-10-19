@@ -15,7 +15,7 @@ const dailyStepsSchema = new Schema(
 
     // "None recorded ≠ Recorded zero". An inactive week and 
     // a week of total immobility must stay distinguishable    
-    stepCount: { type: Number, required: true, default: 0, min: 0, max: 200000 },
+    stepCount: { type: Number, required: true, default: 0, min: 0, max: 20000 },
  
     distanceMeters: { type: Number, default: null, min: 0 },
 
