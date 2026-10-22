@@ -10,15 +10,16 @@ const PREFIX = "nutrifit.remembered:";
 const keyFor = (name, userId) => `${PREFIX}${name}:${userId}`;
 
 // Returns cached value or null if expired or missing
-export function getRemembered(name, userId, maxAgeMs) {
+export async function getRemembered(name, userId, maxAgeMs) {
   if (!userId) return null;
-  return AsyncStorage.getItem(keyFor(name, userId))
-    .then((raw) => {
-      if (!raw) return null;
-      const { value, savedAt } = JSON.parse(raw);
-      return Date.now() - savedAt <= maxAgeMs ? value : null;
-    })
-    .catch(() => null);
+  try {
+    const raw = await AsyncStorage.getItem(keyFor(name, userId));
+    if (!raw) return null;
+    const { value, savedAt } = JSON.parse(raw);
+    return Date.now() - savedAt <= maxAgeMs ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function setRemembered(name, userId, value) {

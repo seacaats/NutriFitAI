@@ -6,6 +6,7 @@ expo-env.d.ts
 .env
 .env*.local
 .env.prod
+.env.production
 *.tsbuildinfo
 fcm-key.json
 

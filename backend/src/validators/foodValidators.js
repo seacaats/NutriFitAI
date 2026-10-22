@@ -27,6 +27,7 @@ const mealItemSchema = z.object({
   grams: z.coerce.number({ invalid_type_error: 'Enter how many grams.' })
     .min(5, 'Enter at least 5 g.')
     .max(5000, 'Grams can be up to 5,000.'),
+  servings: z.coerce.number().min(0.01).optional(),
   caloriesKcal: macro('Calories'),
   proteinG: macro('Protein'),
   carbsG: macro('Carbs'),

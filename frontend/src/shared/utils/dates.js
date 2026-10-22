@@ -85,3 +85,7 @@ export function friendlyDate(isoDate) {
   const [, m, d] = isoDate.split("-").map(Number);
   return `${MONTHS[m - 1]} ${d}`;
 }
+
+export function formatNumber(value) {
+  return new Intl.NumberFormat("en-US").format(Math.round(value || 0));
+}

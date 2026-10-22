@@ -11,9 +11,11 @@ import { Platform } from "react-native";
  * 1. EXPO_PUBLIC_API_URL (explicit override for production/staging)
  * 2. Window origin hostname on web
  * 3. Expo hostUri (local development via LAN/tunnel)
- * 4. Localhost fallback
+ * 4. Production backend on release builds (!__DEV__)
+ * 5. Localhost fallback
  */
 const API_PORT = process.env.EXPO_PUBLIC_API_PORT || "4000";
+const PRODUCTION_API_URL = "https://nutrifitaibackend.onrender.com/api";
 
 function resolveBaseUrl() {
   const explicit = (process.env.EXPO_PUBLIC_API_URL || "").trim();
@@ -37,6 +39,11 @@ function resolveBaseUrl() {
     // Strip scheme and bundler port to target the API port
     const host = String(hostUri).replace(/^\w+:\/\//, "").split("/")[0].split(":")[0];
     if (host) return `http://${host}:${API_PORT}/api`;
+  }
+
+  // Release / standalone builds without a dev server target the production backend
+  if (!__DEV__) {
+    return PRODUCTION_API_URL;
   }
 
   return `http://localhost:${API_PORT}/api`;

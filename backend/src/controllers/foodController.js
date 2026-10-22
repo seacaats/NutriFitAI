@@ -77,9 +77,11 @@ function toScanItem(raw) {
 // ---- Payloads ----------------------------------------------------------------
 
 async function toScanPayload(scan) {
-  const items = (scan.items || []).map((item) => ({
+  const plain = typeof scan.toObject === 'function' ? scan.toObject() : scan;
+  const items = (plain.items || []).map((item) => ({
     ...item,
     itemId: String(item.itemId),
+    defaultGrams: item.estimatedGrams ?? null,
     hasNutrition: item.caloriesKcal !== null,
   }));
   return {
@@ -197,24 +199,50 @@ const logMeal = asyncHandler(async (req, res) => {
     }
     seen.add(input.scanItemId);
 
-    // Prefer scan nutrition values, falling back to user-provided values when missing from the catalog
-    const per = (key) => source[key] ?? input[key] ?? null;
-    if (per('caloriesKcal') === null) {
+    const grams = Number(input.grams);
+    if (!Number.isFinite(grams) || grams <= 0) {
+      throw ApiError.badRequest(`Enter a valid weight in grams for ${source.foodName}.`, { code: 'INVALID_PORTION' });
+    }
+
+    // Determine nutrient value per 100g from scan or manual inputs
+    const getPer100 = (key) => {
+      const p100 = source.per100g?.[key];
+      if (typeof p100 === 'number' && Number.isFinite(p100)) return p100;
+      if (source.estimatedGrams > 0 && typeof source[key] === 'number' && Number.isFinite(source[key])) {
+        return (source[key] / source.estimatedGrams) * 100;
+      }
+      const typed = input[key];
+      if (typeof typed === 'number' && Number.isFinite(typed)) return typed;
+      if (typeof source[key] === 'number' && Number.isFinite(source[key])) return source[key];
+      return null;
+    };
+
+    if (getPer100('caloriesKcal') === null) {
       throw ApiError.badRequest(`Enter the calories for ${source.foodName}.`, { code: 'MISSING_NUTRITION' });
     }
 
-    const n = input.servings;
-    const times = (key) => (per(key) === null ? null : round1(per(key) * n));
+    const calcNutrient = (key) => {
+      const v100 = getPer100(key);
+      if (typeof v100 !== 'number' || !Number.isFinite(v100)) return 0;
+      return round1((v100 * grams) / 100);
+    };
+
+    const servings = typeof input.servings === 'number' && Number.isFinite(input.servings)
+      ? Math.max(0.01, round1(input.servings))
+      : source.estimatedGrams > 0
+        ? Math.max(0.01, round1(grams / source.estimatedGrams))
+        : 1;
+
     return {
       scanRef: { scanId: scan.id, itemId: source.itemId },
       foodName: source.foodName,
       serving: source.serving,
-      servings: n,
-      portionGrams: source.estimatedGrams === null ? null : round1(source.estimatedGrams * n),
-      caloriesKcal: times('caloriesKcal'),
-      proteinG: times('proteinG'),
-      carbsG: times('carbsG'),
-      fatG: times('fatG'),
+      servings,
+      portionGrams: round1(grams),
+      caloriesKcal: calcNutrient('caloriesKcal'),
+      proteinG: calcNutrient('proteinG'),
+      carbsG: calcNutrient('carbsG'),
+      fatG: calcNutrient('fatG'),
     };
   });
 

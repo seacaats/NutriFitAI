@@ -55,6 +55,7 @@
     "start:local": "expo start -c",
     "start:tunnel": "cross-env EXPO_PUBLIC_API_URL=https://ointment-drop-down-heaviness.ngrok-free.dev/api expo start -c",
     "android": "expo run:android",
+    "android:release": "cross-env EXPO_PUBLIC_API_URL=https://nutrifitaibackend.onrender.com/api expo run:android --variant release",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint"

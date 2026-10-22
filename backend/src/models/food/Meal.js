@@ -19,7 +19,7 @@ const mealItemSchema = new Schema(
     },
     foodName: { type: String, required: true, maxlength: 150 },
     serving: { type: String, default: null, maxlength: 60 },
-    servings: { type: Number, default: 1, min: 0.25 },
+    servings: { type: Number, default: 1, min: 0.01 },
     portionGrams: { type: Number, default: null },
     caloriesKcal: { type: Number, default: null },
     proteinG: { type: Number, default: null },
