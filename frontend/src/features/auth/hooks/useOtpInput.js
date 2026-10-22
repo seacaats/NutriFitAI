@@ -20,12 +20,10 @@ export function useOtpInput(length = 4) {
     }
   }
 
-  // OtpInputRow calls this as otp.handleChange(val, index)
   function handleChange(value, index) {
     setDigit(index, value);
   }
 
-  // OtpInputRow calls this as otp.handleKeyPress(e, index)
   function handleKeyPress(e, index) {
     const key = e.nativeEvent?.key ?? e.key;
     if (key === "Backspace" && !digits[index] && index > 0) {
@@ -33,7 +31,6 @@ export function useOtpInput(length = 4) {
     }
   }
 
-  // OtpInputRow calls this as ref={otp.setInputRef(index)}
   function setInputRef(index) {
     return (el) => {
       inputRefs.current[index] = el;
@@ -47,7 +44,7 @@ export function useOtpInput(length = 4) {
 
   return {
     length,
-    code: digits,        // renamed to match OtpInputRow
+    code: digits,
     setDigit,
     handleChange,
     handleKeyPress,

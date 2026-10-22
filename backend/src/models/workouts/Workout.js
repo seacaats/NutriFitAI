@@ -4,49 +4,35 @@ const { Schema } = mongoose;
 
 const USER_ID_BASE = 1000000;
 
-// Exercise catalog: wger's, filled by scripts/sync-workouts.js, plus the
-// workouts users add themselves. Same shape for both, told apart by `source`.
-// the workouts controllers query it natively (with .lean())
-
-// _id is wger's own numeric exercise id, not ObjectId to maintain consistency
-// with frontend code and other collections which already use it. User
-// workouts take ids from USER_ID_BASE up, clear of anything wger will issue
+// Exercise catalog combining synced wger exercises and user-created workouts.
+// Uses numeric _id (wger IDs or USER_ID_BASE+ for user workouts).
 const workoutSchema = new Schema(
   {
-    _id: { type: Number }, // wger exercise id
+    _id: { type: Number },
     name: { type: String, required: true },
     description: { type: String, default: null },
     category: { id: Number, name: String },
 
-    // Only language 2 (English) is stored
     translations: { type: Array, default: [] },
 
     muscles: { type: Array, default: [] },
     musclesSecondary: { type: Array, default: [] },
     equipment: { type: Array, default: [] },
 
-    // Pre-normalised by the sync job, only URLs are stored
     images: { type: [String], default: [] },
-
-    // Precomputed so GET /api/workouts can filter server-side
     hasRealImage: { type: Boolean, default: false },
 
-    // 'wger' = synced, 'user' = added by createdBy (users._id, null for wger).
-    // User workouts are private to their creator
+    // 'wger' = synced catalog, 'user' = private to createdBy
     source: { type: String, enum: ['wger', 'user'], default: 'wger' },
     createdBy: { type: String, default: null },
-    // Storage key of the user's own photo (never a URL, the link is signed per read)
     imageKey: { type: String, default: null },
     createdAt: { type: Date },
-
-    // Set by the sync only, so pruning never touches user workouts
     syncedAt: { type: Date },
   },
   { versionKey: false, collection: 'workouts', _id: false },
 );
 
-// Next free id in the user range. Two simultaneous creates can pick the same
-// one, so the duplicate-key error is retried with a fresh pick
+// Allocate the next user workout ID, retrying on concurrent duplicate-key collisions
 workoutSchema.statics.createForUser = async function createForUser(userId, fields) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const last = await this.findOne({ _id: { $gte: USER_ID_BASE } }, '_id').sort({ _id: -1 }).lean();
@@ -66,18 +52,21 @@ workoutSchema.statics.createForUser = async function createForUser(userId, field
   return null;
 };
 
-// The user's own workout only, the filter itself keeps wger's out of reach.
-// Returns what it removed (for its photo), or null
+workoutSchema.statics.updateOwned = function updateOwned(id, userId, $set, client) {
+  return this.findOneAndUpdate(
+    { _id: id, source: 'user', createdBy: userId },
+    { $set },
+    { new: true, runValidators: true, ...opts(client) },
+  ).lean();
+};
+
 workoutSchema.statics.removeOwned = function removeOwned(id, userId, client) {
   return this.findOneAndDelete({ _id: id, source: 'user', createdBy: userId }, opts(client)).lean();
 };
 
-// What a user may see: the wger catalog and their own workouts, never
-// someone else's. Used inside queries, so it can't be forgotten afterwards
+// Visibility filter: public wger catalog plus the user's own workouts
 workoutSchema.statics.visibleTo = function visibleTo(userId) {
   return { $or: [{ source: 'wger' }, { createdBy: userId }] };
 };
-
-// Indexes are created by migrations (001, 005), not declared here
 
 module.exports = mongoose.model('Workout', workoutSchema);

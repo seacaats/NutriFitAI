@@ -1,7 +1,7 @@
 const env = require('../../../config/env');
 const { ApiError } = require('../../utils/httpResponse');
 
-// Groq reads the format from the file name, so it has to match the audio
+// Map MIME types to file extensions required by Groq Whisper
 const EXTENSIONS = {
   'audio/webm': 'webm',
   'audio/mp4': 'm4a',
@@ -13,9 +13,8 @@ const EXTENSIONS = {
 };
 
 /**
- * Speech to text through Groq's Whisper. The audio stays in memory for the
- * request and is never stored. Returns the transcript ('' if nothing was said).
- * `language` is an ISO code to pin, '' lets Whisper detect it, undefined uses the env default
+ * Transcribes in-memory audio via Groq Whisper.
+ * `language`: ISO code to pin, '' for auto-detect, undefined for env default.
  */
 async function transcribeAudio({ buffer, mimetype, language }) {
   const { apiKey, baseUrl, transcribeModel, transcribeLanguage, transcribeTimeoutMs } = env.ai.groq;
@@ -43,7 +42,6 @@ async function transcribeAudio({ buffer, mimetype, language }) {
     throw new ApiError(503, "Couldn't reach the voice service. Try again.", { code: 'VOICE_UNAVAILABLE' });
   }
 
-  // Free tier: a 429 means the shared limit is used up for now
   if (response.status === 429) {
     throw ApiError.tooManyRequests('Voice is busy right now. Try again in a moment.');
   }

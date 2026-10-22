@@ -5,7 +5,7 @@ const { Schema } = mongoose;
 
 const workoutRoutineSchema = new Schema(
   {
-    // Who built it. null = a built-in routine every user can see
+    // Null for built-in routines visible to all users
     ownerId: { type: String, ref: 'User', default: null },
     title: { type: String, required: true, maxlength: 150 },
     description: { type: String, default: null },
@@ -15,13 +15,9 @@ const workoutRoutineSchema = new Schema(
       type: [
         new Schema(
           {
-            exerciseRef: { type: Number, required: true }, // wger id = workouts._id
-            // Denormalised cache. It avoids a $lookup on every
-            // routine render, the same way it avoided a cross-database call
-            // in the hybrid design
+            exerciseRef: { type: Number, required: true },
             exerciseName: { type: String, required: true, maxlength: 150 },
             position: { type: Number, required: true },
-            // Per-exercise targets the routine player starts the tracker with
             targetSets: { type: Number, min: 1, max: 20, default: 3 },
             targetReps: { type: Number, min: 1, max: 200, default: 10 },
           },
@@ -36,23 +32,17 @@ const workoutRoutineSchema = new Schema(
   { versionKey: false, collection: 'workout_routines' },
 );
 
-// Indexes are created by migrations 002, not declared here
-
 const MAX_ROUTINES_LISTED = 100;
 
-// Built-in = no owner. Read-only to everyone through the API
 workoutRoutineSchema.statics.isBuiltIn = function isBuiltIn(routine) {
   return Boolean(routine) && !routine.ownerId;
 };
 
-// Routines also say whether they are built-in, for the client
 function shape(doc) {
   const routine = withId(doc);
   return routine ? { ...routine, builtIn: !routine.ownerId } : null;
 }
 
-// Positions follow the array order the client sent, so reordering is just
-// sending the list in the new order
 function normaliseExercises(exercises) {
   return exercises.map((e, i) => ({
     exerciseRef: e.exerciseRef,
@@ -63,7 +53,6 @@ function normaliseExercises(exercises) {
   }));
 }
 
-// The user's own routines plus built-ins, newest first
 workoutRoutineSchema.statics.listVisible = async function listVisible(userId, client) {
   const rows = await this.find({ ownerId: { $in: [userId, null] } }, null, opts(client))
     .sort({ updatedAt: -1 })
@@ -72,7 +61,6 @@ workoutRoutineSchema.statics.listVisible = async function listVisible(userId, cl
   return rows.map(shape);
 };
 
-// Readable if built-in or owned. Returns null otherwise (treated as not found)
 workoutRoutineSchema.statics.findVisible = async function findVisible(id, userId, client) {
   if (!mongoose.isValidObjectId(id)) return null;
   return shape(
@@ -96,7 +84,6 @@ workoutRoutineSchema.statics.createOwned = async function createOwned(userId, in
   return shape(doc.toObject());
 };
 
-// Owner-only, the filter itself keeps built-ins out of reach
 workoutRoutineSchema.statics.updateOwned = async function updateOwned(id, userId, input, client) {
   if (!mongoose.isValidObjectId(id)) return null;
   const $set = { updatedAt: new Date() };
@@ -122,9 +109,15 @@ workoutRoutineSchema.statics.removeOwned = async function removeOwned(id, userId
   return result.deletedCount > 0;
 };
 
-// A deleted workout comes out of the owner's routines. A routine it was the
-// only exercise of is deleted, and its id returned so the caller can clear
-// what hung off it
+workoutRoutineSchema.statics.renameExercise = async function renameExercise(userId, exerciseRef, exerciseName, client) {
+  await this.updateMany(
+    { ownerId: userId, 'exercises.exerciseRef': exerciseRef },
+    { $set: { 'exercises.$[e].exerciseName': exerciseName, updatedAt: new Date() } },
+    { arrayFilters: [{ 'e.exerciseRef': exerciseRef }], ...opts(client) },
+  );
+};
+
+// Remove a deleted exercise from the user's routines; delete routines left empty and return their IDs
 workoutRoutineSchema.statics.removeExercise = async function removeExercise(userId, exerciseRef, client) {
   const routines = await this.find({ ownerId: userId, 'exercises.exerciseRef': exerciseRef }, null, opts(client)).lean();
   const emptied = [];

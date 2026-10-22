@@ -7,17 +7,14 @@ import healthSync, { MAX_BACKFILL_DAYS } from "@/shared/services/steps/healthSyn
 import { addDays, todayISO } from "@/shared/utils/dates";
 
 /**
- * Owns the permission handshake and the three sync triggers
+ * Owns the permission handshake and the three sync triggers.
  *
- * There is no background daemon and no webhook. Both CoreMotion and Health
- * Connect accumulate on their own while the app is closed, so all this hook has
- * to do is read the recent window whenever the user is looking 
- *
- * Safe to mount on web: healthSync resolves to the no-op implementation there,
- * isAvailable() returns false, and every trigger short-circuits
+ * CoreMotion and Health Connect accumulate while the app is closed, so this
+ * hook reads the recent window when the app is active or the screen focuses.
+ * Safe to mount on web where healthSync resolves to a no-op.
  */
 
-/** Don't re-read the sensors more than once every few minutes on foreground */
+/** Cooldown between automatic foreground sensor reads */
 const SYNC_COOLDOWN_MS = 3 * 60 * 1000;
 
 export function useStepSync({ onSynced } = {}) {
@@ -56,16 +53,11 @@ export function useStepSync({ onSynced } = {}) {
   }, []);
 
   /**
-   * Reads the sensor window and pushes it up
-   *
-   * `force` bypasses the cooldown for an explicit pull-to-refresh; the
-   * automatic triggers respect it so that tabbing in and out of the app doesn't
-   * produce a burst of identical requests
+   * Reads the sensor window and pushes it to the server.
+   * `force` bypasses the cooldown for explicit pull-to-refresh.
    */
   const sync = useCallback(async ({ force = false, days = MAX_BACKFILL_DAYS } = {}) => {
     if (!healthSync.source) return null;
-    // A second call while one is running would read the same window twice and
-    // race on the response
     if (inFlightRef.current) return null;
     if (!force && Date.now() - lastSyncRef.current < SYNC_COOLDOWN_MS) return null;
     if (!(await healthSync.hasPermission())) return null;
@@ -78,9 +70,7 @@ export function useStepSync({ onSynced } = {}) {
       const from = addDays(to, -(Math.max(1, days) - 1));
       const readings = await healthSync.readDailyTotals(from, to);
 
-      // Nothing to send is a normal outcome (a brand-new Health Connect store,
-      // or a user who genuinely hasn't moved). Record the attempt so the
-      // cooldown still applies and we don't retry in a tight loop
+      // Record the attempt even when empty so the cooldown applies
       if (readings.length === 0) {
         lastSyncRef.current = Date.now();
         return { received: 0, updated: 0 };
@@ -97,9 +87,7 @@ export function useStepSync({ onSynced } = {}) {
       onSyncedRef.current?.(result);
       return result;
     } catch (err) {
-      // A failed sync is not worth an error banner over stale-but-valid data;
-      // the screen keeps showing what the server already has. Surfaced only on
-      // an explicit, user-initiated refresh
+      // Surface errors only on an explicit, user-initiated refresh
       if (mountedRef.current && force) {
         setError(err?.message || "Couldn't sync your steps.");
       }
@@ -112,10 +100,7 @@ export function useStepSync({ onSynced } = {}) {
 
   /**
    * Prompts for the OS health permission, then records the grant server-side
-   *
-   * Telling the backend matters for a surface that can't ask for itself: the
-   * WEB dashboard reads user_profiles.step_permission_at to decide between
-   * "connect your phone" and "no data this week"
+   * so the web dashboard can distinguish "connect your phone" from "no data this week".
    */
   const connect = useCallback(async () => {
     setError("");
@@ -139,8 +124,7 @@ export function useStepSync({ onSynced } = {}) {
     try {
       await apiClient.patch("/steps/source", { source: healthSync.source }, { auth: true });
     } catch {
-      // The grant is real even if we failed to record it; a later sync will
-      // set step_source anyway. Don't block the user on a bookkeeping call
+      // A later sync will set step_source anyway; don't block on this call
     }
 
     if (mountedRef.current) setConnected(true);
@@ -154,25 +138,13 @@ export function useStepSync({ onSynced } = {}) {
     } finally {
       if (mountedRef.current) setConnected(false);
     }
-    // The OS-level grant is not ours to revoke — that lives in iOS Settings or
-    // the Health Connect app — so the screen points the user there
+    // OS-level permissions must be revoked in iOS Settings or Health Connect
   }, []);
 
   /**
-   * Re-reads the OS/Health Connect permission and syncs `connected` state to
-   * match. Returns the freshly-read grant so callers can decide whether to
-   * pull data immediately, without waiting on a state update to land.
-   *
-   * This exists because `connected` was previously only ever set from
-   * `connect()`'s own request — never re-checked afterward. That made a grant
-   * from anywhere OUTSIDE this hook's own button invisible to it: on Android,
-   * Health Connect's permission dialog (or its standalone app's "manage
-   * permissions" screen) is a completely separate flow from the app's own
-   * requestPermission() call, so a user who grants access there — including
-   * one who first denied it and had to re-grant it from Health Connect or
-   * Settings, since Android does not let an app re-trigger its own prompt
-   * after a denial — would come back to this screen still showing
-   * "not connected" forever, because nothing ever asked again
+   * Re-reads the OS/Health Connect permission and updates `connected` so grants
+   * made outside the app's own prompt (e.g. in Health Connect or OS Settings)
+   * are picked up when returning.
    */
   const checkPermission = useCallback(async () => {
     if (!available) return false;
@@ -181,12 +153,7 @@ export function useStepSync({ onSynced } = {}) {
     return granted;
   }, [available]);
 
-  // Trigger 1: app returns to the foreground. Always re-checks permission
-  // first (not just when this hook already believes it's connected) — that
-  // re-check is what notices a grant made outside the app while it was
-  // backgrounded, e.g. from the Health Connect app or the OS Settings screen.
-  // Only then does it backfill the full window, covering however many days
-  // the user was away
+  // Trigger 1: app returns to the foreground — re-check permission and backfill the full window
   useEffect(() => {
     const subscription = AppState.addEventListener("change", async (state) => {
       if (state !== "active") return;
@@ -196,9 +163,7 @@ export function useStepSync({ onSynced } = {}) {
     return () => subscription.remove();
   }, [checkPermission, sync]);
 
-  // Trigger 2: the steps screen gains focus. Same re-check as above, then
-  // today only — the number should be current the moment the user is
-  // looking at it
+  // Trigger 2: the steps screen gains focus — re-check permission and sync today
   useFocusEffect(
     useCallback(() => {
       (async () => {

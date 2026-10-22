@@ -7,11 +7,8 @@ import { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 
 /**
- * Routes here that must stay reachable regardless of session state.
- *
- * /google-auth is the OAuth popup's landing page. It runs *after* a token may
- * already be stored, so bouncing it to the home screen would kill the popup before
- * it reports its result back to the opener
+ * Auth routes that remain accessible regardless of session state.
+ * /google-auth must complete its popup handshake even after a token is stored.
  */
 const ALWAYS_ALLOWED = ["/google-auth", "/access-denied"];
 
@@ -21,18 +18,13 @@ export default function AuthLayout() {
   const router = useRouter();
   const { darkMode } = useTheme();
   const bg = getAuthColors(darkMode).bgMint;
-  // `next`: the page they were heading to before login, checked against the role
   const { next } = useGlobalSearchParams();
   const gate = useLoadingGate(status === AUTH_STATUS.LOADING);
   const allowed = ALWAYS_ALLOWED.includes(pathname);
 
-  // Only a fully usable session displaces the auth screens. The server no
-  // longer issues sessions to unverified accounts; the emailVerified check
-  // stays as a guard in case one ever exists. This is the one place a
-  // sign-in navigates in: the login screen only refreshes the session
+  // Redirect authenticated, verified sessions away from auth screens to their target destination.
   const target = !allowed && !gate.pending && isAuthenticated && emailVerified ? safeReturnTo(next, role) : null;
 
-  // Once per destination, for the same reason as RoleGuard (AuthContext.js)
   const sentTo = useRef(null);
   useEffect(() => {
     if (!target) {
@@ -44,8 +36,7 @@ export default function AuthLayout() {
     router.replace(target);
   }, [target, router]);
 
-  // The navigator always stays mounted (see RoleGuard); waiting for the
-  // session or leaving covers it instead
+  // Keep the Stack mounted while covering it during session loading or redirect transitions.
   const cover = allowed ? null
     : gate.pending ? <LoadingScreen visible={gate.visible} />
     : target ? <View style={{ flex: 1, backgroundColor: bg }} />

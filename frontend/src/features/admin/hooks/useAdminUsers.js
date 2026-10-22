@@ -7,14 +7,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * @param {{ role?: string|null, limit?: number }} options
  */
 
-/** Long enough that typing a name is one request, short enough to feel live. */
 const SEARCH_DEBOUNCE_MS = 300;
 
-// Account actions want the whole envelope, for the server's message
+// Request the full response envelope so account actions can surface the server message
 const options = { auth: true, full: true };
 
-export function useAdminUsers({ role = null, limit = 25 } = {}) {
-  const [search, setSearch] = useState("");
+export function useAdminUsers({ role = null, limit = 25, search: initialSearch = "" } = {}) {
+  // initialSearch allows Image Review to open this table filtered by a user's email
+  const [search, setSearch] = useState(initialSearch);
   const [roleFilter, setRoleFilter] = useState(role);
   const [page, setPage] = useState(1);
 
@@ -24,16 +24,7 @@ export function useAdminUsers({ role = null, limit = 25 } = {}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  /**
-   * Guards against a slow earlier request resolving after a faster later one
-   * and overwriting it with stale rows -- the classic search race, and very
-   * reachable here because each keystroke schedules a request
-   *
-   * A counter rather than AbortController: the request still completes (no
-   * bandwidth saved either way at this size), but its result is discarded.
-   * That also keeps `loading` honest, since an aborted fetch would reject and
-   * have to be distinguished from a real failure
-   */
+  // Monotonic request counter to discard out-of-order responses during rapid search input
   const requestId = useRef(0);
 
   const load = useCallback(async () => {
@@ -67,11 +58,7 @@ export function useAdminUsers({ role = null, limit = 25 } = {}) {
     }
   }, [page, limit, search, roleFilter]);
 
-  /**
-   * Debounced on `search` only. Changing the page or the role filter fires
-   * immediately -- those are deliberate single clicks, and making a button
-   * feel 300ms late is the wrong half of the trade this debounce exists for
-   */
+  // Debounce non-empty search queries while firing page and role filter changes immediately
   useEffect(() => {
     if (!search.trim()) {
       load();
@@ -81,8 +68,7 @@ export function useAdminUsers({ role = null, limit = 25 } = {}) {
     return () => clearTimeout(timer);
   }, [load, search]);
 
-  /** Resetting to page 1 when the filters change. Without this, narrowing a
-   *  search while on page 4 lands on an empty page and reads as "no results" */
+  // Reset to page 1 when search or role filter changes
   const updateSearch = useCallback((value) => {
     setSearch(value);
     setPage(1);
@@ -93,9 +79,7 @@ export function useAdminUsers({ role = null, limit = 25 } = {}) {
     setPage(1);
   }, []);
 
-  // Account actions. Return { ok, message } rather than throwing, because
-  // every caller wants to show the server's own message either way, and
-  // every one takes the reason the audit entry records
+  // Execute an audited account action, reload the table, and return { ok, message }
   const runAction = useCallback(
     async (request, fallback) => {
       try {
@@ -115,7 +99,7 @@ export function useAdminUsers({ role = null, limit = 25 } = {}) {
     [runAction],
   );
   const suspend = useCallback(
-    (userId, reason) => runAction(() => apiClient.post(`/admin/users/${userId}/suspend`, { reason }, options), "Couldn't suspend that account."),
+    (userId, reason, userMessage) => runAction(() => apiClient.post(`/admin/users/${userId}/suspend`, { reason, ...(userMessage ? { userMessage } : {}) }, options), "Couldn't suspend that account."),
     [runAction],
   );
   const reinstate = useCallback(
@@ -132,19 +116,18 @@ export function useAdminUsers({ role = null, limit = 25 } = {}) {
       runAction(() => apiClient.post(`/admin/users/${userId}/password-reset/cancel`, { reason }, options), "Couldn't cancel the password reset."),
     [runAction],
   );
-  // The email is not editable and no password is set here: the person is emailed
-  // how to choose their own (the server decides, see POST /admin/users)
+  // Creates the account and emails the user a password setup link (see POST /admin/users)
   const createUser = useCallback(
     (fields, reason) => runAction(() => apiClient.post("/admin/users", { ...fields, reason }, options), "Couldn't create that account."),
     [runAction],
   );
-  // Clears their authenticator, they set up a new one at their next sign-in
+  // Clears the user's authenticator so a new one is configured on next sign-in
   const resetAuthenticator = useCallback(
     (userId, reason) =>
       runAction(() => apiClient.post(`/admin/users/${userId}/authenticator-reset`, { reason }, options), "Couldn't reset the authenticator."),
     [runAction],
   );
-  // Read only, so it skips runAction (which reloads the table). Throws with the server's message
+  // Read-only fetch of active sessions (does not reload the user table)
   const loadSessions = useCallback((userId) => apiClient.get(`/admin/users/${userId}/sessions`, { auth: true }), []);
   const revokeSession = useCallback(
     (userId, sessionId, reason) =>
@@ -157,8 +140,8 @@ export function useAdminUsers({ role = null, limit = 25 } = {}) {
     [runAction],
   );
   const deleteUser = useCallback(
-    (userId, reason) =>
-      runAction(() => apiClient.delete(`/admin/users/${userId}`, { ...options, body: { reason } }), "Couldn't schedule that deletion."),
+    (userId, reason, userMessage) =>
+      runAction(() => apiClient.delete(`/admin/users/${userId}`, { ...options, body: { reason, ...(userMessage ? { userMessage } : {}) } }), "Couldn't schedule that deletion."),
     [runAction],
   );
   const cancelDeletion = useCallback(

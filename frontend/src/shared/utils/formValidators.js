@@ -1,24 +1,21 @@
 // Shared client-side validation helpers for the form screens. Mirrors backend authValidators.js
 
-// Deliberately permissive — the server (and the confirmation email) is the
-// real authority; this only catches obvious typos before a request is sent
+// Basic client-side email format check
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-// Letters (any script, incl. accents like "ñ"), plus spaces, hyphens,
-// apostrophes and periods. Must start with a letter. Mirrors NAME_RE in the backend's validators/shared/fieldSchemas.js
+// Letters (any script, incl. accents), plus spaces, hyphens, apostrophes and periods.
+// Must start with a letter. Mirrors NAME_RE in backend validators/shared/fieldSchemas.js
 const NAME_RE = /^[\p{L}\p{M}][\p{L}\p{M} '.-]*$/u;
 
 const PASSWORD_MIN_LENGTH = 8;
-// Mirrors the backend. Not advertised in the UI -- the hint only nudges users
-// toward 16, but anything up to this is accepted
+// Maximum password length mirroring backend schema
 const PASSWORD_MAX_LENGTH = 64;
 
-// Longest first/last name and email. Mirror NAME_MAX and EMAIL_MAX in the backend's validators/shared/fieldSchemas.js
+// Longest first/last name and email. Mirror NAME_MAX and EMAIL_MAX in backend validators/shared/fieldSchemas.js
 export const NAME_MAX = 75;
 export const EMAIL_MAX = 254;
 
 // Age bounds, mirrors registerSchema / updateProfileSchema
-// Mirrors AGE_MIN and AGE_MAX in the backend's validators/shared/fieldSchemas.js
 export const AGE_MIN = 13;
 export const AGE_MAX = 122;
 
@@ -54,8 +51,7 @@ export function validatePassword(value) {
   return "";
 }
 
-// Validates a numeric profile field against the same bounds the server
-// enforces. Returns an error string, or "" when valid (or blank and optional)
+// Validates a numeric profile field against the same bounds the server enforces
 export function validateNumber(value, { label, min, max, integer = false, required = false }) {
   const raw = String(value ?? "").trim();
   if (!raw) return required ? `Please enter your ${label.toLowerCase()}.` : "";

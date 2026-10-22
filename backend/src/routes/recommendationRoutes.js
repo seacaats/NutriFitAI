@@ -7,7 +7,7 @@ const { recommendationIdParamSchema, recommendationUpdateSchema } = require('../
 
 const router = Router();
 
-// /refresh is declared before /:id so it never parses as an id
+// Declared before /:id so "refresh" is not parsed as an id
 router.get(
   '/',
   controller.listRecommendations
@@ -17,7 +17,6 @@ router.post(
   aiChatLimiter,
   controller.refreshRecommendations
 );
-// A routine card as a routine about to be created (not saved)
 router.get(
   '/:id/draft',
   validateParams(recommendationIdParamSchema),

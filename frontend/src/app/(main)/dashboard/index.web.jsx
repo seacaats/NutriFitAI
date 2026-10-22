@@ -18,16 +18,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
-// Today at a glance, all real data: /progress/today (useDashboard) for food,
-// steps, the week, weight and streak; useWater and useWorkoutSessions for
-// water and the weekly workout count. Calories show the amount eaten against
-// the daily goal when one is set, and the macro split
-
+// Web dashboard overview combining /progress/today, hydration logs, and workout sessions.
 
 const MEAL_LABELS = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", snack: "Snack" };
 const MEAL_ICONS = { breakfast: "sunny-outline", lunch: "restaurant-outline", dinner: "moon-outline", snack: "cafe-outline" };
 
-// A y-axis top a little above the highest point, in steps of `step`
+// Round up y-axis maximum to the nearest multiple of `step`.
 const ceilTo = (n, step) => Math.max(step, Math.ceil(n / step) * step);
 
 export default function DashboardScreen() {
@@ -35,7 +31,6 @@ export default function DashboardScreen() {
   const recs = useRecommendations();
   const v = dash.view;
   const { summary: workoutSummary } = useWorkoutSessions();
-  // Real water log; the + button logs one 250 ml glass
   const water = useWater();
   const router = useRouter();
 
@@ -45,12 +40,10 @@ export default function DashboardScreen() {
   const { darkMode, shell: c } = useTheme();
 
   const { card, textColor } = getScreenPalette(darkMode);
-  // Darker muted text than the shared tone, for readability on this screen in light mode
   const mutedText = { color: darkMode ? screenTones.dark.muted : "#4b5563" };
-  const trackBg = { backgroundColor: card.borderColor }; // progress bar
-  // Readable green text on white; the brand green is too light for it in light mode
+  const trackBg = { backgroundColor: card.borderColor };
   const accent = { color: c.activeNavText };
-  // Stacked rows: items size to their content instead of collapsing under flex: 1
+  // Size stacked items to their content instead of collapsing under flex: 1.
   const stack = (narrow && styles.stackItem);
   const stackPhone = (phone && styles.stackItem);
   const statCard = [styles.card, styles.statCard, narrow && styles.statCardNarrow, phone && styles.fullWidth, card];
@@ -66,15 +59,13 @@ export default function DashboardScreen() {
         <Text style={[styles.pageSubtitle, mutedText]}>Here&apos;s your overview for today.</Text>
       </View>
       <ScreenError message={dash.error} />
-      {/* Onboarding: first visit goes there, then a banner until it's filled in */}
       <OnboardingPrompt darkMode={darkMode} />
 
-      {/* Recommendations: only shown once there is a card */}
       <RecommendationsStrip recs={recs} darkMode={darkMode} onOpen={(item) => router.push(item.action.route)} style={styles.recs} />
 
       {/* Stats */}
       <View style={[styles.statsRow, narrow && styles.wrapRow]}>
-        {/* Calories eaten today and the macros behind them */}
+        {/* Daily calories and macro breakdown */}
         <Pressable onPress={() => router.push("/food-scanner")} style={statCard}>
           <View style={styles.rowBetween}>
             <Text style={[styles.cardLabel, textColor]}>Today&apos;s Calories</Text>
@@ -89,13 +80,12 @@ export default function DashboardScreen() {
           <MacroRow macros={v?.macros} darkMode={darkMode} small />
         </Pressable>
 
-        {/* Hydration: tap the card for the Water page, "1 glass" logs one */}
+        {/* Hydration progress and quick-add glass button */}
         <Pressable onPress={() => router.push("/water")} style={statCard}>
           <View style={styles.rowGap}>
             <Ionicons name="water" size={20} color={chipTints.blue.icon} />
             <Text style={[styles.cardLabel, textColor]}>Hydration</Text>
           </View>
-          {/* Placeholders until the water log arrives, like the phone's card */}
           <View style={styles.mt4}>
             {water.loading ? <Skeleton width={130} height={28} /> : (
               <Text style={[styles.midNum, textColor]}>
@@ -112,7 +102,6 @@ export default function DashboardScreen() {
           <View style={[styles.progressTrack, trackBg]}>
             <View style={[styles.progressFill, { width: `${water.progress * 100}%`, backgroundColor: "#155dfc" }]} />
           </View>
-          {/* Labelled, same as the phone's card */}
           <View style={styles.waterAction}>
             <ActionButton
               compact
@@ -125,7 +114,7 @@ export default function DashboardScreen() {
           </View>
         </Pressable>
 
-        {/* Steps against the daily goal */}
+        {/* Steps progress */}
         <Pressable onPress={() => router.push("/steps")} style={statCard}>
           <View style={styles.rowGap}>
             <Ionicons name="footsteps" size={21} color={colors.green600} />
@@ -143,7 +132,7 @@ export default function DashboardScreen() {
           </View>
         </Pressable>
 
-        {/* Streak: the same count as the Progress tile and the streak notifications */}
+        {/* Activity streak */}
         <Pressable onPress={() => router.push("/progress")} style={statCard}>
           <View style={styles.rowGap}>
             <Ionicons name="trophy" size={20} color={chipTints.orange.icon} />
@@ -162,7 +151,7 @@ export default function DashboardScreen() {
       </View>
 
       <View style={[styles.lowerRow, narrow && styles.stackRow]}>
-        {/* Today's Plan: what's been eaten, and the next workout */}
+        {/* Today's Plan: meals and upcoming workouts */}
         <View style={[styles.card, card, styles.flexHalf, stack]}>
           <View style={styles.rowBetween}>
             <Text style={[styles.sectionTitle, textColor]}>Today&apos;s Plan</Text>
@@ -184,7 +173,6 @@ export default function DashboardScreen() {
                 </View>
                 <View style={styles.mealInfo}>
                   <Text style={[styles.mealTitle, textColor]}>{MEAL_LABELS[m.mealType]}</Text>
-                  {/* Placeholder until today's meals arrive, not a premature "Not logged" */}
                   {v ? (
                     <Text style={[styles.mealCalories, mutedText]}>{m.count ? `${m.caloriesKcal} kcal` : "Not logged"}</Text>
                   ) : (
@@ -196,7 +184,6 @@ export default function DashboardScreen() {
           </View>
 
           <Text style={[styles.subheading, textColor, { marginTop: narrow ? 20 : 12 }]}>Workout</Text>
-          {/* The next few planned sessions, missed first, then the week's count */}
           <View style={styles.mt2}>
             <PlannedWorkouts view={v} summary={workoutSummary} darkMode={darkMode} onOpen={() => router.push("/workouts?tab=upcoming")} />
           </View>
@@ -233,7 +220,7 @@ export default function DashboardScreen() {
           </View>
 
           <View style={[styles.insightCardsRow, phone && styles.stackRow]}>
-            {/* Today's macro split, by calories */}
+            {/* Today's macro distribution */}
             <View style={[styles.card, card, styles.flexHalf, styles.insightCard, stackPhone]}>
               <Text style={[styles.chartLabel, textColor]}>Macronutrient Distribution</Text>
               <View style={styles.donutWrap}>
@@ -254,7 +241,7 @@ export default function DashboardScreen() {
               </View>
             </View>
 
-            {/* Weight over the last 30 days */}
+            {/* 30-day weight progress */}
             <Pressable onPress={() => router.push("/progress")} style={[styles.card, card, styles.flexHalf, styles.insightCard, stackPhone]}>
               <Text style={[styles.chartLabel, textColor]}>Weight Progress</Text>
               <View style={styles.mt3}>
@@ -313,7 +300,7 @@ const styles = StyleSheet.create({
   ...dashboardStyles,
 
   card: { borderRadius: radii.sm, borderWidth: 1, padding: 16 },
-  statCard: { flex: 1},
+  statCard: { flex: 1 },
   statCardNarrow: { minWidth: 220 },
   stackItem: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
   fullWidth: { width: "100%", minWidth: 0, flexBasis: "auto", boxSizing: "border-box" },
@@ -327,7 +314,6 @@ const styles = StyleSheet.create({
   mt4: { marginTop: 16 },
   mt5: { marginTop: 20 },
 
-  // Text sizes and card padding raised a step: nothing under 10px
   cardLabel: { fontSize: 13, fontWeight: "600" },
   pctGreen: { fontSize: 13, fontWeight: "700", color: shellColors.primary },
   bigNum: { fontSize: 22, fontWeight: "700" },
@@ -343,14 +329,12 @@ const styles = StyleSheet.create({
   waterAction: { flexDirection: "row", justifyContent: "flex-end", marginTop: 10 },
   waterLineSkeleton: { marginTop: 6 },
 
-  // marginBottom keeps the last card clear of the page edge when stacked
   lowerRow: { flexDirection: "row", gap: 12, marginTop: 12, marginBottom: 4 },
   sectionTitle: { fontSize: 22, fontWeight: "700" },
   subheading: { fontSize: 14, fontWeight: "600", marginTop: 6 },
   thisWeek: { fontSize: 12, fontWeight: "600", color: colors.textMuted },
 
   mealsRow: { flexDirection: "row", gap: 8, marginTop: 8 },
-  // Small screens: more air between the heading, the meal cards and the workout list
   mealsRowNarrow: { gap: 10, marginTop: 10 },
   planHeading: { marginTop: 12 },
   mealCard: { flex: 1, borderRadius: 6, borderWidth: 1, overflow: "hidden" },
@@ -361,14 +345,11 @@ const styles = StyleSheet.create({
   mealCalories: { fontSize: 11, color: colors.textMuted },
   mealSkeleton: { marginTop: 2 },
 
-
-
   chartBox: { marginTop: 12, borderRadius: 6, borderWidth: 1, padding: 12 },
   chartLabel: { fontSize: 12, fontWeight: "600" },
   chartAvg: { fontSize: 11, fontWeight: "600", color: colors.textMuted },
 
   insightCardsRow: { flexDirection: "row", gap: 12, marginTop: 12 },
-  // minWidth 0 + overflow: the donut and legend can't spill past the card edge
   insightCard: { minWidth: 0, overflow: "hidden" },
   donutWrap: { alignItems: "center", justifyContent: "center", marginTop: 12 },
   donutCenterTitle: { fontSize: 11, fontWeight: "700" },

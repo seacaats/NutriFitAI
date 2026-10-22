@@ -1,11 +1,7 @@
 import NetInfo from "@react-native-community/netinfo";
 import { AppState, Platform } from "react-native";
 
-// Whether the server can be reached right now. Flipped offline by
-// apiClient when a request can't get through; while offline the server's
-// /health is checked every few seconds (and right away when the browser
-// reports a network or the app comes back to the foreground), and the
-// first answer flips it back online and tells every listener to reload
+// Tracks server reachability and polls /health while offline to detect reconnection.
 
 const POLL_MS = 5000;
 const PING_TIMEOUT_MS = 4000;
@@ -82,8 +78,6 @@ async function ping() {
     // Any answer means the server is up
     if (res.status < 500) setOnline();
   } catch (err) {
-    // Still unreachable; the next tick tries again. Logged in development:
-    // if this keeps failing while the app works, the URL below is wrong
     if (__DEV__) console.log(`[connection] ${pingUrl} unreachable:`, err?.message);
   } finally {
     clearTimeout(t);
@@ -112,12 +106,8 @@ export function waitForOnline() {
   });
 }
 
-// The device's own connection. Losing it marks the server unreachable at
-// once, rather than after a request times out; getting it back checks the
-// server straight away
+// Updates reachability based on device network state
 NetInfo.addEventListener((state) => {
-  // No network at all. Not isInternetReachable: in development the server
-  // is on the LAN, reachable on Wi-Fi that has no internet
   const none = state.isConnected === false;
   if (none === noConnection) return;
   noConnection = none;

@@ -1,14 +1,13 @@
 /**
+ * Field mappings and dropdown options:
  *   - GOALS values <-> backend src/utils/goalNormalizer.js's GOALS list
  *   - SEXES values <-> backend src/validators/shared/fieldSchemas.js's SEXES enum
  *   - ACTIVITY_LEVELS <-> backend accepts any value up to CUSTOM_OPTION_MAX (validators/shared/fieldSchemas.js)
  *
- * Goal and activity level also accept a custom value (the "Other" option on
- * the register screen), stored verbatim. Label <-> value helpers therefore
- * pass unknown strings through instead of dropping them
+ * Goal and activity level also accept custom values (via OTHER_OPTION).
  */
 
-// Label for the free-text fallback option on every dropdown
+// Label for the free-text fallback option on dropdowns
 export const OTHER_OPTION = "Other";
 
 // Max length of custom "Other" text for goal, activity level and diet.
@@ -23,8 +22,7 @@ export const GOALS = [
   { value: "improve-fitness", label: "Improve Fitness" },
 ];
 
-// Biological sex only -- it's what calorie/BMR estimates actually depend on.
-// Displayed as pills; mapped to the backend's lowercase enum on submit
+// Biological sex options for metabolic calorie and BMR calculations
 export const SEXES = ["Male", "Female"];
 
 const SEX_VALUE_BY_LABEL = { Male: "male", Female: "female" };
@@ -41,8 +39,7 @@ export function sexValueToLabel(value) {
   return SEX_LABEL_BY_VALUE[value] || null;
 }
 
-// Display label for a goal slug from the API (e.g. /auth/me's fitnessGoal).
-// A custom goal has no slug and is shown as typed
+// Display label for a goal slug from the API
 export function goalValueToLabel(value) {
   const match = GOALS.find((g) => g.value === value);
   return match ? match.label : value || null;
@@ -78,10 +75,7 @@ export function activityLabelToValue(label) {
 export const GOAL_OPTIONS = [...GOALS.map((g) => g.label), OTHER_OPTION];
 export const ACTIVITY_OPTIONS = [...ACTIVITY_LEVELS.map((a) => a.label), OTHER_OPTION];
 
-// Common options, modelled on the lists fitness/nutrition apps and clinic
-// intake forms use. "Other" unlocks a free-text field
-// Diet is multi-select like health conditions; "No Preference" is exclusive
-// the way "None" is there. Mirrors DIET_PREFERENCES_MAX on the backend
+// Standard diet preferences. Mirrors DIET_PREFERENCES_MAX on the backend
 export const NO_DIET_PREFERENCE = "No Preference";
 export const DIET_PREFERENCES_MAX = 2000;
 
@@ -103,7 +97,7 @@ export const DIET_PREFERENCES = [
   OTHER_OPTION,
 ];
 
-// Multi-select. "None" is exclusive of everything else
+// Multi-select health conditions. "None" is mutually exclusive
 export const NO_HEALTH_CONDITIONS = "None";
 
 export const HEALTH_CONDITIONS = [
@@ -129,12 +123,12 @@ export const HEALTH_CONDITIONS = [
 // Conditions that only apply to one sex (by SEXES label)
 const SEX_SPECIFIC_CONDITIONS = { PCOS: "Female", "Pregnant / Breastfeeding": "Female" };
 
-// Options for a given sex. No sex given shows only the ones that apply to anyone
+// Options for a given sex. No sex given shows only universal conditions
 export function healthConditionsFor(sex) {
   return HEALTH_CONDITIONS.filter((c) => !SEX_SPECIFIC_CONDITIONS[c] || SEX_SPECIFIC_CONDITIONS[c] === sex);
 }
 
-// Drops stored conditions that don't apply to this sex ("A, B, custom" string)
+// Drops stored conditions that do not apply to the specified sex
 export function pruneHealthConditions(value, sex) {
   const allowed = healthConditionsFor(sex);
   return String(value || "")
@@ -143,15 +137,12 @@ export function pruneHealthConditions(value, sex) {
     .join(", ");
 }
 
-// Shown under Health Conditions (register and profile). Allergies and
-// injuries have no fields of their own, so they're asked for here
+// Health conditions note for allergies and injuries in register and profile forms
 export const HEALTH_CONDITIONS_NOTE = "Have a food allergy or an injury? Add it here so your coach knows. Pick Other to name it.";
 
-// ---- Stored string <-> dropdown state -----------------------------------
-// The API stores these fields as plain strings. These helpers turn a stored
-// value back into "which option + what custom text", and the reverse
+// ---- Stored string <-> dropdown state helpers ---------------------------
 
-// Single-select: a listed option, or "Other" with the value as its text
+// Single-select: a listed option, or "Other" with the value as custom text
 export function splitChoice(value, options) {
   const raw = String(value || "").trim();
   if (!raw) return { choice: "", other: "" };
@@ -164,7 +155,7 @@ export function joinChoice(choice, other) {
   return choice === OTHER_OPTION ? String(other || "").trim() : choice;
 }
 
-// Multi-select (health conditions), stored as "A, B, custom text"
+// Multi-select (health conditions), stored as comma-separated values
 export function splitMulti(value, options) {
   const parts = String(value || "").split(/\s*,\s*/).filter(Boolean);
   const known = parts.filter((p) => p !== OTHER_OPTION && options.includes(p));

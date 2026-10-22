@@ -27,11 +27,7 @@ const MENU_ITEMS = [
   { name: "Profile", icon: "person-outline", route: "/profile" },
   { name: "Settings", icon: "settings-outline", route: "/settings" },
 
-  // --- Administration -----------------------------------------------------
-  // Rendered under their own heading (see `section`) rather than mixed into
-  // the list above: an admin is still an ordinary user of this app most of
-  // the time, and burying "Users" between "Steps" and "Profile" would make it
-  // too easy to open the wrong one
+  // --- Administration ---
   {
     name: "Analytics",
     icon: "analytics-outline",
@@ -42,6 +38,12 @@ const MENU_ITEMS = [
     name: "Users",
     icon: "people-outline",
     route: "/users",
+    section: "Administration",
+  },
+  {
+    name: "Image Review",
+    icon: "images-outline",
+    route: "/image-reviews",
     section: "Administration",
   },
   {
@@ -76,8 +78,6 @@ export default function DashboardLayout({
   const { width, height } = useWindowDimensions();
   const { radii, spacing } = tokens;
   const styles = useMemo(() => createStyles(radii, spacing), [radii, spacing]);
-  // Reads the session AuthContext already loaded for the route guards,
-  // instead of issuing a second /auth/me request of its own
   const { user, firstName, initials, loading, role } = useAuth();
   useReloadOnReconnect();
   // New error: back to the top, where the alert is
@@ -87,27 +87,13 @@ export default function DashboardLayout({
   const skeletons = useSkeletonsShowing();
   const body = screenAlert ? withScreenAlert(children) : children;
 
-  /**
-   * Recomputed when the role changes, not on every render.
-   *
-   * `loading` matters here: during the initial /auth/me the role defaults to
-   * "user", so rendering the admin items before it resolves would flash them
-   * for an ordinary user and, worse, hide them briefly for an admin on every
-   * reload. Waiting is the honest default -- the nav appears a beat later,
-   * correct, rather than immediately and wrong
-   */
   const visibleMenuItems = useMemo(
-    () => 
-      // Same rules as the route guards (ROUTE_ROLES in AuthContext.js), so the sidebar
-      // never offers a screen the guard would refuse
-      loading ? [] : MENU_ITEMS.filter((item) => canAccess(role, item.route)),
+    () => (loading ? [] : MENU_ITEMS.filter((item) => canAccess(role, item.route))),
     [loading, role],
   );
 
   /**
-   * Groups the visible items into [{ section, items }], preserving the order
-   * they are declared in. Items with no `section` land in a leading unlabelled
-   * group, so the seven original entries render exactly as they did before
+   * Groups visible items into [{ section, items }].
    */
   const navGroups = useMemo(() => {
     const groups = [];
@@ -117,7 +103,6 @@ export default function DashboardLayout({
       if (last && last.section === section) last.items.push(item);
       else groups.push({ section, items: [item] });
     }
-    // Admins: their own pages first, then the rest under an "Account" heading
     if (groups.length > 1 && groups.some((g) => g.section === "Administration")) {
       return [
         ...groups.filter((g) => g.section === "Administration"),
@@ -126,13 +111,8 @@ export default function DashboardLayout({
     }
     return groups;
   }, [visibleMenuItems]);
-  // Computed once per render rather than kept live-updating -- the greeting
-  // only needs to be right for whenever the page happens to render, not
-  // ticking over the instant the clock crosses a boundary
+
   const greeting = useMemo(() => getGreeting(), []);
-  // A stored avatar URL can 404 (an old Google URL after the photo changed),
-  // so a failed load falls back to the initials rather than a broken image
-  // Reset per URL: a new photo (or a fresh signed R2 link) gets its own try
   const [failedUrl, setFailedUrl] = useState(null);
   const avatarUrl = user?.avatarUrl && user.avatarUrl !== failedUrl ? user.avatarUrl : null;
   const logout = useLogout();
@@ -192,7 +172,6 @@ export default function DashboardLayout({
     setShowNotifications(false);
   };
 
-  // opening one always closes the other,
   const toggleNotifications = () => {
     setShowNotifications((v) => !v);
     setShowProfileMenu(false);
@@ -208,8 +187,6 @@ export default function DashboardLayout({
   return (
     <View style={[styles.outer, { backgroundColor: c.rightBg }]}>
       <View style={[styles.shell, isMobile && styles.shellMobile]}>
-        {/* Sidebar: the page's own background, set off by a hairline, at every
-            width. On phones it slides over the page, which dims behind it */}
         <View
           style={[
             styles.sidebar,
@@ -222,8 +199,6 @@ export default function DashboardLayout({
           <View style={[styles.logoRow, isRail && styles.logoRowCompact, isTight && styles.logoRowTight]}>
             <Image source={logoSource} style={styles.logoImg} contentFit="contain" />
             {!isRail && <Text style={[styles.logoText, { color: c.primary }]}>NutriFitAI</Text>}
-            {/* On phones the header's ☰ sits under the open nav, so the same
-                button closes it from here */}
             {isMobile && (
               <Pressable
                 accessibilityLabel="Close navigation"
@@ -237,12 +212,9 @@ export default function DashboardLayout({
             )}
           </View>
 
-          {/* Scrolls on short windows, so Log Out never gets squeezed or cut off.
-              The bar is the app's thin themed one (useWebScrollbar) */}
           <ScrollView style={[styles.navScroll, isTight && styles.navScrollTight]} contentContainerStyle={styles.nav}>
             {navGroups.map((group) => (
               <View key={group.section || "__main"} style={styles.navGroup}>
-                {/* Compact Sidebar */}
                 {group.section && (isRail
                   ? <View style={[styles.navDivider, { borderTopColor: c.dropdownBorder }]} />
                   : <Text style={[styles.navSection, { color: c.inactiveNavText }]}>{group.section}</Text>
@@ -269,9 +241,7 @@ export default function DashboardLayout({
                       ]}
                     >
                       <View>
-                        {/* Darker green than the brand one in light mode, for contrast */}
                         <Ionicons name={item.icon} size={20} color={active || hovered ? c.activeNavText : c.inactiveNavText} />
-                        {/* Same unread dot as the topbar bell */}
                         {item.route === "/notifications" && unread > 0 && <View style={[styles.navDot, { backgroundColor: c.danger }]} />}
                       </View>
                       {!isRail && <Text style={[styles.navText, { color: active || hovered ? c.activeNavText : c.inactiveNavText }]}>{item.name}</Text>}
@@ -298,7 +268,6 @@ export default function DashboardLayout({
         <View style={[styles.content, { backgroundColor: c.rightBg }]}>
           <View style={[styles.header, (isCompact || isMobile) && styles.headerCompact, isMobile && styles.headerMobile, { borderBottomColor: c.shellBorder }]}>
             <View style={styles.headerIntro}>
-              {/* Always there: opens the overlay on phones, collapses to the icon rail elsewhere */}
               <Pressable
                 accessibilityLabel={isMobile ? "Open navigation" : isRail ? "Expand sidebar" : "Collapse sidebar"}
                 onPress={toggleNav}
@@ -326,7 +295,6 @@ export default function DashboardLayout({
                 >
                   <Ionicons name="notifications-outline" size={22} color={c.notifIcon} />
                 </Pressable>
-                {/* Only while something is unread */}
                 {unread > 0 && <View style={[styles.badgeDot, { backgroundColor: c.danger }]} />}
 
                 {showNotifications && (
@@ -338,7 +306,6 @@ export default function DashboardLayout({
                       </Pressable>
                     </View>
 
-                    {/* Latest few, with a link to the full inbox */}
                     <View style={styles.notifList}>
                       <UntrackedSkeletons>
                         <NotificationList compact onNavigate={() => setShowNotifications(false)} />
@@ -420,7 +387,6 @@ export default function DashboardLayout({
 
                       <View style={[styles.dropdownDivider, { borderTopColor: c.dropdownBorder }]} />
 
-                      {/* The public pages, which signed-in users can still open */}
                       {[
                         { key: "__pm_home", icon: "globe-outline", title: "About NutriFitAI", route: "/" },
                         { key: "__pm_terms", icon: "document-text-outline", title: "Terms of Service", route: "/terms" },
@@ -455,11 +421,8 @@ export default function DashboardLayout({
             </View>
           </View>
 
-          {/* Single shared backdrop — catches taps anywhere else in the content area */}
           {anyMenuOpen && <Pressable style={styles.backdrop} onPress={closeMenus} />}
 
-          {/* Dims the page behind the phone nav. Always mounted on phones so it
-              fades both ways; it only takes taps while the nav is open */}
           {isMobile && (
             <Pressable
               accessibilityLabel="Close navigation"
@@ -508,9 +471,6 @@ function createStyles(radii, spacing) {
     width: 260,
     zIndex: 100,
     elevation: 100,
-    // Slides in from the left, same timing as the wide-screen collapse.
-    // visibility flips at the end of the slide out, so the closed nav can't
-    // be tabbed into
     transform: [{ translateX: 0 }],
     transitionProperty: "transform, visibility",
     transitionDuration: "180ms",
@@ -520,13 +480,9 @@ function createStyles(radii, spacing) {
   logoRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: 20, paddingVertical: 24 },
   logoRowCompact: { justifyContent: "center", paddingHorizontal: 12 },
   logoRowTight: { paddingVertical: 14 },
-  // Pushed to the far right of the logo row, like the old close button
   menuCloseBtn: { marginLeft: "auto", marginRight: -8 },
   logoImg: { width: 40, height: 40 },
   logoText: { fontSize: 20, fontWeight: "800" },
-  // gap moved onto navGroup: the nav's children are groups now, and an 8px
-  // gap between GROUPS as well as between items is what separates a section
-  // from the one above it without a second margin rule
   navScroll: { marginTop: 28, flex: 1, minHeight: 0 },
   navScrollTight: { marginTop: 4 },
   nav: { gap: 12, paddingHorizontal: 12, paddingBottom: 12 },
@@ -534,15 +490,10 @@ function createStyles(radii, spacing) {
   navSection: { fontSize: 10, fontWeight: "800", letterSpacing: 0.8, textTransform: "uppercase", paddingHorizontal: 16, paddingTop: 8 },
   navDivider: { borderTopWidth: 1, marginVertical: 6, marginHorizontal: 8 },
   navItem: { flexDirection: "row", alignItems: "center", gap: 16, borderRadius: radii.sm, paddingHorizontal: 16, paddingVertical: 12 },
-  // Icon centred in the rail, not sat at the left padding
   navItemRail: { justifyContent: "center", paddingHorizontal: 0 },
   navText: { fontSize: 14, fontWeight: "600" },
   logoutBtn: { marginHorizontal: 12, marginTop: 8, marginBottom: 20, flexDirection: "row", alignItems: "center", gap: 16, borderRadius: radii.sm, paddingHorizontal: 16, paddingVertical: 12 },
 
-  // Main Content
-  // minHeight:0 alongside minWidth:0 -- on web a flex child defaults to
-  // min-height:auto and refuses to shrink below its content, which would let
-  // the column grow past the viewport again and re-break the inner scroll
   content: { flex: 1, minWidth: 0, minHeight: 0, flexDirection: "column" },
   header: {
     flexDirection: "row",
@@ -564,7 +515,6 @@ function createStyles(radii, spacing) {
   greetingMobile: { fontSize: 18 },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 16 },
 
-  // Each trigger's wrapper sits above the shared backdrop (zIndex 30), so any tap triggers the pressable
   triggerWrap: { zIndex: 60, elevation: 60 },
 
   iconBtn: { borderRadius: radii.pill, padding: 8 },
@@ -576,7 +526,6 @@ function createStyles(radii, spacing) {
   avatarImg: { width: "100%", height: "100%" },
   profileName: { fontSize: 14, fontWeight: "700", maxWidth: 160 },
 
-  // Shared backdrop — covers the whole right-side content area
   backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 30 },
   backdropDim: {
     backgroundColor: "rgba(0,0,0,0.35)",
@@ -608,14 +557,8 @@ function createStyles(radii, spacing) {
   toggleThumb: { width: 16, height: 16, borderRadius: 8, backgroundColor: colors.white, marginLeft: 2 },
   toggleThumbOn: { marginLeft: 18 },
 
-  // The gutter stays reserved, so a section with a scrollbar and one without
-  // lay out at the same width (centered content no longer shifts between them)
   main: { flex: 1, minHeight: 0, scrollbarGutter: "stable" },
-
   mainNonScrollable: { flexDirection: "column" },
-  // paddingTop keeps page content clear of the header (topbar) above it --
-  // without it, a page's first row of content sits flush against the
-  // header with no breathing room between them
   mainContent: { paddingHorizontal: 32, paddingTop: spacing.xl, paddingBottom: 32 },
   mainContentCompact: { paddingHorizontal: 20, paddingTop: spacing.lg },
   mainContentMobile: { paddingHorizontal: 16, paddingTop: spacing.lg, paddingBottom: 24 },

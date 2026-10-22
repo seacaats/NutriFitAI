@@ -68,12 +68,8 @@ export default function ExerciseWorkoutTracker({
   };
 
   /**
-   * Unmount is the other way a workout ends — closing the modal, navigating
-   * away, or the screen being torn down. Same abandon path.
-   *
-   * The ref dance is because this effect must run only on unmount (empty deps)
-   * while reading values that change every second; closing over them directly
-   * would capture the values from first render
+   * Handles unmounting when closing the modal or navigating away.
+   * Executes abandon logic using current state captured in abandonRef.
    */
   const abandonRef = useRef(() => {});
   useEffect(() => () => abandonRef.current(), []);
@@ -123,16 +119,7 @@ export default function ExerciseWorkoutTracker({
     });
   };
 
-  /**
-   * Records partial work before clearing
-   *
-   * A user who finishes one of three sets and walks away has done something
-   * real. Dropping it would make the coach\'s 7-day count and the weekly goal
-   * both understate reality — the app would tell them they did nothing
-   *
-   * Silent on purpose: prompting "save your partial workout?" turns exercise
-   * into bookkeeping
-   */
+  // Records completed sets so partial workouts still count toward weekly totals
   const abandon = () => {
     if (hasStarted && completedSets > 0) logOnce(completedSets, "skipped");
   };

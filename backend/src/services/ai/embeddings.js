@@ -2,9 +2,7 @@ const env = require('../../../config/env');
 const quotaStore = require('./quotaStore');
 const { logSystemAction } = require('../../utils/audit-logs/auditLogger');
 
-// Embedding calls for the coach's semantic search. Registered under its own
-// quota name, outside the chat chain, so a 429 here never benches the chat or
-// recommendation providers
+// Embedding calls for semantic search, tracked under an isolated quota key.
 
 const NAME = 'gemini-embed';
 const cfg = env.ai.embed;
@@ -12,18 +10,15 @@ const cfg = env.ai.embed;
 const CACHE_MAX = 200;
 const MAX_QUERY_CHARS = 200;
 const COOLDOWN_MS = 60 * 1000;
-// The build script sends big batches, so it gets longer than a chat message does
 const BUILD_TIMEOUT_MS = 30 * 1000;
-// A rejected key or request won't fix itself in a minute
 const REJECTED_COOLDOWN_MS = 10 * 60 * 1000;
 
-// text -> vector, oldest dropped first
+// LRU cache: text -> vector
 const cache = new Map();
 
 const isConfigured = () => Boolean(cfg.baseUrl && cfg.model && cfg.apiKey);
 
-// Cut to cfg.dims and back to unit length (the model allows truncating),
-// so a dot product is the cosine similarity
+// Truncates to cfg.dims and normalizes to unit length for dot-product cosine similarity
 function prepare(values) {
   const v = Float32Array.from(values.slice(0, cfg.dims));
   let norm = 0;
@@ -38,7 +33,6 @@ function retryAfterMs(headers) {
   return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds * 1000, 60 * 60 * 1000) : null;
 }
 
-// One request for one or more texts. Throws with .status on failure
 async function request(input, timeoutMs = cfg.timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -65,15 +59,14 @@ async function request(input, timeoutMs = cfg.timeoutMs) {
 }
 
 /**
- * For the build script: throws on failure, no cache, no cooldown
+ * Batch embedding helper for build scripts (throws on failure, bypasses cache/cooldown).
  * @param {string[]} texts
  * @returns {Promise<Float32Array[]>}
  */
 const embedTexts = (texts) => request(texts, BUILD_TIMEOUT_MS);
 
 /**
- * For chat: the vector for a short user message, or null on ANY problem
- * (no key, cooling down, 429, timeout), so the caller falls back to keywords
+ * Returns the embedding vector for a user query, or null on any failure so callers can fall back to keywords.
  * @param {string} text
  * @returns {Promise<Float32Array|null>}
  */
@@ -82,7 +75,6 @@ async function embedQuery(text) {
   if (!key || !isConfigured()) return null;
 
   if (cache.has(key)) {
-    // Re-inserted so the most recently used stays last
     const hit = cache.get(key);
     cache.delete(key);
     cache.set(key, hit);
@@ -100,7 +92,6 @@ async function embedQuery(text) {
     const rejected = err.status >= 400 && err.status < 500 && err.status !== 429;
     const ms = rejected ? REJECTED_COOLDOWN_MS : err.retryAfterMs ?? COOLDOWN_MS;
     quotaStore.cooldown(NAME, ms, err.message);
-    // Once per cooldown: the gate above skips calls until it ends. Not awaited, logSystemAction never throws
     logSystemAction({
       action: 'coach.embeddings.paused',
       targetType: 'system',

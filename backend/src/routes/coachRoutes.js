@@ -9,10 +9,8 @@ const { sendMessageSchema, subjectQuerySchema, conversationIdParamSchema } = req
 
 const router = Router();
 
-// One short clip, held in memory and size-capped before it is buffered
 const voiceUpload = memoryUpload(env.ai.groq.transcribeMaxBytes);
 
-// Ownership comes form req.userId (signed token) so no authorization to another user
 router.post(
     '/chat', 
     aiChatLimiter, 

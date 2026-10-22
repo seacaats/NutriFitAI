@@ -11,8 +11,6 @@ const {
 
 const router = Router();
 
-// Held in memory, then written through the storage adapter. Same cap as the
-// adapter itself (MAX_UPLOAD_BYTES) so a big file is refused before buffering
 const scanUpload = memoryUpload(env.storage.maxUploadBytes);
 
 router.post(
@@ -42,13 +40,12 @@ router.post(
   validateBody(logMealSchema),
   controller.logMeal
 );
-// /history is declared before /:id so it never parses as an id
+// Declared before /meals/:id so "history" is not parsed as an id
 router.get(
   '/meals/history',
   validateQuery(mealHistorySchema),
   controller.getMealHistory
 );
-// Daily calorie and macro targets, read and set on the Food Scanner
 router.get('/goals', controller.getNutritionGoals);
 router.patch('/goals', validateBody(nutritionGoalsSchema), controller.setNutritionGoals);
 

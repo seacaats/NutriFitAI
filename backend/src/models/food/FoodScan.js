@@ -3,14 +3,12 @@ const { USER_REF, withId } = require('../shared');
 
 const { Schema } = mongoose;
 
-// food_scans -- one per photo sent to the detection model. Nutrition on each
-// item is for ONE serving of the nutrition table (and per100g); meals scale it by grams
+// Food detection scans; item nutrition is stored per default serving and per 100g
 const foodScanSchema = new Schema(
   {
     userId: USER_REF,
 
-    // Storage key, not a URL -- same reasoning as profile.avatarStorageKey
-    // Goes null on purge while the document itself survives
+    // Cleared when the image expires or is removed while keeping the scan document
     storageKey: { type: String, default: null },
     imagePurgedAt: { type: Date, default: null },
 
@@ -28,12 +26,8 @@ const foodScanSchema = new Schema(
           {
             itemId: { type: Schema.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
             foodName: { type: String, required: true, maxlength: 150 },
-            // Household serving from the nutrition table ("1 cup"). estimatedGrams
-            // is that serving's weight, the starting grams on the scanner
             serving: { type: String, default: null, maxlength: 60 },
             estimatedGrams: { type: Number, default: null },
-            // Nutrition per 100 g, what meals are calculated from. Null on
-            // scans saved before grams existed
             per100g: {
               type: new Schema(
                 {
@@ -70,7 +64,6 @@ foodScanSchema.statics.createProcessing = async function createProcessing(userId
   return withId(doc.toObject());
 };
 
-// Model answered. An empty `items` is still completed: "nothing recognised"
 foodScanSchema.statics.complete = async function complete(id, items, client) {
   const doc = await this.findByIdAndUpdate(
     id,
@@ -80,30 +73,26 @@ foodScanSchema.statics.complete = async function complete(id, items, client) {
   return withId(doc);
 };
 
+foodScanSchema.statics.clearImage = async function clearImage(id, storageKey, client) {
+  await this.updateOne({ _id: id, storageKey }, { $set: { storageKey: null, imagePurgedAt: new Date() } }, opts(client));
+};
+
 foodScanSchema.statics.fail = async function fail(id, client) {
   await this.updateOne({ _id: id }, { $set: { status: 'failed' } }, opts(client));
 };
 
-// Owner-only, the filter does the check
 foodScanSchema.statics.getOwned = async function getOwned(id, userId, client) {
   if (!mongoose.isValidObjectId(id)) return null;
   return withId(await this.findOne({ _id: id, userId }, LIST_FIELDS, opts(client)).lean());
 };
 
-/**
- * Owner-only delete. Returns the removed scan (with its storageKey) so the
- * caller can delete the photo file and audit it, or null when not found.
- * Meals keep their own nutrition copy and chats re-read the scan each turn,
- * so neither breaks: a chat about it just says it was deleted
- */
+/** Deletes an owned scan and returns it (including storageKey for file cleanup). */
 foodScanSchema.statics.removeOwned = async function removeOwned(id, userId, client) {
   if (!mongoose.isValidObjectId(id)) return null;
   return withId(await this.findOneAndDelete({ _id: id, userId }, opts(client)).lean());
 };
 
-// Newest first, one page at a time. `before` is the scannedAt of the last
-// scan already shown, so pages never shift when a new scan comes in.
-// Failed scans are left out, there's nothing to reopen
+// Cursor-paginated completed scans, newest first (`before` is the last seen scannedAt)
 foodScanSchema.statics.listPage = async function listPage(userId, { before = null, limit = 10 } = {}, client) {
   const filter = { userId, status: 'completed' };
   if (before) filter.scannedAt = { $lt: before };
@@ -114,11 +103,7 @@ foodScanSchema.statics.listPage = async function listPage(userId, { before = nul
   return rows.map(withId);
 };
 
-/**
- * Releases images older than the retention window. Returns what was released
- * so the caller can delete the files and audit it. Nutrition stays put, both
- * here and snapshotted on meals, so nothing a user logged is lost
- */
+/** Clears storageKey on scans older than `retentionDays` and returns the affected rows. */
 foodScanSchema.statics.purgeExpiredImages = async function purgeExpiredImages(retentionDays, batch = 200, client) {
   const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
   const rows = await this.find(

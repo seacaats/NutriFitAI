@@ -9,10 +9,6 @@ const { INVALID_CODE_MESSAGE } = require('../../services/auth/authResponses');
 const { sendRegistrationNotice } = require('./registrationController');
 const { issueAndSendOtp, emailFailed, consumeOtpChallenge } = require('../../services/auth/otpChallenge');
 
-// Changing the email, signed in. The new address is proven with a code sent to it,
-// and the password is asked again so a borrowed session can't redirect the account.
-// Regular users only: an admin's address stays out of band like the account itself
-
 async function requireRegularUser(req) {
   const user = await User.getById(req.userId);
   if (!user) throw ApiError.notFound("We couldn't find your account.");
@@ -20,7 +16,7 @@ async function requireRegularUser(req) {
   return user;
 }
 
-// POST /api/auth/email/request { newEmail, password } -- sends the code to the new address
+// POST /api/auth/email/request
 const requestEmailChange = asyncHandler(async (req, res) => {
   const user = await requireRegularUser(req);
 
@@ -34,9 +30,7 @@ const requestEmailChange = asyncHandler(async (req, res) => {
     throw ApiError.badRequest('That is already your email.', { code: 'SAME_EMAIL' });
   }
 
-  // A taken address answers like a free one (no code is sent), so this can't be
-  // used to find out who has an account. Its owner gets a notice instead, as
-  // in register. The confirm step then fails as usual
+  // Respond identically when newEmail is already registered to prevent account enumeration
   if (await User.findByEmail(newEmail)) {
     sendRegistrationNotice(newEmail.toLowerCase(), { emailChange: true });
   } else {
@@ -54,7 +48,7 @@ const requestEmailChange = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'If that address can be used, we sent a code to it.' });
 });
 
-// POST /api/auth/email/confirm { code } -- the address changes, other devices are signed out
+// POST /api/auth/email/confirm
 const confirmEmailChange = asyncHandler(async (req, res) => {
   const user = await requireRegularUser(req);
 
@@ -64,13 +58,11 @@ const confirmEmailChange = asyncHandler(async (req, res) => {
   try {
     before = await User.applyPendingEmail(user.id);
   } catch (err) {
-    // Taken by someone else between the request and now
     if (err?.code === 11000) throw ApiError.conflict("That email can't be used.", { code: 'EMAIL_UNAVAILABLE' });
     throw err;
   }
   if (!before) throw ApiError.badRequest(INVALID_CODE_MESSAGE, { code: 'INVALID_CODE' });
 
-  // Everywhere else signs in again with the new address. This device stays
   await Session.revokeAll(user.id, null, req.sessionId);
 
   await logAction(req, {
@@ -80,7 +72,6 @@ const confirmEmailChange = asyncHandler(async (req, res) => {
     targetLabel: User.displayName(user),
     hash: { oldEmailHash: before.email, newEmailHash: before.pendingEmail },
   });
-  // The new address and inbox, and the old address too: it's where a hijack would be noticed
   notify(user.id, 'email_changed');
   notify(null, 'email_changed', { email: before.email });
 

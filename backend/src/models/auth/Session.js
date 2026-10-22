@@ -4,10 +4,7 @@ const { USER_REF, withId } = require('../shared');
 
 const { Schema } = mongoose;
 
-// One row per signed-in device. Its id rides in both tokens as "sid", which
-// is what makes a session revocable: a refresh token whose row is gone or
-// revoked is refused (sessionController). The row is deleted by a TTL index
-// (migration 010) when the refresh token would have expired anyway
+// Active device sessions, referenced in tokens as `sid` for revocation and expiry tracking
 const sessionSchema = new Schema(
   {
     _id: { type: String, default: () => crypto.randomUUID() },
@@ -16,10 +13,9 @@ const sessionSchema = new Schema(
     userAgent: { type: String, maxlength: 200, default: null },
     createdAt: { type: Date, default: () => new Date() },
     lastUsedAt: { type: Date, default: () => new Date() },
-    // Same deadline as the refresh token
     expiresAt: { type: Date, required: true },
     revokedAt: { type: Date, default: null },
-    // The admin who ended it. null with revokedAt set = the user themself
+    // Admin userId if revoked by an admin; null if revoked by the user
     revokedBy: { type: String, default: null },
   },
   { versionKey: false, collection: 'auth_sessions' },
@@ -35,12 +31,11 @@ sessionSchema.statics.open = async function open(userId, { ip, userAgent, expire
   return withId(doc.toObject());
 };
 
-// Not revoked and not past its deadline. A token without a row is checked by the caller
 sessionSchema.statics.isLive = async function isLive(id, userId, client) {
   return Boolean(await this.exists({ _id: id, userId, revokedAt: null, expiresAt: { $gt: new Date() } }, opts(client)));
 };
 
-// A refresh: still live, then the idle window moves forward. False = refuse it
+// Extends session expiry on token refresh if still active
 sessionSchema.statics.touch = async function touch(id, userId, expiresAt, client) {
   const result = await this.updateOne(
     { _id: id, userId, revokedAt: null, expiresAt: { $gt: new Date() } },

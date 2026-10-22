@@ -1,14 +1,11 @@
-// Field definitions and helpers every model file shares. Constants
-// only, no models, so nothing here registers a collection
+// Shared schema field definitions and helpers
 
 const { CALENDAR_DAY_RE } = require('../utils/calendarDay');
 
-// userId is plain string - users._id is a UUID string
+// users._id is a UUID string
 const USER_REF = { type: String, required: true, ref: 'User' };
 
-// Dates are plain validated strings instead Date objects
-// to avoid timezone-shift bugs, or simply any inconsistent
-// read/write/delivery of timezones for users
+// YYYY-MM-DD calendar day string (avoids Date timezone shifts)
 const CALENDAR_DAY = {
   type: String,
   validate: {
@@ -17,8 +14,7 @@ const CALENDAR_DAY = {
   },
 };
 
-// Lean documents for callers. Models speak "id", the database "_id",
-// and ObjectIds are stringified so no call site has to know it's Mongo
+// Renames _id to stringified id on lean documents
 function withId(doc) {
   if (!doc) return null;
   const { _id, ...rest } = doc;

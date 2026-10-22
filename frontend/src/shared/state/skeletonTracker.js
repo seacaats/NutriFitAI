@@ -1,8 +1,6 @@
 import { createContext, createElement, useContext, useEffect, useState } from "react";
 
-// How many skeleton blocks are on screen. Shared by Skeleton.jsx and
-// Skeleton.web.jsx; the layouts hide their scrollbar while any are (a first
-// load, nothing saved to show yet)
+// Global skeleton counter shared between native and web Skeleton components
 let mounted = 0;
 const listeners = new Set();
 
@@ -12,9 +10,7 @@ function track(delta) {
   if (before !== mounted > 0) listeners.forEach((fn) => fn(mounted > 0));
 }
 
-// Skeletons outside the page body (e.g. the header's notification dropdown)
-// sit under this, so loading them doesn't hide the page's scrollbar and
-// shift its content sideways
+// Context to exempt header/overlay skeletons from page-level scrollbar suppression
 const TrackingContext = createContext(true);
 
 export function UntrackedSkeletons({ children }) {

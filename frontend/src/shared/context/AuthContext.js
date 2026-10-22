@@ -17,23 +17,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 /**
- * Single source of truth for "is there a valid session, and what may it do".
+ * Single source of truth for session validity and role permissions.
  *
- * A stored access token only proves one existed at some point, so the session
- * is always confirmed against GET /auth/me rather than trusted locally. The
- * role comes from that response, which is derived server-side from the signed
- * token — never from anything the client can set.
+ * Stored access token existence is confirmed against GET /auth/me on startup.
+ * The active role is derived server-side from the verified token.
  */
 const AuthContext = createContext(null);
 
 /**
- * Mirrors the `role` enum in the backend's models/user/User.js and
- * ROLES in its middleware/authMiddleware.js.
- *
- * Worth restating what this list is NOT: it is a rendering aid. The role it
- * lists arrives from GET /auth/me, derived server-side from the signed token,
- * and every decision that matters is re-made by the API. Hiding a nav item is
- * a usability choice; the endpoint behind it is what is actually protected.
+ * Mirrors the `role` enum in models/user/User.js and ROLES in middleware/authMiddleware.js.
  */
 export const ROLES = ["user", "admin"];
 export const DEFAULT_ROLE = "user";
@@ -43,14 +35,9 @@ export const AUTH_STATUS = {
   AUTHENTICATED: "authenticated",
   ANONYMOUS: "anonymous",
   /**
-   * We hold a token but cannot currently reach the server to confirm it.
-   *
-   * This state exists because collapsing it into ANONYMOUS is what logged
-   * people out every time the connection dropped. "Not signed in" and "cannot
-   * ask right now" demand opposite responses: the first should send you to
-   * the login screen, the second should keep you where you are and retry.
-   * With one state for both, a dropped Wi-Fi was indistinguishable from
-   * signing out.
+   * Token is held but the server is currently unreachable to confirm it.
+   * Keeps the current view and retries rather than immediately redirecting
+   * to the login screen during intermittent connection drops.
    */
   UNREACHABLE: "unreachable",
 };
@@ -58,8 +45,7 @@ export const AUTH_STATUS = {
 export function AuthProvider({ children }) {
   const [status, setStatus] = useState(AUTH_STATUS.LOADING);
   const [user, setUser] = useState(null);
-  // True after the user logs out themselves, so the guard sends them to the
-  // landing page rather than to login. Cleared by the next sign-in
+  // True after explicit logout so navigation targets landing instead of login
   const [loggedOut, setLoggedOut] = useState(false);
 
   const loadSession = useCallback(async () => {
@@ -74,10 +60,7 @@ export function AuthProvider({ children }) {
     try {
       const data = await apiClient.get("/auth/me", { auth: true, wait: false });
 
-      // The server returns avatarUrl as a root-relative path. Resolving it here,
-      // once, means every consumer of useAuth() gets a loadable URL -- rather
-      // than each screen remembering to do it and the mobile ones silently
-      // rendering initials when they forget.
+      // Resolve root-relative avatar path into an absolute media URL
       setUser(data ? { ...data, avatarUrl: resolveMediaUrl(data.avatarUrl) } : null);
       setStatus(AUTH_STATUS.AUTHENTICATED);
       setLoggedOut(false);
@@ -86,25 +69,10 @@ export function AuthProvider({ children }) {
       const status = err instanceof ApiClientError ? err.status : 0;
 
       /**
-       * Only an AUTHENTICATION failure means "not logged in".
-       *
-       * 401 -> the token is expired, malformed, or signed with a secret this
-       *        server no longer uses. This is the stale-token case: rotating
-       *        JWT_ACCESS_SECRET, or reinstalling the backend against a new
-       *        database, leaves a token on the device that verifies against
-       *        nothing. It can never recover on its own, so it is cleared.
-       *
-       * 403 -> authenticated but not permitted. Previously treated the same as
-       *        401 and the token was DISCARDED, which is wrong: the session is
-       *        valid, the user simply lacks a right. Throwing away a working
-       *        token turns a permissions problem into a forced re-login.
-       *
-       * Anything else -- 404, 500, a timeout, a dropped connection, an ngrok
-       * interstitial -- says nothing about the session. The old code treated
-       * every one of these as logged out, which is why a single failing
-       * request bounced a perfectly good session to /access-denied with
-       * reason=unauthenticated. The token is kept so the next successful call
-       * recovers, and the failure is logged rather than silently swallowed.
+       * Handles authentication errors:
+       * 401: Token expired, invalid, or unrecognized signature -> clear session.
+       * 403: Authenticated but unauthorized -> clear session.
+       * Other network/server errors keep the token and mark the session unreachable.
        */
       if (status === 401) {
         await clearAccessToken();
@@ -120,20 +88,7 @@ export function AuthProvider({ children }) {
         return null;
       }
 
-      /**
-       * Anything else -- a timeout, a dropped connection, a 500, an ngrok
-       * interstitial -- says NOTHING about the session.
-       *
-       * The old code logged exactly this ("keeping the stored token") and
-       * then set ANONYMOUS one line later, which the route guard reads as
-       * signed out and redirects on. So the token was kept and the user was
-       * still thrown to /access-denied -- the comment and the behaviour
-       * disagreed, and the behaviour won.
-       *
-       * UNREACHABLE keeps the token AND keeps the user in place. The next
-       * successful call recovers the session with no re-login.
-       */
-
+      // Mark session unreachable on transient or network failures without dropping credentials
       setUser(null);
       setStatus(AUTH_STATUS.UNREACHABLE);
       return null;
@@ -144,7 +99,7 @@ export function AuthProvider({ children }) {
     loadSession();
   }, [loadSession]);
 
-  // Opened while the server was down: check again the moment it's back
+  // Check session again once network reconnection is detected
   const statusRef = useRef(status);
   statusRef.current = status;
   useEffect(
@@ -153,17 +108,7 @@ export function AuthProvider({ children }) {
   );
 
   /**
-   * apiClient discovers a dead refresh cookie mid-request, on whichever
-   * screen happened to be calling at the time -- not necessarily this
-   * context's own loadSession()/`/auth/me` check. Registering here is what
-   * lets that discovery, from anywhere, still flip status to ANONYMOUS and
-   * trip the (main)/_layout.jsx redirect, instead of only failing silently
-   * on the one screen that made the request.
-   *
-   * No cleanup on unmount: AuthProvider lives for the app's lifetime (it
-   * wraps the root layout), so there's nothing to unregister in practice --
-   * and leaving a stale handler registered across a remount that can't
-   * happen isn't a real leak.
+   * Session state handlers for apiClient discovery of expired or unreachable sessions.
    */
   useEffect(() => {
     setSessionExpiredHandler(() => {
@@ -172,33 +117,25 @@ export function AuthProvider({ children }) {
       setStatus(AUTH_STATUS.ANONYMOUS);
     });
 
-    /**
-     * Discovered from any screen's request, not just this context's own
-     * /auth/me. Deliberately does NOT clear the user: the session is
-     * presumed intact and simply unconfirmable, so whatever is on screen
-     * stays usable rather than blanking out.
-     */
     setSessionUnreachableHandler(() => {
-      // Signed in already: stay put, screens fall back to saved data (offlineCache)
+      // Retain existing authenticated state if already loaded
       setStatus((current) =>
         current === AUTH_STATUS.ANONYMOUS || current === AUTH_STATUS.AUTHENTICATED ? current : AUTH_STATUS.UNREACHABLE,
       );
     });
   }, []);
 
-  // `byUser`: they pressed Log out (lands on the landing page), as opposed to
-  // a sign-out on their way to login
+  // byUser: true for explicit user logout
   const signOut = useCallback(async ({ byUser = false } = {}) => {
     try {
       await apiClient.post("/auth/logout");
     } catch {
-      // Clearing locally matters more than the server acknowledging it.
+      // Local state is cleared regardless of network response
     }
     await clearAccessToken();
-    // Saved data belongs to this account only, as does where it left off
     await clearCached();
     await clearRemembered();
-    // Drop any leftover Google popup result so the next login screen can't pick it up
+    // Clear pending Google auth channel messages
     resetGoogleAuthChannel();
     setUser(null);
     setLoggedOut(byUser);
@@ -208,9 +145,7 @@ export function AuthProvider({ children }) {
   const value = useMemo(() => {
     const role = user?.role || DEFAULT_ROLE;
 
-    // Display helpers, derived once here rather than in each screen. Prefers
-    // the split name columns and falls back to full_name, which is all a
-    // Google-linked account may have.
+    // Derived display helpers
     const fullName = user?.fullName || "";
     const parts = fullName.trim().split(/\s+/).filter(Boolean);
     const firstName = user?.firstName || parts[0] || "there";
@@ -228,10 +163,6 @@ export function AuthProvider({ children }) {
       user,
       role,
       emailVerified: Boolean(user?.emailVerified),
-      // Onboarding (/onboarding): not yet finished or skipped, and whether its
-      // answers are all still empty (the dashboard's banner). Only an explicit
-      // false counts, so a saved /auth/me from before the flag existed
-      // doesn't send anyone to the wizard while offline
       onboarded: user?.onboarded !== false,
       setupPending: Boolean(user?.setupPending),
 
@@ -262,15 +193,8 @@ export function useAuth() {
 }
 
 /**
- * Single source of truth for which role may open which screen, and where each
- * role lands after sign-in. Read by RoleGuard (the (main)/(admin) layouts),
- * the web sidebar, and every post-login redirect.
- *
- * Mirrors the backend's mount-point guards in src/routes/index.js:
- *  - user-only screens  <-> /steps, /coach, /workouts  (requireRole('user'))
- *  - admin screens      <-> /admin                     (requireRole('admin'))
- *
- * This is the usability layer; the API is the security layer. Both are needed.
+ * Route access map and role landing destinations.
+ * Used by RoleGuard, navigation layouts, and post-login redirects.
  */
 
 const ADMIN_ROLES = ["admin"];
@@ -286,12 +210,8 @@ export function homeFor(role) {
 }
 
 /**
- * Pathname prefix -> roles allowed. Matches the prefix itself and anything
- * nested under it ("/workouts" covers "/workouts/history"), so a new nested
- * screen inherits its parent's rule instead of silently falling through.
- *
- * Deny by default: a guarded pathname with no entry here is refused, so adding
- * a screen without deciding who may see it fails loudly
+ * Pathname prefix to allowed roles mapping.
+ * Sub-paths inherit the parent route's permission rules.
  */
 const ROUTE_ROLES = [
   // User-only
@@ -312,6 +232,7 @@ const ROUTE_ROLES = [
   // Admin
   ["/analytics", ADMIN_ROLES],
   ["/users", ADMIN_ROLES],
+  ["/image-reviews", ADMIN_ROLES],
   ["/audit-logs", ADMIN_ROLES],
 ];
 
@@ -328,9 +249,7 @@ export function canAccess(role, pathname) {
   return Boolean(allowed && allowed.includes(role));
 }
 
-// Where to send someone after login when a `next` path was carried along
-// (e.g. from access-denied). Only an in-app path their role may open is
-// honoured; anything else, including full URLs, falls back to their home
+// Validates in-app return path against user role permissions
 export function safeReturnTo(next, role) {
   const path = Array.isArray(next) ? next[0] : next;
   if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//")) return homeFor(role);
@@ -339,46 +258,32 @@ export function safeReturnTo(next, role) {
 }
 
 /**
- * The one guard behind the (main) and (admin) layouts, so the
- * two can't drift apart. Who may open what is ROUTE_ROLES above.
+ * Shared layout route guard for authenticated views.
  *
- * Deny by default: nothing renders until the session is confirmed against the
- * server, and a pathname with no rule is refused.
- *
- * Order of checks:
- *  1. session loading / server unreachable  -> spinner / retry
- *  2. not signed in                         -> /login (back here after),
- *                                              or / right after logging out
- *     email unverified                      -> /access-denied
- *  3. admin on native                       -> /access-denied (web only)
- *  4. role not allowed on this screen:
- *       - admin on a user-only screen            -> silently to their home
- *         (/users), so e.g. a post-login "/dashboard" lands them there
- *       - anything else                          -> /access-denied (forbidden)
+ * Check sequence:
+ *  1. Session loading / server unreachable -> spinner / retry view
+ *  2. Not signed in                        -> redirect to /login or /
+ *     Email unverified                     -> redirect to /access-denied
+ *  3. Admin on native                      -> redirect to /access-denied (web-only admin)
+ *  4. Role mismatch                        -> redirect to role home or /access-denied
  */
 export function RoleGuard({ children }) {
   const { status, isAuthenticated, emailVerified, role, refresh, loggedOut } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  // The pathname is the app's, not this group's. With a public screen
-  // (/terms, the landing page) pushed on top, this guard stays mounted
-  // underneath and would judge /terms. Once it has guarded a listed screen,
-  // an unlisted pathname means it's in the background, so it stands down
+  // When a public route is pushed on top of a guarded route, the background guard stands down
   const guardedOnce = useRef(false);
   const gate = useLoadingGate(status === AUTH_STATUS.LOADING);
   const listed = Boolean(rolesFor(pathname));
   if (listed) guardedOnce.current = true;
   const standingDown = !listed && guardedOnce.current;
 
-  // Where this visitor should go instead, or null to show the screen
+  // Resolved destination or null if screen is accessible
   const target = standingDown || gate.pending || status === AUTH_STATUS.UNREACHABLE
     ? null
     : redirectFor({ isAuthenticated, emailVerified, role, loggedOut, pathname });
 
-  // Navigates once per destination. <Redirect> re-ran router.replace on every
-  // render, and in the production web build the guard re-renders while that
-  // navigation is still settling: an endless loop (React error #185) and a
-  // blank page instead of the login screen
+  // Tracks current destination to avoid redundant navigations
   const sentTo = useRef(null);
   useEffect(() => {
     if (!target) {
@@ -390,16 +295,10 @@ export function RoleGuard({ children }) {
     router.replace(target);
   }, [target, router]);
 
-  // The navigator below always stays mounted: expo-router needs the layout's
-  // navigator to resolve the URL, and swapping it for a loading screen made
-  // the production web build re-resolve the route endlessly (React #185,
-  // blank page). Loading, the offline notice and an outgoing redirect cover
-  // it instead. Standing down covers nothing but keeps the same tree:
-  // returning bare `children` remounted the whole stack (no slide, back
-  // history lost) whenever /terms or the landing page opened from the menu
+  // Root navigator remains mounted while loading or redirect covers are overlaid
   let cover = null;
   if (gate.pending) cover = <LoadingScreen visible={gate.visible} />;
-  // Token held but the server can't be reached to confirm it
+  // Token held but the server cannot be reached to confirm it
   else if (status === AUTH_STATUS.UNREACHABLE) cover = (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 12, backgroundColor: colors.bgMint }}>
       <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>
@@ -416,7 +315,7 @@ export function RoleGuard({ children }) {
       </Pressable>
     </View>
   );
-  // On the way somewhere else: a plain cover rather than a flash of the screen
+  // Route transition cover
   else if (target) cover = <View style={{ flex: 1, backgroundColor: colors.bgMint }} />;
 
   return (
@@ -427,12 +326,10 @@ export function RoleGuard({ children }) {
   );
 }
 
-// The guard's checks, in order. A plain string, so the same destination is
-// recognised as the same and only navigated to once
+// Evaluates redirection target for current auth state and route
 function redirectFor({ isAuthenticated, emailVerified, role, loggedOut, pathname }) {
   const from = encodeURIComponent(pathname);
   if (!isAuthenticated) {
-    // Logged out on purpose: the landing page. Otherwise login, then back here
     return loggedOut ? "/" : `/login?next=${from}`;
   }
   if (!emailVerified) return `/access-denied?reason=unverified&from=${from}`;

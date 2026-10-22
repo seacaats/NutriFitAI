@@ -12,21 +12,18 @@ import {
 } from "@/shared/utils/dates";
 
 /**
- * Backs BOTH step screens -- app/(main)/steps/index.jsx and index.web.jsx -- so
- * the two cannot drift on what "daily average" or "goal days" means
+ * Backs both step screens -- app/(main)/steps/index.jsx and index.web.jsx -- so
+ * the two stay consistent on daily averages and goal days.
  *
- * The hook owns fetching and aggregation only. It deliberately does NOT know
- * how to read a sensor: that is useStepSync's job on mobile, and impossible on
- * web. Keeping them separate is what lets the web screen use this untouched
+ * Handles fetching and aggregation only; sensor syncing lives in useStepSync
+ * so the web screen can use this hook directly.
  */
 
 /**
- * Groups days into the buckets a range displays
+ * Groups days into the buckets a range displays.
  *
- * A missing day stays missing all the way through. `steps: null` means "we have
- * no data" and renders as a gap; `steps: 0` means "we asked and the answer was
- * none". Collapsing the two would make a week the user never opened the app
- * look identical to a week they spent in bed
+ * Missing days stay null (`steps: null` renders as a gap), distinct from a
+ * recorded zero-step day (`steps: 0`).
  */
 function bucketDays(days, preset, from, to) {
   const byDate = new Map(days.map((d) => [d.activityDate, d]));
@@ -49,11 +46,8 @@ function bucketDays(days, preset, from, to) {
     });
   }
 
-  // Week and month buckets sum whatever exists inside them. A bucket with no
-  // data at all stays null; a bucket with partial data reports the partial sum,
-  // which is the honest number
-  // Months key on "YYYY-MM": a 365-day year spans the same month name twice
-  // (Oct last year and Oct now), and duplicate keys break the chart
+  // Week and month buckets sum whatever exists inside them; empty buckets stay null.
+  // Months key on "YYYY-MM" since a 365-day window can span the same month name twice.
   const groups = new Map();
   allDates.forEach((date, index) => {
     const key = bucket === "week"
@@ -72,7 +66,7 @@ function bucketDays(days, preset, from, to) {
   });
 
   // Steps per day over the days that have data, so a week or month bar
-  // compares against the DAILY goal like a single day does
+  // compares against the daily goal like a single day does
   return Array.from(groups.values()).map((g) => ({
     ...g,
     avg: g.steps === null ? null : Math.round(g.steps / g.days),
@@ -88,8 +82,7 @@ export function useDailySteps(options = {}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Guards against a slow Week response landing after a fast Year response and
-  // overwriting it -- the classic out-of-order fetch bug on a range selector
+  // Guards against out-of-order responses when switching ranges
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
 
@@ -105,9 +98,7 @@ export function useDailySteps(options = {}) {
     try {
       const data = await apiClient.get(`/steps?from=${from}&to=${to}`, { auth: true });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
-      // The range travels with its data: switching ranges re-renders before
-      // the new data arrives, and bucketing old days by the new range is what
-      // produced 30 bars all labelled Mon to Sun (duplicate "Thu" keys)
+      // Keep the preset with its data so old days aren't bucketed by a newly selected range before its fetch completes
       setPayload({ ...data, from, to, preset });
     } catch (err) {
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
@@ -142,9 +133,7 @@ export function useDailySteps(options = {}) {
     const recorded = days.filter((d) => Number.isFinite(d.stepCount));
 
     const total = recorded.reduce((sum, d) => sum + d.stepCount, 0);
-    // Averaged over days we actually have, not over the calendar window.
-    // Dividing by 7 when only two days were recorded reports a slump that
-    // never happened
+    // Averaged over recorded days rather than the full calendar window
     const average = recorded.length > 0 ? Math.round(total / recorded.length) : 0;
     const goalDays = recorded.filter((d) => d.stepCount >= dailyGoal).length;
 

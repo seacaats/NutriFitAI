@@ -7,23 +7,15 @@ const ActivationFunnel = require('../../models/analytics/ActivationFunnel');
 const { ROLLUP_TIME_ZONE } = require('./dailyRollup');
 const { today, addDays, dayRangeToInstants } = require('../../utils/calendarDay');
 
-// How far new accounts get, counted once a day (batch): signed up, verified
-// the email, finished onboarding, logged something, came back on a later day.
-// Each step only counts the accounts that passed every step before it.
-// Started from server.js, shown on admin Analytics
-//
-// Only accounts at least a week old are counted, so each has had time to log
-// and return. Counting last night's signups would read as a drop-off
+// Periodic batch computation of the user activation funnel (signed up -> verified ->
+// onboarded -> logged -> returned on a later day) for accounts at least MATURE_DAYS old.
 const RUN_EVERY_MS = 6 * 60 * 60 * 1000;
 
-// Accounts made in this many days, ending MATURE_DAYS ago
 const WINDOW_DAYS = 30;
 const MATURE_DAYS = 7;
 
 const EMPTY_STEPS = { signedUp: 0, verified: 0, onboarded: 0, logged: 0, returned: 0 };
 
-// 1 when the account has at least one matching row in `Model`, via a lookup
-// that stops at the first hit
 const hasRow = (Model, as, match = {}) => ({
   $lookup: {
     from: Model.collection.name,
@@ -41,15 +33,13 @@ async function countFunnel(from, to) {
   const { start, end } = dayRangeToInstants(from, to, ROLLUP_TIME_ZONE);
   const [row] = await User.aggregate([
     { $match: { role: 'user' } },
-    // createdAt is converted first: rows brought over from the old database can
-    // hold it as a string, which a plain date comparison never matches
+    // Coerce createdAt to Date to handle string-typed legacy documents
     { $addFields: { joinedAt: { $convert: { input: '$createdAt', to: 'date', onError: null, onNull: null } } } },
     { $match: { joinedAt: { $gte: start, $lt: end } } },
     { $addFields: { joinDay: { $dateToString: { format: '%Y-%m-%d', date: '$joinedAt', timezone: ROLLUP_TIME_ZONE } } } },
     hasRow(Meal, 'meals', { status: 'consumed' }),
     hasRow(WaterLog, 'water'),
     hasRow(WorkoutSession, 'workouts', { status: 'completed' }),
-    // Came back: opened the app on a day after the one they signed up
     {
       $lookup: {
         from: DailyVisit.collection.name,
@@ -86,7 +76,6 @@ async function countFunnel(from, to) {
   return steps;
 }
 
-// Counts the cohort and stores today's snapshot
 async function runActivationFunnel(at = new Date()) {
   try {
     const day = today(ROLLUP_TIME_ZONE, at);
@@ -94,7 +83,6 @@ async function runActivationFunnel(at = new Date()) {
     const from = addDays(to, -(WINDOW_DAYS - 1));
     await ActivationFunnel.upsertDay({ day, from, to, steps: await countFunnel(from, to) });
   } catch (err) {
-    // Picked up again on the next run, nothing is lost by skipping one
     console.error('[funnel] activation funnel failed', err);
   }
 }

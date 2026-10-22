@@ -1,31 +1,24 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 /**
- * Small "where was I" values kept on the device (AsyncStorage; localStorage
- * on web): the open Workouts tab, the coach thread to resume.
- *
- * Each value is kept per account and stamped with when it was saved, so it
- * never carries over to another account on the same device and goes stale
- * on its own: a value older than `maxAgeMs` reads as nothing. Sign-out
- * clears them all (AuthContext). Best-effort, a storage failure just means
- * the screen opens on its default
+ * User-scoped state cache for UI persistence (e.g. active tab, active conversation).
+ * Values expire after maxAgeMs and are cleared on user sign-out.
  */
 
 const PREFIX = "nutrifit.remembered:";
 
 const keyFor = (name, userId) => `${PREFIX}${name}:${userId}`;
 
-// The saved value, or null when there's none, it's too old, or no user
-export async function getRemembered(name, userId, maxAgeMs) {
+// Returns cached value or null if expired or missing
+export function getRemembered(name, userId, maxAgeMs) {
   if (!userId) return null;
-  try {
-    const raw = await AsyncStorage.getItem(keyFor(name, userId));
-    if (!raw) return null;
-    const { value, savedAt } = JSON.parse(raw);
-    return Date.now() - savedAt <= maxAgeMs ? value : null;
-  } catch {
-    return null;
-  }
+  return AsyncStorage.getItem(keyFor(name, userId))
+    .then((raw) => {
+      if (!raw) return null;
+      const { value, savedAt } = JSON.parse(raw);
+      return Date.now() - savedAt <= maxAgeMs ? value : null;
+    })
+    .catch(() => null);
 }
 
 export async function setRemembered(name, userId, value) {
@@ -46,7 +39,7 @@ export async function forgetRemembered(name, userId) {
   }
 }
 
-// On sign-out: every account's values, plus the unscoped keys these replaced
+// Legacy storage keys to remove on clear
 const LEGACY_KEYS = ["nutrifit:workouts-tab", "nutrifit.coach.lastConversationId"];
 
 export async function clearRemembered() {

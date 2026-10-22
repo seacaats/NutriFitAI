@@ -2,10 +2,10 @@ const { mongoose } = require('../../../config/mongo');
 
 const { Schema } = mongoose;
 
-// wger categories, filled by scripts/sync-workouts.js alongside the catalog
+// wger exercise categories populated by scripts/sync-workouts.js
 const workoutCategorySchema = new Schema(
   {
-    _id: { type: Number }, // wger category id
+    _id: { type: Number },
     name: { type: String, required: true },
     syncedAt: { type: Date, default: () => new Date() },
   },

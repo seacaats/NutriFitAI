@@ -20,8 +20,7 @@ const authChallengeSchema = new Schema(
 
 // Indexes are created by migrations 001, not declared here
 
-// Not expired and under the attempt limit. Consumption is checked by
-// the query that found it, and again atomically by markConsumed
+// True when the challenge is unexpired and below the max failed attempt limit
 authChallengeSchema.statics.isUsable = function isUsable(challenge) {
   return Boolean(challenge)
     && new Date(challenge.expiresAt).getTime() >= Date.now()
@@ -76,8 +75,7 @@ authChallengeSchema.statics.incrementFailedAttempts = async function incrementFa
   );
 };
 
-// Conditional on still being unconsumed, so of two concurrent
-// correct submissions only one gets through
+// Atomically marks an unconsumed challenge as consumed
 authChallengeSchema.statics.markConsumed = async function markConsumed(id, client) {
   return withId(
     await this.findOneAndUpdate(

@@ -17,35 +17,29 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Platform } from "react-native";
 
-/** Give up on the popup if the user never finishes  */
+/** Maximum wait time before timing out an unfinished OAuth popup */
 const POPUP_TIMEOUT_MS = 3 * 60 * 1000;
 
-/** How often to check whether the user closed the popup */
+/** Polling interval to detect whether the OAuth popup was closed */
 const POPUP_CLOSE_POLL_MS = 400;
 
 /**
- * A window handle severed by COOP reports `closed === true` the moment the
- * popup navigates away from this origin -- long before a person could have
- * read the consent screen, let alone signed in and closed it. So a `closed`
- * reading inside this window is treated as evidence the handle is unusable,
- * not as a cancellation. Anything after it is a real close
+ * Grace window after opening the OAuth popup: a window handle severed by COOP
+ * reports `closed === true` as soon as the popup navigates cross-origin. A `closed`
+ * reading within this window marks the handle as untrusted rather than a user cancellation.
  */
 const SEVERANCE_GRACE_MS = 2500;
 
-/** Let an in-flight result land before calling a closed popup a cancellation */
+/** Delay before treating a closed popup as cancelled so in-flight results can land first */
 const POPUP_CLOSE_GRACE_MS = 600;
 
 export function useLoginForm() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  // AuthContext's session load runs once on app mount, so a fresh login
-  // must explicitly refresh it before navigating in -- otherwise
-  // DashboardLayout (and anything else reading useAuth()) renders the
-  // stale pre-login session
+  // Refresh AuthContext after storing a new token so protected layouts reflect the active session
   const { refresh } = useAuth();
 
-  // `from`: "register" when the user came here from the register screen.
-  // (`next`, the page to return to, is read by the (auth) layout)
+  // `from`: "register" when navigated here from the registration screen
   const cameFromRegister = (Array.isArray(params.from) ? params.from[0] : params.from) === "register";
 
   const [email, setEmail] = useState("");
@@ -55,23 +49,18 @@ export function useLoginForm() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
-  // Set when the password was right but two-factor is on: { token, method, setupRequired }
-  // method is "email" (regular users) or "totp" (admins, authenticator app).
-  // setupRequired: an admin's first sign-in, the app isn't scanned in yet
+  // Active MFA challenge state: { token, method: "email" | "totp", setupRequired }
   const [mfa, setMfa] = useState(null);
   const [mfaCode, setMfaCode] = useState("");
   const [mfaNotice, setMfaNotice] = useState("");
-  // First sign-in of an admin: the QR code to scan ({ secret, qrDataUrl }), then
-  // the recovery codes. The session itself is held back until they're saved
+  // First-time admin MFA enrollment state ({ secret, qrDataUrl }) and one-time recovery codes
   const [mfaSetup, setMfaSetup] = useState(null);
   const [recoveryCodes, setRecoveryCodes] = useState(null);
-  // Set the moment a submit starts, since `loading` only updates after a re-render and a double tap beats it
+  // Synchronous submit guard to block duplicate taps before state re-renders
   const submittingRef = useRef(false);
   const resendingRef = useRef(false);
   const pendingSessionRef = useRef(null);
-  // The emailed code, entered in boxes like the other code screens
   const otp = useOtpInput(4);
-  // Same resend cooldown as the register and reset code screens
   const resend = useResendCooldown();
   const [resending, setResending] = useState(false);
 
@@ -83,8 +72,7 @@ export function useLoginForm() {
   const focusHandlerRef = useRef(null);
   const handleTrustedRef = useRef(true);
 
-  // True only when the popup's state became unobservable, so the screen can
-  // ask the user rather than leaving the button spinning
+  // Set when the popup window handle is severed and focus returns without a result
   const [googleNeedsAttention, setGoogleNeedsAttention] = useState(false);
   const settledRef = useRef(false);
 
@@ -92,12 +80,8 @@ export function useLoginForm() {
   const toggleRememberMe = () => setRememberMe((v) => !v);
 
   /**
-   * Google found no verified account for this address (not registered, or
-   * registered but never verified -- the server doesn't say which). Either way
-   * the way forward is the register screen, prefilled with the Google email.
-   * Re-registering an unverified address simply sends it a fresh code.
-   * (The redirect-param effect below inlines the same navigation so its
-   * dependency list stays honest)
+   * Redirects to the registration screen prefilled with the Google email when
+   * no verified account exists for that address.
    */
   function goToRegisterFromGoogle(googleEmail) {
     router.replace({
@@ -106,8 +90,7 @@ export function useLoginForm() {
     });
   }
 
-  // The full-page (non-popup) Google redirect hands failures back as route
-  // params — surface them instead of dropping the user on a blank login form
+  // Surface errors returned as route params from a full-page Google OAuth redirect
   useEffect(() => {
     const code = Array.isArray(params.googleError) ? params.googleError[0] : params.googleError;
     if (!code) return;
@@ -123,14 +106,14 @@ export function useLoginForm() {
     }
 
     setError(googleErrorMessage(code, serverMessage || undefined));
-    // Shown once, then dropped from the address so Back/reload/logout can't replay it
+    // Clear error params so Back/reload does not replay them
     router.setParams({ googleError: undefined, googleMessage: undefined, googleEmail: undefined });
   }, [params.googleError, params.googleMessage, params.googleEmail, router]);
 
-  // Tear down timers/listeners if the user navigates away mid sign-in
+  // Clean up OAuth listeners and timers on unmount
   useEffect(() => cleanupGoogleListener, []);
 
-  /** Stores the session from a finished sign-in (password, or password + code) */
+  /** Persists the access token and refreshes AuthContext to complete sign-in */
   async function completeSignIn(data) {
     if (!data?.accessToken) {
       const message = "We couldn't sign you in. Please try again.";
@@ -148,21 +131,13 @@ export function useLoginForm() {
       return;
     }
 
-    // Re-fetch /auth/me now that a new token is stored, so AuthContext
-    // (and anything reading useAuth(), like DashboardLayout) reflects the
-    // freshly logged-in user
-    // Signed in now: the (auth) layout sees it and takes them in (to `next`
-    // or their home). Navigating here too replaced the onboarding the
-    // dashboard had just opened
+    // Refresh /auth/me so AuthContext and the (auth) layout redirect to the signed-in route
     await refresh();
   }
 
-  // The first step went through (password or Google) but a second one is needed before
-  // there's a session. { token, method, setupRequired }
+  // Starts the second sign-in step when MFA is required ({ token, method, setupRequired })
   async function beginMfa({ token, method, setupRequired }) {
-    // Admins (the authenticator-app method) are web only: on a phone
-    // there's no code prompt and no QR setup, just the screen saying so. Nothing was
-    // stored, so there's no session to clear
+    // Admin accounts (TOTP MFA) are supported on web only
     if (Platform.OS !== "web" && method === "totp") {
       router.replace({ pathname: "/access-denied", params: { reason: "admin-web-only" } });
       return;
@@ -173,7 +148,7 @@ export function useLoginForm() {
     if (setupRequired) await loadMfaSetup(token);
   }
 
-  // A full-page Google sign-in lands here from the callback screen with its second step pending
+  // Resume pending MFA challenge handed off from a full-page Google OAuth callback
   useEffect(() => {
     const pending = takeGoogleMfa();
     if (pending) beginMfa(pending);
@@ -193,7 +168,7 @@ export function useLoginForm() {
     setPassword("");
   }
 
-  // The QR code and key for the first sign-in of an admin
+  // Load the QR code and secret key for first-time admin MFA setup
   async function loadMfaSetup(token) {
     setError("");
     try {
@@ -204,8 +179,7 @@ export function useLoginForm() {
     }
   }
 
-  // First code from the app: finishes the setup and signs in. The recovery codes
-  // are shown before the session is stored, which would take them off this screen
+  // Verify the initial authenticator code, display recovery codes, and hold the session until acknowledged
   async function handleMfaEnable() {
     const code = mfaCode.trim();
     if (!/^\d{6}$/.test(code)) {
@@ -222,7 +196,7 @@ export function useLoginForm() {
       setMfaCode("");
     } catch (err) {
       if (err?.code === "MFA_SESSION_EXPIRED") cancelMfa();
-      // The QR code timed out: a fresh one replaces it
+      // Request a fresh QR code if the setup secret expired
       if (err?.code === "MFA_SETUP_EXPIRED") loadMfaSetup(mfa.token);
       setError(mfaProblem(err, "Something went wrong. Please try again."));
     } finally {
@@ -261,7 +235,6 @@ export function useLoginForm() {
       await completeSignIn(data);
     } catch (err) {
       const message = mfaProblem(err, "Something went wrong. Please try again.");
-      // The challenge ran out or was invalidated: start over from the password
       if (err?.code === "MFA_SESSION_EXPIRED") {
         cancelMfa();
       }
@@ -291,7 +264,7 @@ export function useLoginForm() {
     }
   }
 
-  /** First problem with the sign-in fields, or "" when they can be submitted */
+  /** Returns the first validation error for the login fields, or "" if valid */
   function validateLogin() {
     if (!email.trim() && !password) return "Please enter your email and password.";
     if (!email.trim()) return "Please enter your email address.";
@@ -319,7 +292,6 @@ export function useLoginForm() {
         rememberMe,
       });
 
-      // Right password, but a second step is needed before there's a session
       if (data?.mfaRequired) {
         await beginMfa(mfaFromExchange(data));
         return;
@@ -327,8 +299,6 @@ export function useLoginForm() {
 
       await completeSignIn(data);
     } catch (err) {
-      // Unknown, unverified, and wrong-password all come back as the same
-      // "Invalid email or password" from the server, by design
       const message = err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.";
       setError(message);
       Alert.alert("Login failed", message);
@@ -362,7 +332,7 @@ export function useLoginForm() {
     }
   }
 
-  /** Single exit point for every popup failure path, so none of them can end silently */
+  /** Central handler for OAuth popup failure paths */
   function failGoogleSignIn(code, serverMessage) {
     if (settledRef.current) return;
     settledRef.current = true;
@@ -382,15 +352,11 @@ export function useLoginForm() {
       setGoogleLoading(true);
       try {
         const data = await signInWithGoogle();
-        // Same second step as after a password
         if (data?.mfaRequired) {
           await beginMfa(mfaFromExchange(data));
           return;
         }
         await setAccessToken(data.accessToken);
-        // Signed in now: the (auth) layout sees it and takes them in (to `next`
-        // or their home). Navigating here too replaced the onboarding the
-        // dashboard had just opened
         await refresh();
       } catch (err) {
         if (err instanceof ApiClientError && err.code === "GOOGLE_CANCELLED") return;
@@ -407,8 +373,7 @@ export function useLoginForm() {
       return;
     }
 
-    // The popup reports back over BroadcastChannel because Google's
-    // Cross-Origin-Opener-Policy severs window.opener during the round trip
+    // Popup communicates via BroadcastChannel because Google's COOP headers sever window.opener
     if (typeof BroadcastChannel === "undefined") {
       const message = googleErrorMessage("channel_unsupported");
       setError(message);
@@ -418,8 +383,7 @@ export function useLoginForm() {
 
     setGoogleLoading(true);
 
-    // Drop anything left in storage by a previous, abandoned attempt so it
-    // can't be mistaken for this one's result
+    // Clear any stale result from a previous OAuth attempt
     resetGoogleAuthChannel();
 
     const authUrl = buildGoogleAuthUrl(undefined, { popup: true });
@@ -454,7 +418,6 @@ export function useLoginForm() {
       setGoogleLoading(false);
 
       if (!data.success) {
-        // Popup path, same rule as the full-page redirect above
         if (data.error === "registration_required") {
           goToRegisterFromGoogle(data.email);
           return;
@@ -466,7 +429,6 @@ export function useLoginForm() {
         return;
       }
 
-      // Same second step as after a password
       if (data.mfa) {
         await beginMfa(data.mfa);
         return;
@@ -488,25 +450,14 @@ export function useLoginForm() {
         return;
       }
 
-      // Signed in now: the (auth) layout sees it and takes them in (to `next`
-      // or their home). Navigating here too replaced the onboarding the
-      // dashboard had just opened
       await refresh();
     }
 
-    // listenForGoogleResult acks on our behalf over every transport, so the
-    // popup can close as soon as the result has actually landed here
+    // Listen for the OAuth result and acknowledge receipt so the popup can close
     stopListeningRef.current = listenForGoogleResult(handleResult);
 
-    // Detecting a user-closed popup is awkward because the window handle is
-    // not always trustworthy: if any document in the OAuth round trip opts out
-    // of sharing a browsing context group, the browser swaps the handle for a
-    // stub whose `closed` is permanently true, and polling it naively cancels
-    // the sign-in about a second after the popup opens
-    //
-    // So `closed` is believed only once enough time has passed that it cannot
-    // be the stub (SEVERANCE_GRACE_MS). An early reading marks the handle
-    // untrusted and stops the polling
+    // Only trust `popup.closed` after SEVERANCE_GRACE_MS has elapsed; an earlier
+    // true reading indicates a COOP-severed window handle rather than a user close
     const openedAt = Date.now();
     handleTrustedRef.current = true;
     setGoogleNeedsAttention(false);
@@ -515,7 +466,6 @@ export function useLoginForm() {
       try {
         return popup.closed;
       } catch {
-        // Cross-origin access on a severed handle: unknown, not closed
         return false;
       }
     }
@@ -527,13 +477,11 @@ export function useLoginForm() {
       pollRef.current = null;
 
       if (Date.now() - openedAt < SEVERANCE_GRACE_MS) {
-        // Too early to be a real close, so the handle is a severed stub
         handleTrustedRef.current = false;
         return;
       }
 
-      // Short grace so a result posted microseconds before the window died
-      // still wins over the cancellation
+      // Allow a brief grace period so a result posted just before window close still wins
       clearTimeout(closeTimerRef.current);
       closeTimerRef.current = setTimeout(() => {
         failGoogleSignIn("popup_closed");
@@ -545,9 +493,7 @@ export function useLoginForm() {
       if (popupIsClosed()) noteClosed();
     }, POPUP_CLOSE_POLL_MS);
 
-    // Closing the popup hands focus straight back to this window, which is a
-    // faster and more reliable signal than waiting for the next poll tick. It
-    // also covers the case where polling was switched off above
+    // Detect opener focus return to handle popup closure or prompt when the handle was severed
     function onOpenerFocus() {
       if (settledRef.current) return;
       if (document.visibilityState === "hidden") return;
@@ -557,9 +503,6 @@ export function useLoginForm() {
         return;
       }
 
-      // The handle is a stub, so whether the popup is still open is genuinely
-      // unknowable from here. The user is looking at this tab again, so ask
-      // instead of spinning indefinitely
       if (!handleTrustedRef.current) {
         setGoogleNeedsAttention(true);
       }
@@ -573,13 +516,13 @@ export function useLoginForm() {
       try {
         popupRef.current?.close();
       } catch {
-        // Popup may already be gone, or the handle may be a severed stub
+        // Popup may already be closed or severed
       }
       failGoogleSignIn("timed_out");
     }, POPUP_TIMEOUT_MS);
   }
 
-  /** User-driven escape hatch, since the popup's state can't be observed */
+  /** Cancels an in-progress Google OAuth flow when the popup state cannot be observed */
   function cancelGoogleLogin() {
     if (settledRef.current) return;
     settledRef.current = true;
@@ -587,7 +530,7 @@ export function useLoginForm() {
     try {
       popupRef.current?.close();
     } catch {
-      // Severed handle — the user closes the window themselves
+      // Ignore errors on severed window handle
     }
 
     cleanupGoogleListener();
@@ -601,8 +544,7 @@ export function useLoginForm() {
     router.push("/forgot-password");
   }
 
-  // Back to the register screen if that's where they came from, so switching
-  // between the two doesn't keep stacking screens on the history
+  // Navigate back if opened from register to avoid stacking duplicate history entries
   function goToRegister() {
     if (cameFromRegister && router.canGoBack()) {
       router.back();

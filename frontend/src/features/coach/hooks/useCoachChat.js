@@ -6,56 +6,40 @@ import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, 
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, Platform } from "react-native";
+
 /**
- * Backs both AI coach screens so they share one definition of what a message
- * is, how sending works, and what happens when the provider chain is exhausted
+ * Shared state and actions for the AI coach screens (web and mobile).
  *
- * If the request fails, the user's message stays on screen (the server persisted it 
- * too) and an error line is shown, so nothing anyone typed is ever silently thrown away
- *
- * Also owns the recent-conversations list: the server returns the last 10
- * threads sorted newest-first (see coachController.HISTORY_LIMIT), and this
- * hook mirrors that list and lets a screen swap the active thread in
- *
- * PERSISTENCE NOTE: conversationId used to live only in this hook's React
- * state, so it reset to null on every remount (tab switch, refresh, closing
- * and reopening the app) even though the thread itself was never deleted —
- * chat_messages is an unbounded, referenced collection, not capped at any message count. 
- * The result looked like a "2-message" cap: each mount started a *new* conversation, 
- * and most mounts only see one exchange (one user + one assistant message) before the user
- * navigates away. The fix is below — the active id is remembered per account
- * (rememberedState.js) and resumed on mount, so a thread keeps growing across
- * reloads instead of forking a fresh one every time. After RESUME_MS without
- * use the coach opens on a fresh chat instead; the old one stays in history
+ * Manages the active conversation thread, message sending/retry, and the recent
+ * conversations list (up to MAX_CONVERSATIONS, newest first). Persists the active
+ * conversationId per account via rememberedState.js so threads resume across
+ * remounts and reloads within RESUME_MS.
  */
 
 const WEB = Platform.OS === "web";
 
-// Mirrors MAX_CONVERSATIONS in coachController.js: a user keeps at most
-// this many conversations, and must delete one to start another
+// Mirrors MAX_CONVERSATIONS in coachController.js
 export const MAX_CONVERSATIONS = 10;
 
-// Mirrors MAX_MESSAGE_LENGTH in coachValidators.js. The field stops there;
-// the counter shows from COUNTER_FROM so it doesn't sit on screen all the time
+// Mirrors MAX_MESSAGE_LENGTH in coachValidators.js; character counter appears at COUNTER_FROM
 export const MAX_MESSAGE_LENGTH = 2000;
 export const COUNTER_FROM = 1800;
 
 const LAST_CONVERSATION = "coach-thread";
-// Resumed within a day of last use, a new chat after that
+// Resume the last active conversation if used within 24 hours; otherwise start a fresh chat
 const RESUME_MS = 24 * 60 * 60 * 1000;
 
-// Shortest time the loading placeholder stays up when an existing thread
-// loads, so a fast response still shows it instead of flashing past
+// Minimum skeleton display duration when loading an existing thread to avoid visual flicker
 const MIN_THREAD_LOAD_MS = 450;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let localId = 0;
 const nextId = () => `local-${++localId}`;
 
-// Message timestamp in the device's own timezone:
+// Formats a message timestamp in the local timezone:
 //   today       "3:42 PM"
 //   yesterday   "Yesterday, 3:42 PM"
-//   older       "Sep 21, 3:42 PM", plus the year only when it isn't this year
+//   older       "Sep 21, 3:42 PM" (includes year if from a previous year)
 export function formatMessageTime(createdAt) {
   if (!createdAt) return "";
   const date = new Date(createdAt);
@@ -78,36 +62,29 @@ export function formatMessageTime(createdAt) {
 }
 
 /**
- * `about` is { scanId } or { mealId } when the screen was opened from the
- * food scanner's "Ask AI Coach" (/ai-coach?scan= or ?meal=), else null.
- * That always starts a fresh thread about it instead of resuming the last
- * one; the server attaches the ref on the first message and reads the scan
- * or meal itself on every turn after
+ * `about` is { scanId } or { mealId } when opened from the food scanner's
+ * "Ask AI Coach" action (/ai-coach?scan= or ?meal=), which starts a fresh
+ * thread scoped to that scan or meal instead of resuming the last thread.
  */
 export function useCoachChat(about = null) {
   const userId = useAuth().user?.id;
   const aboutKey = about?.scanId ? `scan:${about.scanId}` : about?.mealId ? `meal:${about.mealId}` : "";
 
-  // Empty until the user writes; the screen shows a welcome in its place
   const [messages, setMessages] = useState([]);
   const [conversationId, setConversationId] = useState(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
-  // Recent-history list. Server already caps at 10 and sorts newest-first
+  // Recent conversation history (capped at 10 and sorted newest-first by the server)
   const [conversations, setConversations] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [switching, setSwitching] = useState(false);
-  // True only while the very first mount is checking storage for a thread to
-  // resume, so a screen can hold off rendering the greeting for a beat rather
-  // than flashing it before the real history swaps in
+  // True while checking storage on initial mount for a thread to resume
   const [resuming, setResuming] = useState(true);
-  // The scan or meal the open thread is about, for the pinned chip:
+  // Subject metadata for threads started from a food scan or logged meal:
   // { kind, id, label, caloriesKcal, date, mealType? } or null
   const [subject, setSubject] = useState(null);
 
-  // Lets an unmounting screen cancel in-flight generation rather than leaving
-  // the request burning provider quota for an answer nobody will read
   const abortRef = useRef(null);
 
   const refreshHistory = useCallback(async () => {
@@ -116,18 +93,17 @@ export function useCoachChat(about = null) {
       const rows = await apiClient.get("/coach/conversations", { auth: true });
       setConversations(rows);
     } catch {
-      // History is a convenience list, not core chat function — fail quietly
+      // Ignore history list fetch failures so core chat remains usable
     } finally {
       setHistoryLoading(false);
     }
   }, []);
 
-  /** Fetches one thread and swaps it in as the active conversation */
+  /** Fetches a conversation thread and sets it as the active conversation */
   const applyConversation = useCallback(async (id) => {
     const data = await apiClient.get(`/coach/conversations/${id}`, { auth: true });
     setConversationId(data.id);
-    // A last user message with no reply failed earlier; the next send
-    // replaces it (the server overwrites it too)
+    // Mark a trailing unanswered user message as failed so the next send replaces it
     const rows = data.messages || [];
     const last = rows[rows.length - 1];
     setMessages(last?.role === "user" ? [...rows.slice(0, -1), { ...last, failed: true }] : rows);
@@ -136,9 +112,7 @@ export function useCoachChat(about = null) {
     return data;
   }, [userId]);
 
-  // On mount: populate the history list, and resume whichever thread was last
-  // active rather than always starting blank. Opened about a scan or meal,
-  // it starts fresh instead and only loads the chip
+  // On mount: load history and either start a subject-scoped thread or resume the last active conversation
   useEffect(() => {
     let cancelled = false;
 
@@ -154,7 +128,7 @@ export function useCoachChat(about = null) {
           if (cancelled) return;
           setSubject(data);
         } catch {
-          // Deleted, or not this user's: fall back to an ordinary new chat
+          // Fall back to a standard chat if the referenced scan or meal was deleted
           if (!cancelled) setError("That meal is no longer available, so this is a regular chat.");
         } finally {
           if (!cancelled) setResuming(false);
@@ -172,8 +146,7 @@ export function useCoachChat(about = null) {
       try {
         await Promise.all([applyConversation(storedId), wait(MIN_THREAD_LOAD_MS)]);
       } catch {
-        // Thread is gone (deleted, or aged out past the 180-day TTL) — drop
-        // the stale pointer and fall back to a fresh greeting
+        // Clear stored ID if the thread was deleted or expired
         await forgetRemembered(LAST_CONVERSATION, userId);
       } finally {
         if (!cancelled) setResuming(false);
@@ -192,15 +165,14 @@ export function useCoachChat(about = null) {
 
     const userMessage = { id: nextId(), role: "user", content: message, createdAt: new Date().toISOString() };
     const placeholder = { id: nextId(), role: "assistant", content: "", pending: true };
-    // A message that got no reply is overwritten by the next one, not stacked
+    // Replace any prior failed user turn rather than stacking duplicate failed messages
     setMessages((current) => [...current.filter((m) => !m.failed), userMessage, placeholder]);
 
     const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
     abortRef.current = controller;
 
     try {
-      // A new thread about a scan or meal carries its id; after that the
-      // conversation itself remembers it
+      // Attach the scan or meal reference on the first message of a subject-scoped thread
       const ref = !conversationId && subject && !subject.missing ? { [`${subject.kind}Id`]: subject.id } : {};
       const data = await apiClient.post(
         "/coach/chat",
@@ -216,23 +188,16 @@ export function useCoachChat(about = null) {
             : m,
         ),
       );
-      // Keep resuming this same thread on the next mount/reload. A thread
-      // opened about a scan or meal isn't, the coach reopens on the usual one
+      // Remember general threads for auto-resume on next mount
       if (!aboutKey) await setRemembered(LAST_CONVERSATION, userId, data.conversationId);
-      // New/updated thread moves to the top of the list, same as the
-      // server's own updatedAt-desc order
       refreshHistory();
     } catch (err) {
-      // Drop the placeholder rather than leaving an empty bubble spinning. At
-      // the conversation limit nothing was saved, so the message goes too
       const limited = err instanceof ApiClientError && err.code === "CONVERSATION_LIMIT";
       setMessages((current) => current
         .filter((m) => m.id !== placeholder.id && !(limited && m.id === userMessage.id))
-        // Marked so the next send or retry replaces it instead of adding another
         .map((m) => (m.id === userMessage.id ? { ...m, failed: true } : m)));
 
-      // The server saved the message to a thread even though the reply failed.
-      // Adopt it, so the next send continues there instead of starting a new one
+      // Adopt the server-created conversationId if the user message was saved before the reply failed
       const failedIn = err instanceof ApiClientError ? err.details?.conversationId : null;
       if (failedIn) {
         setConversationId(failedIn);
@@ -251,7 +216,7 @@ export function useCoachChat(about = null) {
     }
   }, [conversationId, sending, refreshHistory, subject, aboutKey, userId]);
 
-  /** Starts a fresh thread; the old one stays in history on the server */
+  /** Starts a fresh conversation while keeping past threads in server history */
   const reset = useCallback(() => {
     abortRef.current?.abort();
     setMessages([]);
@@ -261,13 +226,13 @@ export function useCoachChat(about = null) {
     forgetRemembered(LAST_CONVERSATION, userId);
   }, [userId]);
 
-  /** Re-sends the last user turn after a failure, without retyping it */
+  /** Re-sends the last failed user message */
   const retry = useCallback(() => {
     const failed = [...messages].reverse().find((m) => m.role === "user" && m.failed);
     if (failed) send(failed.content);
   }, [messages, send]);
 
-  /** Swaps in a past thread picked from the history list */
+  /** Loads and activates a conversation selected from the history list */
   const loadConversation = useCallback(async (id) => {
     if (!id || id === conversationId || switching) return;
     abortRef.current?.abort();
@@ -282,8 +247,6 @@ export function useCoachChat(about = null) {
     }
   }, [conversationId, switching, applyConversation]);
 
-  // Both throw with the server's message, for the confirm dialog to show.
-  // Removing the open conversation also clears the screen
   const deleteConversation = useCallback(async (id) => {
     await apiClient.delete(`/coach/conversations/${id}`, { auth: true });
     if (id === conversationId) reset();
@@ -296,15 +259,13 @@ export function useCoachChat(about = null) {
     await refreshHistory();
   }, [reset, refreshHistory]);
 
-  // Pull-to-refresh: the history list, and the open thread unless a reply is
-  // still coming in
   const reload = useCallback(async () => {
     const thread = conversationId && !sending ? applyConversation(conversationId).catch(() => {}) : null;
     await Promise.all([refreshHistory(), thread]);
   }, [conversationId, sending, applyConversation, refreshHistory]);
   usePullRefresh(reload);
 
-  // A new conversation can't be started at the limit (continuing one can)
+  // Block starting a new conversation when the user has reached MAX_CONVERSATIONS
   const atLimit = !conversationId && conversations.length >= MAX_CONVERSATIONS;
 
   return {
@@ -314,8 +275,7 @@ export function useCoachChat(about = null) {
   };
 }
 
-// Web only: opens the default mic (the browser shows its permission prompt) and
-// gives a precise error instead of a vague one
+// Opens the browser microphone and maps MediaDevices errors to user-facing messages
 async function openWebMic() {
   if (typeof window !== "undefined" && !window.isSecureContext) {
     return { error: "Voice needs https:// (or localhost). This page isn't secure." };
@@ -336,11 +296,9 @@ async function openWebMic() {
   }
 }
 
-// A clip is cut off here, the server only takes short ones
 const MAX_RECORD_MS = 120 * 1000;
 const TRANSCRIBE_TIMEOUT_MS = 30 * 1000;
-// National languages Whisper supports: Auto, Filipino and English first, the rest A-Z.
-// Auto lets Whisper detect the language. Keep in step with the backend list in coachController
+// Supported Whisper languages (Auto, Filipino, and English first, then alphabetical; matches coachController)
 export const VOICE_LANGUAGES = [
   { code: "auto", label: "Auto" },
   { code: "tl", label: "Filipino (Tagalog)" },
@@ -418,27 +376,21 @@ export const VOICE_LANGUAGES = [
   { code: "vi", label: "Vietnamese" },
   { code: "yo", label: "Yoruba" },
 ];
-// Browsers record different formats; the first one this browser supports
 const WEB_AUDIO_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
 
-// Dictation into the message box, web and mobile alike. Records a short clip,
-// the server turns it into text (Whisper), and the text is appended after
-// whatever was already typed
+// Records a voice clip on web or mobile, transcribes it via /coach/transcribe, and appends it to the message input
 export function useVoiceInput(setMessage) {
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [error, setError] = useState("");
   const [seconds, setSeconds] = useState(0);
   const [language, setLanguage] = useState("auto");
-  // Native recorder; web uses MediaRecorder (webRef) for exact control of the format
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const webRef = useRef(null);
   const activeRef = useRef(false);
   const discardRef = useRef(false);
   const timerRef = useRef(null);
   const tickRef = useRef(null);
-  // Each recording gets its own number and start time, so a timer left over from an
-  // earlier one can never end (or message about) a newer one
   const sessionRef = useRef(0);
   const startedRef = useRef(0);
   const startingRef = useRef(false);
@@ -460,7 +412,7 @@ export function useVoiceInput(setMessage) {
     }
   }, [setMessage, language]);
 
-  // discard: stop without sending the clip off (the message was sent, or the screen closed)
+  // Stops recording; when `discard` is true, drops the audio clip without transcribing
   const finish = useCallback(async (discard) => {
     if (!activeRef.current) return;
     activeRef.current = false;
@@ -469,11 +421,9 @@ export function useVoiceInput(setMessage) {
     setListening(false);
     discardRef.current = discard;
 
-    // Web: the recorder's onstop hands the clip over once it has flushed
     if (WEB) return webRef.current?.stop();
     try {
       await recorder.stop();
-      // Back to playback mode so the mic isn't held (iOS keeps the recording indicator otherwise)
       setAudioModeAsync({ allowsRecording: false }).catch(() => {});
       if (!discard && recorder.uri) transcribe({ uri: recorder.uri, name: "voice.m4a", type: "audio/mp4" });
     } catch {
@@ -484,7 +434,6 @@ export function useVoiceInput(setMessage) {
   const stop = useCallback(() => finish(false), [finish]);
   const cancel = useCallback(() => finish(true), [finish]);
 
-  // Stops if the screen closes mid-recording
   useEffect(() => () => { cancel(); }, [cancel]);
 
   const toggle = async () => {
@@ -502,7 +451,6 @@ export function useVoiceInput(setMessage) {
         const chunks = [];
         rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
         rec.onstop = () => {
-          // Releases the mic, the browser's recording indicator goes off
           mic.stream.getTracks().forEach((t) => t.stop());
           webRef.current = null;
           if (discardRef.current || !chunks.length) return;
@@ -513,10 +461,8 @@ export function useVoiceInput(setMessage) {
         webRef.current = rec;
         rec.start();
       } else {
-        // Native: RECORD_AUDIO on Android, the microphone prompt on iOS
         const { granted, canAskAgain } = await requestRecordingPermissionsAsync();
         if (!granted) {
-          // Denied for good: the system won't ask again, so send them to the app's settings
           if (canAskAgain === false) {
             setError("Microphone is off for NutriFitAI. Turn it on in Settings.");
             Linking.openSettings().catch(() => {});
@@ -528,14 +474,12 @@ export function useVoiceInput(setMessage) {
         await recorder.prepareToRecordAsync();
         recorder.record();
       }
-      // Always starts from zero, whatever was recorded before
       clearTimeout(timerRef.current);
       clearInterval(tickRef.current);
       const session = ++sessionRef.current;
       startedRef.current = Date.now();
       activeRef.current = true;
       setListening(true);
-      // The clock shown while recording, read from the start time so it can't drift
       setSeconds(0);
       tickRef.current = setInterval(() => setSeconds(Math.floor((Date.now() - startedRef.current) / 1000)), 1000);
       timerRef.current = setTimeout(() => {
@@ -564,9 +508,7 @@ export function useCoach() {
   const [message, setMessage] = useState("");
   const chat = useCoachChat(about);
   const voice = useVoiceInput(setMessage);
-  // Any conversation load, the one resumed on open or one picked from history
   const loadingThread = chat.resuming || chat.switching;
-  // Empty chat: a welcome in the middle instead of a first message
   const empty = chat.messages.length === 0 && !loadingThread;
 
   const sendMessage = (preset) => {

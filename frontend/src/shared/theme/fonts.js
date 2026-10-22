@@ -1,6 +1,4 @@
-// Inter is the app font: built for UI text, readable at small sizes, and one
-// family across iOS, Android and web (Roboto is Android-first, Poppins is
-// too wide and decorative for dense dashboards and numbers)
+// App typography configuration using Inter font family
 import {
     Inter_400Regular,
     Inter_500Medium,
@@ -12,7 +10,7 @@ import { StyleSheet, Text, TextInput } from "react-native";
 
 export const appFonts = { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold };
 
-// Custom fonts have no automatic bold, so each weight maps to its own file
+// Custom fonts map weights directly to font files
 const FAMILY_BY_WEIGHT = {
   100: "Inter_400Regular",
   200: "Inter_400Regular",
@@ -30,8 +28,7 @@ const familyFor = (weight) => {
   return FAMILY_BY_WEIGHT[Number(weight) || 400] || FAMILY_BY_WEIGHT[400];
 };
 
-// Wraps Text and TextInput once, so no screen needs its own fontFamily.
-// A style that sets its own fontFamily (the OTP monospace) is left alone
+// Global Text and TextInput wrapper to apply Inter font family while preserving custom fonts
 export function applyAppFont() {
   [Text, TextInput].forEach((Comp) => {
     if (!Comp?.render || Comp.__inter) return;
@@ -39,7 +36,7 @@ export function applyAppFont() {
     Comp.render = function (props, ref) {
       const flat = StyleSheet.flatten(props.style) || {};
       if (flat.fontFamily) return render.call(this, props, ref);
-      // fontWeight is reset so Android doesn't fake a second bold on top of the file
+      // Reset fontWeight to normal to avoid simulated bolding on Android
       const style = [props.style, { fontFamily: familyFor(flat.fontWeight), fontWeight: "normal" }];
       return render.call(this, { ...props, style }, ref);
     };

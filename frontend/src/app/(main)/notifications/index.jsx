@@ -3,7 +3,7 @@ import DashboardLayout from "@/shared/components/layout/DashboardLayout";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { Platform, StyleSheet, Text, View } from "react-native";
 
-// The inbox. Same list as the web screen and the web header's bell
+// User notifications inbox screen.
 export default function NotificationsScreen() {
   const { shell: c } = useTheme();
   return (

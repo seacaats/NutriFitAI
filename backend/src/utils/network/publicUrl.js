@@ -2,22 +2,16 @@ const { getLanIp } = require('./lanIp');
 const env = require('../../../config/env');
 
 /**
- * Decides, at boot, what URL this server is actually reachable at:
- * 
- *   1. PUBLIC_BASE_URL, currently overridden
- *   2. The live ngrok tunnel, read from ngrok's own local API
- *   3. The LAN IP, detected per boot by lanIp.js
+ * Resolves the reachable public base URL at boot in priority order:
+ *   1. Explicit PUBLIC_BASE_URL
+ *   2. Active local ngrok HTTPS tunnel
+ *   3. Local LAN IPv4 address
  *   4. localhost
- * 
  */
 
-// Only processes on this same machine can ever reach ngrok's inspection API
 const NGROK_API = process.env.NGROK_API_URL || 'http://127.0.0.1:4040/api/tunnels';
-
-// Server boot delay
 const NGROK_TIMEOUT_MS = Number(process.env.NGROK_TIMEOUT_MS || 1500);
 
-// Returns null on every undetected tunnel rather than an error
 async function detectNgrokUrl() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), NGROK_TIMEOUT_MS);
@@ -29,7 +23,6 @@ async function detectNgrokUrl() {
     const body = await response.json();
     const tunnels = Array.isArray(body.tunnels) ? body.tunnels : [];
 
-    // Cookie security flags depend on properly reflecting a TLS-terminated connection (TLS)
     const https = tunnels.find(
       (t) => typeof t.public_url === 'string' && t.public_url.startsWith('https://'),
     );
@@ -41,11 +34,7 @@ async function detectNgrokUrl() {
   }
 }
 
-
 /**
- * Resolves and installs the base URL onto .env because the value can
- * only depend on whether a tunnel is active and the network of the machine
- *
  * @returns {Promise<{ baseUrl: string, source: string, lanIp: string|null, ngrokUrl: string|null }>}
  */
 async function resolvePublicBaseUrl() {
@@ -72,8 +61,6 @@ async function resolvePublicBaseUrl() {
   return { baseUrl: env.publicBaseUrl, source: 'localhost', lanIp: null, ngrokUrl: null };
 }
 
-
-// Cache GET /health results to avoid probing ngrok on every heatlh check
 let resolved = null;
 
 function setResolved(value) {
@@ -84,12 +71,6 @@ function getResolved() {
   return resolved || { baseUrl: env.publicBaseUrl, source: 'unresolved', lanIp: null, ngrokUrl: null };
 }
 
-
-// ---------------------------------------------------------------------------
-// Tunnels owned by THIS machine
-// ---------------------------------------------------------------------------
-
-// Allow running three separate ngrok processes
 const NGROK_APIS = (process.env.NGROK_API_URLS
   || 'http://127.0.0.1:4040/api/tunnels,http://127.0.0.1:4041/api/tunnels,http://127.0.0.1:4042/api/tunnels')
   .split(',')
@@ -114,14 +95,12 @@ async function fetchTunnelOrigins(apiUrl) {
   }
 }
 
-// Short-lived cache for ngrok inspection results (15s)
 const OWNED_TTL_MS = 15000;
 let ownedCache = { at: 0, origins: new Set() };
 
 /**
- * The https origins of every ngrok tunnel running on this machine.
- * Force bypasses the cache for missed tunnels upon startup/boot
- * @param {{ force?: boolean }} [options] 
+ * Returns the HTTPS origins of active local ngrok tunnels (cached for 15s unless `force` is true).
+ * @param {{ force?: boolean }} [options]
  * @returns {Promise<Set<string>>}
  */
 async function listOwnedTunnelOrigins({ force = false } = {}) {

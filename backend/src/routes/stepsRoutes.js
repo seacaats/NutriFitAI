@@ -10,7 +10,6 @@ const router = Router();
 
 
 
-// Ownership comes form req.userId (signed token) so no authorization to another user
 router.get(
   '/', 
   validateQuery(stepRangeSchema), 
@@ -22,7 +21,6 @@ router.get(
   controller.getToday
 );
 
-// Fires on every app foreground
 router.post(
   '/sync', 
   stepSyncLimiter, 

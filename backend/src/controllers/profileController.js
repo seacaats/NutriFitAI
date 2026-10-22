@@ -16,9 +16,6 @@ const { clearRefreshCookie } = require('../utils/auth/refreshCookie');
 const { invalidateRecommendations } = require('./recommendationController');
 const { assertNotMfaLocked, checkAuthenticatorCode, rejectAuthenticatorCode, noteRecoveryUsed } = require('../services/auth/mfa');
 
-
-// Used by GET /profile and response returned after PATCH /profile since
-// they need the same shape of data anyway, so no refetches are made for syncing
 async function buildProfilePayload(userId) {
   const user = await User.getById(userId);
   if (!user) throw ApiError.notFound('We couldn\'t find your account. Please sign in again.');
@@ -27,7 +24,6 @@ async function buildProfilePayload(userId) {
   const goal = await User.getActiveGoal(userId);
   const latestWeight = await WeightLog.findLatestByUserId(userId);
   const identities = await AuthIdentity.findByUserId(userId);
-  // Only authenticator-app accounts (admins) have recovery codes, email codes need none
   const recoveryCodesLeft = user.mfa?.enabled && (user.role || 'user') !== 'user' ? await User.countRecoveryCodes(userId) : 0;
 
   return {
@@ -39,7 +35,6 @@ async function buildProfilePayload(userId) {
     emailVerified: Boolean(user.emailVerifiedAt),
     role: user.role || 'user',
     createdAt: user.createdAt,
-    // Settings > Account: which sign-in providers are linked (read-only)
     mfaEnabled: Boolean(user.mfa && user.mfa.enabled),
     recoveryCodesLeft,
     linkedProviders: identities.map((i) => i.provider),
@@ -60,7 +55,6 @@ async function buildProfilePayload(userId) {
     timezone: profile?.timezone ?? null,
     avatarUrl: await toPublicAvatarUrl(profile?.avatarStorageKey),
 
-    // Setup wizard answers, also editable from Profile and Settings
     workoutPrefs: workoutPrefsOf(profile),
     targetWeightKg: profile?.targetWeightKg ?? null,
     weeklyPaceKg: profile?.weeklyPaceKg ?? null,
@@ -70,7 +64,6 @@ async function buildProfilePayload(userId) {
     weightKg: latestWeight?.weightKg ?? null,
     weightMeasuredAt: latestWeight?.measuredAt ?? null,
     fitnessGoal: goal?.fitnessGoal ?? null,
-    // The wizard starts from these, so it never shows a blank over a saved goal
     goals: {
       dailyCaloriesKcal: goal?.dailyCaloriesKcal ?? null,
       dailyProteinG: goal?.dailyProteinG ?? null,
@@ -82,7 +75,6 @@ async function buildProfilePayload(userId) {
   };
 }
 
-// Always the full shape, older accounts have no workoutPrefs stored at all
 function workoutPrefsOf(profile) {
   return {
     categoryIds: profile?.workoutPrefs?.categoryIds ?? [],
@@ -99,7 +91,6 @@ const getProfile = asyncHandler(async (req, res) => {
   return sendSuccess(res, { data });
 });
 
-// Fields PATCH /api/profile can change, diffed into account.profile.updated
 const PROFILE_AUDIT_FIELDS = [
   'firstName',
   'lastName',
@@ -116,7 +107,6 @@ const PROFILE_AUDIT_FIELDS = [
   'coachTone',
 ];
 
-// Keys the profile subdocument takes from PATCH /api/profile as is
 const PROFILE_KEYS = [
   'age',
   'sex',
@@ -133,12 +123,9 @@ const PROFILE_KEYS = [
   'coachTone',
 ];
 
-// Profile diff for the audit row. workoutPrefs is an object of id lists, so it's
-// diffed per key and recorded with the names, not the wger ids
 const WORKOUT_PREF_KEYS = ['categoryIds', 'equipment', 'equipmentIds', 'muscleIds', 'secondaryMuscleIds'];
 
-// wger id -> name, per pref key. A failed lookup falls back to the ids, since an
-// audit-only read must not fail the saved update
+// Resolve workout preference IDs to human-readable names for audit logs
 async function workoutPrefNames(key, ids) {
   const names = new Map();
   if (!ids.length) return names;
@@ -167,7 +154,6 @@ async function workoutPrefNames(key, ids) {
   return names;
 }
 
-// Raw form for the comparison
 const prefText0 = (value) => (Array.isArray(value) ? (value.length ? value.join(', ') : null) : value ?? null);
 
 async function prefText(key, value, ids) {
@@ -182,7 +168,6 @@ async function profileChanges(before, after) {
   const was = before.workoutPrefs || {};
   const now = after.workoutPrefs || {};
   for (const key of WORKOUT_PREF_KEYS) {
-    // Compared as ids, recorded as names
     if (String(prefText0(was[key])) === String(prefText0(now[key]))) continue;
     const ids = [...new Set([...(was[key] || []), ...(now[key] || [])])].filter(Number.isFinite);
     changes.push({ field: `workoutPrefs.${key}`, from: await prefText(key, was[key], ids), to: await prefText(key, now[key], ids) });
@@ -190,8 +175,7 @@ async function profileChanges(before, after) {
   return changes;
 }
 
-// What moved in the notification settings, as one readable line for the
-// audit row ("Reminders off · Quiet hours 22:00–07:00"). null when nothing did
+// Summarize notification preference changes for audit logging
 function notificationSettingChanges(before, after) {
   const parts = [];
   const onOff = (v) => (v ? 'on' : 'off');
@@ -211,16 +195,10 @@ const updateProfile = asyncHandler(async (req, res) => {
   const body = req.body;
   const has = (key) => Object.prototype.hasOwnProperty.call(body, key);
 
-  // Email is not updateable. Must wire another verification flow to allow it
-
-  // Known goals collapse to their slug; custom text is kept as typed
   const normalizedGoal = has('fitnessGoal') ? normalizeGoal(body.fitnessGoal) : undefined;
-
-  // Snapshot for the audit diff, read before the write
   const before = await buildProfilePayload(req.userId);
 
   await withTransaction(async (client) => {
-    // ----- users -----
     if (has('firstName') || has('lastName')) {
       const current = await User.getById(req.userId, client);
       const firstName = has('firstName') ? body.firstName : current.firstName;
@@ -229,7 +207,6 @@ const updateProfile = asyncHandler(async (req, res) => {
       await User.updateNames(req.userId, { fullName, firstName, lastName }, client);
     }
 
-    // ----- user_profiles -----
     const changes = {};
     for (const key of PROFILE_KEYS) {
       if (has(key)) changes[key] = body[key];
@@ -238,12 +215,10 @@ const updateProfile = asyncHandler(async (req, res) => {
       await User.updateProfile(req.userId, changes, client);
     }
 
-    // ----- user_goals (append-only history) -----
     if (has('fitnessGoal')) {
       await User.setActiveGoal({ userId: req.userId, fitnessGoal: normalizedGoal }, client);
     }
 
-    // ----- weight_logs (new measurement, not updated) -----
     if (has('weightKg') && body.weightKg !== undefined) {
       const latest = await WeightLog.findLatestByUserId(req.userId, client);
       const unchanged = latest && Number(latest.weightKg) === Number(body.weightKg);
@@ -255,14 +230,11 @@ const updateProfile = asyncHandler(async (req, res) => {
 
   const data = await buildProfilePayload(req.userId);
 
-  // Health fields come out of diffFields without values (HEALTH_FIELDS).
-  // Goal and notifications have their own actions, so they're left out here
   const changes = await profileChanges(before, data);
   if (changes.length > 0) {
     await logAction(req, { action: 'account.profile.updated', targetType: 'user', details: { changes } });
   }
   if (before.fitnessGoal !== data.fitnessGoal) {
-    // Audit-only read: a failure here must not fail the saved update
     const goal = await User.getActiveGoal(req.userId).catch(() => null);
     await logAction(req, {
       action: 'account.goal.changed',
@@ -283,21 +255,17 @@ const updateProfile = asyncHandler(async (req, res) => {
     });
   }
 
-  // Diet, conditions, goal, weight and workout preferences all shape the cards
   invalidateRecommendations(req.userId);
 
   return sendSuccess(res, { message: 'Profile updated', data });
 });
 
-// Daily targets the wizard can set, written on the active goal like the cards do
 const ONBOARDING_TARGETS = [
   'dailyCaloriesKcal', 'dailyProteinG', 'dailyCarbsG', 'dailyFatG', 'dailySteps', 'dailyWaterMl',
 ];
 const ONBOARDING_PROFILE_KEYS = ['workoutPrefs', 'targetWeightKg', 'weeklyPaceKg', 'coachTone', 'notificationPrefs'];
 
-// PUT /api/profile/onboarding -- the setup wizard's answers in one save. Skipped
-// steps aren't sent; an empty body is "Skip setup". Either way onboardedAt is
-// set, so the wizard isn't shown again
+// PUT /api/profile/onboarding
 const completeOnboarding = asyncHandler(async (req, res) => {
   const body = req.body;
   const has = (key) => Object.prototype.hasOwnProperty.call(body, key);
@@ -339,7 +307,7 @@ const completeOnboarding = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Setup saved', data });
 });
 
-// POST /api/profile/avatar   (multipart/form-data, field name: "avatar")
+// POST /api/profile/avatar
 const uploadAvatar = asyncHandler(async (req, res) => {
   if (!req.file || !req.file.buffer) {
     throw ApiError.badRequest('No image was uploaded', { code: 'NO_FILE' });
@@ -353,9 +321,6 @@ const uploadAvatar = asyncHandler(async (req, res) => {
     );
   }
 
-  // Upsert is used since profile is a subdocument which always exists upon
-  // boot, never needing to verify that a user or their profile exists.
-  // "stored" here though, is just a storage key, not the URL, storing it upon save
   await User.updateProfile(req.userId, { avatarStorageKey: stored });
   await logAction(req, { action: 'account.avatar.updated', targetType: 'user' });
 
@@ -375,7 +340,6 @@ const removeAvatar = asyncHandler(async (req, res) => {
 
 // ---- Settings > change password -------------------------------------------
 
-// The signed-in user, or a 400 when the current password is wrong
 async function requireCurrentPassword(req, userId, currentPassword) {
   const user = await User.getById(userId);
   if (!user) throw ApiError.notFound('We couldn\'t find your account. Please sign in again.');
@@ -386,14 +350,13 @@ async function requireCurrentPassword(req, userId, currentPassword) {
   return user;
 }
 
-// POST /api/profile/password/verify -- step 1, unlocks the form. Nothing changes
+// POST /api/profile/password/verify
 const verifyCurrentPassword = asyncHandler(async (req, res) => {
   await requireCurrentPassword(req, req.userId, req.body.currentPassword);
   return sendSuccess(res, { message: 'Password confirmed' });
 });
 
-// PUT /api/profile/password -- step 2. The current password is checked again,
-// so step 1 can't be skipped by calling this directly
+// PUT /api/profile/password
 const changePassword = asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   const user = await requireCurrentPassword(req, req.userId, currentPassword);
@@ -412,21 +375,18 @@ const changePassword = asyncHandler(async (req, res) => {
     targetLabel: User.displayName(user),
     targetRole: user.role,
   });
-  // Not awaited: notify never throws, and an email mustn't slow the response
   notify(user.id, 'password_changed');
 
   return sendSuccess(res, { message: 'Password changed' });
 });
 
-// DELETE /api/profile -- Settings > delete account. Irreversible: every
-// collection the user owns is cleared, the audit trail keeps one entry
+// DELETE /api/profile
 const deleteAccount = asyncHandler(async (req, res) => {
   const user = await User.getById(req.userId);
   if (!user) throw ApiError.notFound('We couldn\'t find your account. Please sign in again.');
 
   await requireCurrentPassword(req, req.userId, req.body.currentPassword);
 
-  // The last admin can't leave the system without one
   if (user.role === 'admin') {
     const counts = await User.countByRole();
     if ((counts.admin || 0) <= 1) {
@@ -436,7 +396,6 @@ const deleteAccount = asyncHandler(async (req, res) => {
     }
   }
 
-  // Admins also prove it with an authenticator or recovery code
   if (user.role !== 'user') {
     if (!req.body.code) throw ApiError.badRequest('Enter your authenticator code or a recovery code.', { code: 'MFA_CODE_REQUIRED' });
     assertNotMfaLocked(user);
@@ -448,7 +407,6 @@ const deleteAccount = asyncHandler(async (req, res) => {
 
   const deletedCounts = await deleteAccountData(user.id, user.role);
 
-  // Labels passed explicitly, the account is already gone
   await logAction(req, {
     action: 'account.deleted',
     targetType: 'user',

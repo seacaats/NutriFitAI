@@ -13,9 +13,9 @@ const { verifyMailer } = require('./services/mailer');
 const { purgeDueDeletions } = require('./services/user/accountDeletion');
 const { runDailyRollup, RUN_EVERY_MS: ROLLUP_EVERY_MS } = require('./services/analytics/dailyRollup');
 const { runActivationFunnel, RUN_EVERY_MS: FUNNEL_EVERY_MS } = require('./services/analytics/activationFunnel');
+const { runUncheckedRetry, RUN_EVERY_MS: RETRY_EVERY_MS } = require('./services/moderation/retryUnchecked');
 
-// Force mongodb connection before listening to requests through mongo.js
-// which sets bufferCommands:false which automatically rejects them
+// Mongo is connected before listening; bufferCommands:false would reject early queries
 let server;
 let purgeTimer;
 let deletionTimer;
@@ -23,10 +23,9 @@ let chainTimer;
 let reminderTimer;
 let rollupTimer;
 let funnelTimer;
+let retryTimer;
 
-// Scan photos past SCAN_RETENTION_DAYS are deleted; the scan document and
-// the nutrition snapshotted on meals stay. Runs on boot, then every 6 hours.
-// Batched so one run never holds a large query open on the free tier
+// Purge expired scan images in batches every 6 hours; scan documents and meal snapshots remain
 const PURGE_EVERY_MS = 6 * 60 * 60 * 1000;
 
 async function purgeScanImages() {
@@ -41,8 +40,6 @@ async function purgeScanImages() {
       purgedCount += released.length;
     } while (released.length);
 
-    // One row per run that purged something, not one per image. The scans
-    // themselves already record which ones lost their photo
     if (purgedCount > 0) {
       await logSystemAction({
         action: 'system.retention.scan_images_purged',
@@ -51,13 +48,11 @@ async function purgeScanImages() {
       });
     }
   } catch (err) {
-    // Picked up again on the next run, nothing is lost by skipping one
     console.error('[purge] scan image purge failed', err);
   }
 }
 
-// Re-hashes every audit chain once a day. A break is written to the trail
-// itself (critical) and to the server log
+// Verify audit hash chains daily
 const CHAIN_CHECK_EVERY_MS = 24 * 60 * 60 * 1000;
 
 async function checkAuditChains() {
@@ -84,14 +79,12 @@ async function start() {
   console.log(`MongoDB connected [${env.mongo.dbName}]`);
 
   
-  // Detect how server is accessed (local or ngrok tunnel) before the 
-  // server listens to avoid returning broken cookies to requests
+  // Resolve public base URL (LAN or ngrok) before listening so cookies are issued correctly
   const reachable = await resolvePublicBaseUrl();
   setResolved(reachable);
 
 
-  // '0.0.0.0' binds the network interface to allow other
-  //  devices on the local network to reach the server
+  // Bind all interfaces so LAN devices can connect
   server = app.listen(env.port, '0.0.0.0', () => {
     const lan = getLanIp();
     console.log(`NutriFitAI API listening on port ${env.port} [${env.nodeEnv}]`);
@@ -108,14 +101,12 @@ async function start() {
     }
   });
 
-  // Logs whether OTP emails can actually be sent; never throws
   verifyMailer();
 
   purgeScanImages();
   purgeTimer = setInterval(purgeScanImages, PURGE_EVERY_MS);
   purgeTimer.unref();
 
-  // Accounts past their deletion grace period: on boot, then every 6 hours
   purgeDueDeletions();
   deletionTimer = setInterval(purgeDueDeletions, PURGE_EVERY_MS);
   deletionTimer.unref();
@@ -124,26 +115,25 @@ async function start() {
   chainTimer = setInterval(checkAuditChains, CHAIN_CHECK_EVERY_MS);
   chainTimer.unref();
 
-  // Daily totals for admin Analytics: on boot to catch up after downtime, then
-  // every 6 hours. Each run recounts the last few finished days
   runDailyRollup();
   rollupTimer = setInterval(runDailyRollup, ROLLUP_EVERY_MS);
   rollupTimer.unref();
 
-  // New-user funnel for admin Analytics, counted the same way: on boot, then every 6 hours
   runActivationFunnel();
   funnelTimer = setInterval(runActivationFunnel, FUNNEL_EVERY_MS);
   funnelTimer.unref();
 
-  // Reminders every 15 minutes. Not run on boot: a restart mid-window would
-  // otherwise send the same window early (the dedupe key still stops repeats)
+  retryTimer = setInterval(runUncheckedRetry, RETRY_EVERY_MS);
+  retryTimer.unref();
+
+  // Scheduled only (not run on boot) to avoid sending duplicate window reminders on restart
   reminderTimer = setInterval(runReminders, REMINDERS_EVERY_MS);
   reminderTimer.unref();
 
 }
 
 
-// close http listener, and then database
+// Graceful shutdown: close HTTP server then database connection
 async function shutdown(signal) {
   console.log(`Received ${signal}`);
 
@@ -159,6 +149,7 @@ async function shutdown(signal) {
   clearInterval(reminderTimer);
   clearInterval(rollupTimer);
   clearInterval(funnelTimer);
+  clearInterval(retryTimer);
   try {
     if (server) await new Promise((resolve) => server.close(resolve));
     await close();

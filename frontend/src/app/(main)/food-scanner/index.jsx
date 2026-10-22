@@ -13,14 +13,13 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, Image as RNImage, StyleSheet, Text, View } from "react-native";
 
-// Saved scans come back as /uploads/... paths, staged photos as file:// uris
+// Resolve server `/uploads/...` paths to full media URLs while leaving local `file://` URIs untouched.
 const previewSource = (uri) => (uri.startsWith("/uploads/") ? resolveMediaUrl(uri) : uri);
 
 export default function FoodScannerScreen() {
   const { darkMode, shell: c } = useTheme();
   const { meals, scanner, cameraOpen, setCameraOpen, takePhoto, pickImage, newScan, openRecent, first, scanning, imageUri } = useFoodScanner();
-  // Measured width of the photo box. The photo gets it as a plain number,
-  // since Android's image view drew nothing with stretch or % widths here
+  // Explicit numeric width from onLayout so Android's native Image renders reliably.
   const [imageWidth, setImageWidth] = useState(0);
 
   const card = { backgroundColor: c.cardBg, borderColor: c.dropdownBorder };
@@ -29,7 +28,7 @@ export default function FoodScannerScreen() {
 
   return (
     <DashboardLayout hideTabBar>
-      {/* Top Bar*/}
+      {/* Top Bar */}
       <View style={styles.topBar}>
         <Pressable hitSlop={8} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={22} color={c.sidebarText} />
@@ -43,9 +42,7 @@ export default function FoodScannerScreen() {
         <View style={styles.topBarSpacer}><MenuButton /></View>
       </View>
 
-      {/* Recent first, so what's already logged is the first thing seen */}
       <RecentMealsCard meals={meals} darkMode={darkMode} onViewAll={() => router.push("/food-scanner/meal-history")} loading={first} />
-      {/* Recent scans next to recent meals, so both histories sit together */}
       <View style={styles.section}>
         <RecentScansCard
           scans={scanner.recent}
@@ -56,7 +53,6 @@ export default function FoodScannerScreen() {
           onDelete={scanner.removeScan}
         />
       </View>
-      {/* The day's targets, after what's been eaten against them */}
       <View style={styles.section}>
         <NutritionGoalsCard meals={meals} darkMode={darkMode} loading={first} />
       </View>
@@ -64,7 +60,6 @@ export default function FoodScannerScreen() {
       {/* Scan Area */}
       <Text style={[styles.sectionTitle, textColor]}>Scan Food</Text>
       {first ? (
-        // Scan zone and its two buttons, at their real sizes
         <>
           <Skeleton width="100%" height={260} />
           <Skeleton width="100%" height={44} style={styles.buttonSkeleton} />
@@ -76,8 +71,7 @@ export default function FoodScannerScreen() {
         <FoodCamera onCapture={takePhoto} onCancel={() => setCameraOpen(false)} darkMode={darkMode} height={420} />
       ) : imageUri ? (
         <View style={styles.imageWrap} onLayout={(e) => setImageWidth(Math.round(e.nativeEvent.layout.width))}>
-          {/* React Native's own Image here, not expo-image. Keyed by the
-              uri so a new photo or an opened scan always mounts a fresh view */}
+          {/* Keyed by URI so switching photos mounts a fresh native Image instance */}
           {imageWidth > 0 && (
             <RNImage
               key={imageUri}
@@ -104,7 +98,7 @@ export default function FoodScannerScreen() {
         </View>
       )}
 
-      {/* Staged: nothing has been sent yet, so the photo can still be swapped */}
+      {/* Staged photo controls before analysis */}
       {!cameraOpen && scanner.staged && (
         <>
           <ScreenError message={scanner.error} onDismiss={scanner.clearError} />
@@ -125,7 +119,7 @@ export default function FoodScannerScreen() {
         </>
       )}
 
-      {/* Saved scan on screen: start over */}
+      {/* Start a new scan when viewing a saved scan */}
       {!cameraOpen && !scanner.staged && scanner.scan && (
         <Pressable onPress={newScan} style={[styles.uploadBtn, card]}>
           <Ionicons name="add-circle-outline" size={17} color={shellColors.primary} />
@@ -133,7 +127,7 @@ export default function FoodScannerScreen() {
         </Pressable>
       )}
 
-      {/* Nothing yet: choose a source */}
+      {/* Initial source selection */}
       {!cameraOpen && !imageUri && (
         <>
           <ScreenError message={scanner.error} onDismiss={scanner.clearError} />
@@ -151,8 +145,6 @@ export default function FoodScannerScreen() {
       </>
       )}
 
-      {/* Always on the page, filled in once a scan is analyzed. "Ask AI
-          Coach" there opens the coach about this scan or the logged meal */}
       <View style={styles.lastSection}>
         <ScanResultCard scanner={scanner} darkMode={darkMode} onScanAnother={newScan} loading={first} />
       </View>
@@ -170,7 +162,6 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 16, fontWeight: "800", marginTop: 20, marginBottom: 10 },
   disabled: { opacity: 0.5 },
 
-  // Empty state
   scanZone: {
     minHeight: 260,
     borderRadius: radii.sm,
@@ -195,11 +186,7 @@ const styles = StyleSheet.create({
   cameraBtnText: { fontSize: 14, fontWeight: "700", color: colors.white },
   btnRow: { flexDirection: "row", gap: 8 },
 
-  // Photo
-  // Holds the 260 height itself, the photo inside is sized from onLayout
-  // No overflow:hidden + borderRadius here. On Android that clip left the
-  // photo undrawn until something remounted it (same for the camera box),
-  // so the image and the overlay round their own corners instead
+  // Round corners on the child image and overlay directly rather than clipping the wrapper on Android.
   imageWrap: { alignSelf: "stretch", minHeight: 260 },
   scanningOverlay: {
     position: "absolute", top: 0, left: 0, right: 0, height: 260,

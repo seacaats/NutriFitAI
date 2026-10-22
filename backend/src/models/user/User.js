@@ -5,13 +5,8 @@ const { today, assertCalendarDay } = require('../../utils/calendarDay');
 
 const { Schema } = mongoose;
 
-// users -- absorbs user_profiles (1:1) and user_goals (bounded history).
-// Removes two joins from the hottest path, and registration becomes
-// one insert rather than three inside a transaction
-
-// Per-category switches under the master notificationsEnabled. Account
-// notices ignore both (services/notifications/notify.js). Quiet hours are "HH:MM" in the
-// user's own zone and may cross midnight; null = no quiet hours
+// Per-category switches under notificationsEnabled (account notices bypass both).
+// Quiet hours ("HH:MM" in local timezone) may cross midnight; null disables them.
 const notificationPrefsSchema = new Schema(
   {
     reminders: { type: Boolean, default: true },
@@ -22,11 +17,7 @@ const notificationPrefsSchema = new Schema(
   { _id: false },
 );
 
-// Same shape as the Workouts filters, but multi-select. wger ids, not checked
-// against the catalog: an id that disappears in a sync just matches nothing.
-// equipment: null (no preference) | "none" (bodyweight) | "any" (needs some,
-// narrowed to equipmentIds when there are any). muscleIds / secondaryMuscleIds:
-// muscles worked as main / secondary (a muscle is never in both)
+// Workout catalog preference filters (equipment: null | "none" | "any")
 const workoutPrefsSchema = new Schema(
   {
     categoryIds: { type: [Number], default: [] },
@@ -38,19 +29,15 @@ const workoutPrefsSchema = new Schema(
   { _id: false },
 );
 
-// Sync with profileValidators.js and the frontend's goalOptions.js
 const COACH_TONES = ['friendly', 'direct', 'motivational'];
 
 const profileSchema = new Schema(
   {
-    // Same 13-122 as validators/shared/fieldSchemas.js
     age: { type: Number, min: 13, max: 122 },
     ageRecordedOn: CALENDAR_DAY,
     sex: { type: String, enum: ['male', 'female', null], default: null },
     heightCm: { type: Number, min: 0, max: 300 },
-    // Known option or custom text ("Other"), 50 chars max
     activityLevel: { type: String, maxlength: 50 },
-    // Comma-joined multi-select ("High Protein, Low Carb"), like healthConditions
     dietPreference: { type: String },
     healthConditions: { type: String, default: null },
 
@@ -58,11 +45,8 @@ const profileSchema = new Schema(
     notificationPrefs: { type: notificationPrefsSchema, default: () => ({}) },
     timezone: { type: String, maxlength: 50 },
 
-    // Storage key rather than a URL
     avatarStorageKey: { type: String, default: null },
 
-    // No external-integration structure and three simple fields
-    // since no token or external account ID are needed, unlike Google OAuth
     stepSource: {
       type: String,
       enum: ['healthkit', 'health_connect', 'device_sensor', null],
@@ -71,22 +55,15 @@ const profileSchema = new Schema(
     stepPermissionAt: { type: Date, default: null },
     lastStepSyncAt: { type: Date, default: null },
 
-    // Set by the setup wizard and editable from Profile / Settings. All
-    // optional: null (or empty lists) means "no preference"
     workoutPrefs: { type: workoutPrefsSchema, default: () => ({}) },
     targetWeightKg: { type: Number, min: 20, max: 500, default: null },
     weeklyPaceKg: { type: Number, min: 0.1, max: 1, default: null },
     coachTone: { type: String, enum: [...COACH_TONES, null], default: null },
-    // When the setup wizard was finished or skipped. null = not shown yet
     onboardedAt: { type: Date, default: null },
   },
   { _id: false },
 );
 
-// A user changes their goal only a handful of times, taking into
-// consideration the 16MB document ceiling for embeedded documents.
-// Anything writing goals programmatically (auto-adjusted targets)
-// would make this unbounded, and it'd need its own collection then
 const goalSchema = new Schema(
   {
     fitnessGoal: { type: String, maxlength: 50, default: null },
@@ -97,24 +74,21 @@ const goalSchema = new Schema(
     dailyWaterMl: { type: Number, default: null },
     dailySteps: { type: Number, default: null },
 
-    // Calendar details are supplied by the client
     effectiveFrom: { ...CALENDAR_DAY, required: true },
     effectiveUntil: { ...CALENDAR_DAY, default: null },
   },
   { _id: false },
 );
 
-// Two-factor sign-in. The secret is stored encrypted and recovery codes only
-// as hashes (utils/auth/otp.js); none of it ever leaves the server
+// Two-factor authentication state (encrypted TOTP secret and hashed recovery codes)
 const mfaSchema = new Schema(
   {
     enabled: { type: Boolean, default: false },
     secretEnc: { type: String, default: null },
-    // Set while the user is still confirming their first code
     pendingSecretEnc: { type: String, default: null },
     pendingExpiresAt: { type: Date, default: null },
     recoveryHashes: { type: [String], default: [] },
-    // Newest TOTP step accepted, so a code can't be used twice
+    // Latest accepted TOTP step to prevent replay
     lastUsedStep: { type: Number, default: 0 },
     failedAttempts: { type: Number, default: 0 },
     lockedUntil: { type: Date, default: null },
@@ -125,22 +99,15 @@ const mfaSchema = new Schema(
 
 const userSchema = new Schema(
   {
-
-    // UUID, not Mongo's ObjectId. Three things that depend on it:
-    //    * issued JWTs carry it as "sub" or subject
-    //    * avatar filenames on disk
-    //    * frontend route params and authStorage circles it as a string
+    // String UUID used across JWT sub claims, storage keys, and client routes
     _id: { type: String, default: () => crypto.randomUUID() },
 
     email: { type: String, required: true, maxlength: 255 },
-    passwordHash: { type: String, default: null }, // every account has one: Google only links to an existing account
+    passwordHash: { type: String, default: null },
     fullName: { type: String, maxlength: 150, default: null },
     firstName: { type: String, maxlength: 75, default: null },
     lastName: { type: String, maxlength: 75, default: null },
 
-    // Order is load bearing, used by callers. Should be kept as is
-    // Closed enum rather than a string since they carry signed tokens
-    // Sync with authMiddleware.js, and Authcontext.js in the frontend
     role: {
       type: String,
       enum: ['user', 'admin'],
@@ -149,29 +116,22 @@ const userSchema = new Schema(
     },
 
     emailVerifiedAt: { type: Date, default: null },
-    // A change of email waits here until the code sent to the new address is entered
     pendingEmail: { type: String, maxlength: 255, default: null },
     pendingEmailExpiresAt: { type: Date, default: null },
     emailChangedAt: { type: Date, default: null },
 
-    // Unverified accounts only. The TTL index (migration 001) deletes the account at
-    // this time; verifying the email unsets it (and pendingWeightKg)
+    // Unset once verified; drives the unverified-account TTL index
     unverifiedExpiresAt: { type: Date, default: undefined },
-    // Sign-up weight, held here until verification writes the first weight log
+    // Initial weight held until email verification logs it
     pendingWeightKg: { type: Number, default: undefined },
     termsAcceptedAt: { type: Date, default: null },
     createdAt: { type: Date, default: () => new Date() },
 
-    // Set by an admin. A suspended account can't sign in or refresh a session
     suspendedAt: { type: Date, default: null },
     suspendedReason: { type: String, maxlength: 300, default: null },
-    // Display name of the admin who suspended (or scheduled the deletion), kept as
-    // text so it survives that admin's own deletion
     suspendedBy: { type: String, maxlength: 150, default: null },
-    // Set by an admin's delete. The account is suspended until this date, then purged
+    suspendedUserMessage: { type: String, maxlength: 300, default: null },
     deletionScheduledFor: { type: Date, default: null },
-    // Set by an admin's forced reset. Sign-in is refused until the user
-    // resets through Forgot password, which clears it (updatePasswordHash)
     passwordResetRequiredAt: { type: Date, default: null },
     passwordResetRequiredReason: { type: String, maxlength: 300, default: null },
     passwordResetRequiredBy: { type: String, maxlength: 150, default: null },
@@ -184,19 +144,13 @@ const userSchema = new Schema(
   { versionKey: false, collection: 'users' },
 );
 
-// Indexes are created by migrations/001_nutrifitai.js, not declared here
-
 // ===========================================================================
-// Helpers, taking a plain (lean) user
+// Helpers
 // ===========================================================================
 
-// Fields never sent anywhere. Applied here, not per caller
 const PRIVATE_FIELDS = '-passwordHash -mfa.secretEnc -mfa.pendingSecretEnc -mfa.recoveryHashes';
 
-// Keys callers may write to the profile, mapped to the stored path.
-// A whitelist, so { role: 'admin' } or a passwordHash can't slip through.
-// Step fields only reachable by stepsController, the profile validator
-// is .strict() and rejects them
+// Allowed profile update keys mapped to their document paths
 const PROFILE_FIELDS = {
   age: 'profile.age',
   sex: 'profile.sex',
@@ -219,38 +173,31 @@ const PROFILE_FIELDS = {
   lastStepSyncAt: 'profile.lastStepSyncAt',
 };
 
-// Numeric targets carried over when only the goal itself changes
 const GOAL_TARGETS = [
   'dailyCaloriesKcal', 'dailyProteinG', 'dailyCarbsG', 'dailyFatG',
   'dailyWaterMl', 'dailySteps',
 ];
 
-// Neutralises regex metacharacters in admin search input. "a(" would throw
-// and "(a+)+$" is a catastrophic-backtracking hang otherwise
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// The active goal is the one with no end date
 userSchema.statics.activeGoalOf = function activeGoalOf(goals) {
   if (!Array.isArray(goals)) return null;
   return goals.find((g) => g.effectiveUntil === null || g.effectiveUntil === undefined) || null;
 };
 
-// Name snapshotted onto audit entries and shown across the admin UI
 userSchema.statics.displayName = function displayName(user) {
   if (!user) return null;
   return user.fullName || user.email || null;
 };
 
-// null when there's no user to judge, rather than a false "unverified"
 userSchema.statics.isVerified = function isVerified(user) {
   return user ? Boolean(user.emailVerifiedAt) : null;
 };
 
-// What the client's AuthContext holds. Nothing private goes past this
 userSchema.statics.toAuthPayload = function toAuthPayload(user) {
   return {
     id: user.id,
@@ -266,24 +213,18 @@ userSchema.statics.toAuthPayload = function toAuthPayload(user) {
 // Account
 // ===========================================================================
 
-// Emails are lowercased on every read and write, the unique index being
-// case-sensitive makes this THE case-insensitivity
 userSchema.statics.findByEmail = async function findByEmail(email, client) {
   return withId(await this.findOne({ email: email.toLowerCase() }, null, opts(client)).lean());
 };
 
-// get*, not find*: Model.findById is Mongoose's own and still used natively
 userSchema.statics.getById = async function getById(id, client) {
   return withId(await this.findById(id, null, opts(client)).lean());
 };
 
-// Same as getById, but the hash never leaves the model
 userSchema.statics.getByIdSafe = async function getByIdSafe(id, client) {
   return withId(await this.findById(id, PRIVATE_FIELDS, opts(client)).lean());
 };
 
-// User, profile and initial goal in one insert. No window where
-// a user exists without a profile
 userSchema.statics.createAccount = async function createAccount(input, client) {
   const [doc] = await this.create(
     [
@@ -294,9 +235,10 @@ userSchema.statics.createAccount = async function createAccount(input, client) {
         firstName: input.firstName || null,
         lastName: input.lastName || null,
         termsAcceptedAt: input.termsAcceptedAt || null,
-        // Set for an account an admin adds: the person proves the address by resetting their password
         emailVerifiedAt: input.emailVerifiedAt || null,
         passwordResetRequiredAt: input.passwordResetRequiredAt || null,
+        passwordResetRequiredReason: input.passwordResetRequiredReason || null,
+        passwordResetRequiredBy: input.passwordResetRequiredBy || null,
         unverifiedExpiresAt: input.unverifiedExpiresAt,
         pendingWeightKg: input.pendingWeightKg,
         createdAt: new Date(),
@@ -309,7 +251,6 @@ userSchema.statics.createAccount = async function createAccount(input, client) {
   return withId(doc.toObject());
 };
 
-// All three written together so fullName can't drift from first/last
 userSchema.statics.updateNames = async function updateNames(id, names, client) {
   return withId(
     await this.findByIdAndUpdate(
@@ -326,8 +267,7 @@ userSchema.statics.updateNames = async function updateNames(id, names, client) {
   );
 };
 
-// Also clears the TTL deadline and the held sign-up weight. Returns the
-// document as it was BEFORE the update, so the caller can read pendingWeightKg
+// Clear unverified TTL and pending weight; returns the pre-update document
 userSchema.statics.markEmailVerified = async function markEmailVerified(id, client) {
   return withId(
     await this.findByIdAndUpdate(
@@ -341,8 +281,6 @@ userSchema.statics.markEmailVerified = async function markEmailVerified(id, clie
   );
 };
 
-// Re-registration of an unverified account: new deadline, held weight, and the
-// terms accepted again (createdAt stays the first sign-up)
 userSchema.statics.updatePendingRegistration = async function updatePendingRegistration(
   id,
   { unverifiedExpiresAt, pendingWeightKg },
@@ -365,7 +303,6 @@ userSchema.statics.updatePasswordHash = async function updatePasswordHash(id, pa
   );
 };
 
-// Starts an email change. The address only becomes the account's at applyPendingEmail
 userSchema.statics.setPendingEmail = async function setPendingEmail(id, email, expiresAt, client) {
   await this.updateOne(
     { _id: id },
@@ -374,9 +311,7 @@ userSchema.statics.setPendingEmail = async function setPendingEmail(id, email, e
   );
 };
 
-// Swaps in the pending address in one step. Returns the document as it was BEFORE
-// (the old address is needed for the notice), null when nothing valid was pending.
-// The unique index rejects an address taken in the meantime (E11000)
+// Atomically apply a non-expired pending email; returns the pre-update document
 userSchema.statics.applyPendingEmail = async function applyPendingEmail(id, client) {
   return withId(
     await this.findOneAndUpdate(
@@ -391,12 +326,8 @@ userSchema.statics.applyPendingEmail = async function applyPendingEmail(id, clie
 // Two-factor sign-in
 // ===========================================================================
 
-// How long a started setup (QR shown) can be confirmed
 const MFA_SETUP_MS = 10 * 60 * 1000;
 
-// Authenticator setup, done at sign-in. Admin accounts are already "enabled" but
-// have no secret until this finishes, so the guard is the missing secret: a live
-// setup can't have its secret swapped
 userSchema.statics.startMfaSetup = async function startMfaSetup(id, secretEnc, client) {
   await this.updateOne(
     { _id: id, 'mfa.secretEnc': null },
@@ -405,8 +336,6 @@ userSchema.statics.startMfaSetup = async function startMfaSetup(id, secretEnc, c
   );
 };
 
-// Only while there's no secret yet: a second confirm can't swap the secret of a
-// live setup. Returns whether it went through
 userSchema.statics.enableMfa = async function enableMfa(id, { secretEnc, recoveryHashes, step }, client) {
   const result = await this.updateOne(
     { _id: id, 'mfa.secretEnc': null },
@@ -430,8 +359,7 @@ userSchema.statics.enableMfa = async function enableMfa(id, { secretEnc, recover
   return result.modifiedCount === 1;
 };
 
-// Back to first-time setup: the secret, any setup in progress and the recovery codes
-// are dropped. 2FA stays on, so the next sign-in goes through setup again
+// Clear TOTP secret and recovery codes while keeping MFA enabled to force re-setup on next sign-in
 userSchema.statics.resetAuthenticator = async function resetAuthenticator(id, client) {
   return withId(
     await this.findByIdAndUpdate(
@@ -456,7 +384,6 @@ userSchema.statics.resetAuthenticator = async function resetAuthenticator(id, cl
   );
 };
 
-// Email two-factor (regular users) has no secret: on or off, nothing else
 userSchema.statics.setEmailMfa = async function setEmailMfa(id, enabled, client) {
   await this.updateOne(
     { _id: id },
@@ -469,15 +396,12 @@ userSchema.statics.replaceRecoveryHashes = async function replaceRecoveryHashes(
   await this.updateOne({ _id: id, 'mfa.enabled': true }, { $set: { 'mfa.recoveryHashes': recoveryHashes } }, opts(client));
 };
 
-// How many recovery codes are left. The other reads leave the hashes out on purpose,
-// so this asks for them itself and only ever hands back the count
 userSchema.statics.countRecoveryCodes = async function countRecoveryCodes(id, client) {
   const doc = await this.findById(id, 'mfa.recoveryHashes', opts(client)).lean();
   return doc?.mfa?.recoveryHashes?.length ?? 0;
 };
 
-// Atomic: true only for the first use of a step (or any later one), so two
-// requests carrying the same code can't both pass
+// Atomically advance lastUsedStep so a TOTP code cannot be replayed
 userSchema.statics.claimTotpStep = async function claimTotpStep(id, step, client) {
   const result = await this.updateOne(
     { _id: id, 'mfa.lastUsedStep': { $lt: step } },
@@ -487,7 +411,6 @@ userSchema.statics.claimTotpStep = async function claimTotpStep(id, step, client
   return result.modifiedCount === 1;
 };
 
-// Atomic single use of a recovery code
 userSchema.statics.consumeRecoveryHash = async function consumeRecoveryHash(id, hash, client) {
   const result = await this.updateOne(
     { _id: id, 'mfa.recoveryHashes': hash },
@@ -497,8 +420,6 @@ userSchema.statics.consumeRecoveryHash = async function consumeRecoveryHash(id, 
   return result.modifiedCount === 1;
 };
 
-// Counts a wrong code and locks the account for a while once `max` pile up.
-// Returns the lock time, or null while still under the limit
 userSchema.statics.recordMfaFailure = async function recordMfaFailure(id, { max, lockMs }, client) {
   const updated = await this.findByIdAndUpdate(
     id,
@@ -524,8 +445,6 @@ userSchema.statics.clearMfaFailures = async function clearMfaFailures(id, client
   );
 };
 
-// Two primary-key lookups rather than a $lookup. The identity side is
-// unique-indexed and returns at most one document anyway
 userSchema.statics.findByProviderIdentity = async function findByProviderIdentity(
   provider,
   providerSubject,
@@ -548,17 +467,13 @@ userSchema.statics.getProfile = async function getProfile(userId, client) {
   return doc ? doc.profile || {} : null;
 };
 
-// Partial update: only keys present in `changes` are written. An explicit
-// null DOES clear a field ("Health Conditions: none"), hence hasOwnProperty.
-// Returns the current profile when there's nothing to write
 userSchema.statics.updateProfile = async function updateProfile(userId, changes, client) {
   const $set = {};
   for (const [key, path] of Object.entries(PROFILE_FIELDS)) {
     if (Object.prototype.hasOwnProperty.call(changes, key)) $set[path] = changes[key];
   }
 
-  // ageRecordedOn moves with age so it can be aged forward later. A calendar
-  // day in the user's own timezone, never new Date()
+  // Record the local calendar day when age is updated
   if (Object.prototype.hasOwnProperty.call(changes, 'age')) {
     if (changes.age === null) {
       $set['profile.ageRecordedOn'] = null;
@@ -591,8 +506,6 @@ userSchema.statics.updateAvatar = async function updateAvatar(userId, avatarStor
 // Goals (embedded, append-only history)
 // ===========================================================================
 
-// First goal for an account created without one. Registration normally
-// passes initialGoal to createAccount instead
 userSchema.statics.addInitialGoal = async function addInitialGoal(input, client) {
   const effectiveFrom = input.effectiveFrom
     ? assertCalendarDay(input.effectiveFrom, 'effectiveFrom')
@@ -614,9 +527,7 @@ userSchema.statics.getActiveGoal = async function getActiveGoal(userId, client) 
   return doc ? this.activeGoalOf(doc.goals) : null;
 };
 
-// Closes the open entry and opens a new one, carrying the numeric targets
-// forward. effectiveFrom is the user's own calendar day, not the server's.
-// No-op when the goal didn't change, so saving height doesn't add an entry
+// Close the current goal and append a new one, carrying numeric targets forward
 userSchema.statics.setActiveGoal = async function setActiveGoal(input, client) {
   const doc = await this.findById(input.userId, 'goals profile.timezone', opts(client)).lean();
   if (!doc) return null;
@@ -632,10 +543,7 @@ userSchema.statics.setActiveGoal = async function setActiveGoal(input, client) {
   const next = { fitnessGoal: input.fitnessGoal, effectiveFrom, effectiveUntil: null };
   for (const key of GOAL_TARGETS) next[key] = current?.[key] ?? null;
 
-  /* Close and append as ONE write of the whole array. $set on goals.$[open]
-     and $push on goals in the same update is a path conflict Mongo rejects,
-     and two updates leave a moment with no active goal. The $size filter
-     makes it fail rather than overwrite if another save got there first */
+  // Replace the array in a single write guarded by $size to prevent concurrent overwrites
   const closed = goals.map((g) => (g === current ? { ...g, effectiveUntil: effectiveFrom } : g));
   await this.updateOne(
     { _id: input.userId, goals: { $size: goals.length } },
@@ -645,10 +553,7 @@ userSchema.statics.setActiveGoal = async function setActiveGoal(input, client) {
   return next;
 };
 
-// Changes numeric targets ({ dailyWaterMl: 2500, dailySteps: 8000 }) on the
-// active goal, in place and in one write. Targets aren't history the way the
-// goal itself is, so no new entry. A user without an active goal gets one
-// opened for today
+// Update numeric targets on the active goal in place, creating an initial goal if none exists
 userSchema.statics.setGoalTargets = async function setGoalTargets(userId, targets, client) {
   const $set = {};
   for (const [field, value] of Object.entries(targets)) {
@@ -675,13 +580,10 @@ userSchema.statics.setGoalTargets = async function setGoalTargets(userId, target
   return this.getActiveGoal(userId, client);
 };
 
-// One target, for the single-goal cards (water, steps, nutrition)
 userSchema.statics.setGoalTarget = async function setGoalTarget(userId, field, value, client) {
   return this.setGoalTargets(userId, { [field]: value }, client);
 };
 
-// True while the setup wizard's answers are all still empty, for the
-// dashboard's "Finish setting up" banner
 userSchema.statics.isSetupPending = function isSetupPending(profile, goal) {
   const prefs = profile?.workoutPrefs;
   const hasPrefs = Boolean(prefs?.categoryIds?.length || prefs?.equipment || prefs?.equipmentIds?.length
@@ -690,7 +592,6 @@ userSchema.statics.isSetupPending = function isSetupPending(profile, goal) {
   return !hasPrefs && !hasTargets && profile?.targetWeightKg == null && !profile?.coachTone;
 };
 
-// Full history, newest first, for the progress screens
 userSchema.statics.listGoals = async function listGoals(userId, client) {
   const doc = await this.findById(userId, 'goals', opts(client)).lean();
   if (!doc || !Array.isArray(doc.goals)) return [];
@@ -701,8 +602,6 @@ userSchema.statics.listGoals = async function listGoals(userId, client) {
 // Admin surface
 // ===========================================================================
 
-// Regex search rather than a text index: users already spends its index
-// budget, and this is an admin directory, not a hot path
 userSchema.statics.listPaginated = async function listPaginated(query = {}, client) {
   const limit = Math.min(Math.max(Number(query.limit) || 25, 1), 100);
   const page = Math.max(Number(query.page) || 1, 1);
@@ -720,7 +619,6 @@ userSchema.statics.listPaginated = async function listPaginated(query = {}, clie
   }
 
   const run = (f) => Promise.all([
-    // users_recent covers the sort. Uncovered, Atlas M0 fails past 32 MB
     this.find(f, PRIVATE_FIELDS, opts(client))
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
@@ -731,8 +629,7 @@ userSchema.statics.listPaginated = async function listPaginated(query = {}, clie
 
   let [docs, total] = await run(filter);
 
-  // Name and email first. Only when neither matches does a full user id
-  // (UUID) get looked up, as an exact match on _id
+  // Fall back to exact UUID match when name/email search returns no results
   const term = query.search?.trim();
   if (!total && term && UUID_RE.test(term)) {
     [docs, total] = await run({ ...(query.role ? { role: query.role } : {}), _id: term.toLowerCase() });
@@ -747,7 +644,6 @@ userSchema.statics.listPaginated = async function listPaginated(query = {}, clie
   };
 };
 
-// One aggregation for the headline cards, not three counts
 userSchema.statics.countByRole = async function countByRole(client) {
   const rows = await this.aggregate([{ $group: { _id: '$role', count: { $sum: 1 } } }])
     .session(opts(client).session || null);
@@ -758,12 +654,7 @@ userSchema.statics.countByRole = async function countByRole(client) {
   }, {});
 };
 
-// Used by scripts/create-admins.js and POST /admin/users to set a role. runValidators
-// keeps a typo'd role from slipping past the enum.
-// 2FA follows the role: admins always have it on (the
-// authenticator app is set up at their next sign-in, until then there's no secret),
-// and an account going back to 'user' drops the authenticator, since regular users
-// use the emailed code and choose for themselves
+// Update role and sync MFA state (admins require MFA; demoting to user resets authenticator MFA)
 userSchema.statics.updateRole = async function updateRole(id, role, client) {
   const mfa = role === 'user'
     ? { mfa: { enabled: false, recoveryHashes: [], lastUsedStep: 0, failedAttempts: 0 } }
@@ -777,28 +668,26 @@ userSchema.statics.updateRole = async function updateRole(id, role, client) {
   );
 };
 
-// null clears it (reinstate). Returns the updated user, without the hash
-userSchema.statics.setSuspension = async function setSuspension(id, reason, by, client) {
+// Pass null `reason` to reinstate a suspended account
+userSchema.statics.setSuspension = async function setSuspension(id, reason, by, userMessage, client) {
   const update = reason
-    ? { suspendedAt: new Date(), suspendedReason: reason, suspendedBy: by }
-    : { suspendedAt: null, suspendedReason: null, suspendedBy: null };
+    ? { suspendedAt: new Date(), suspendedReason: reason, suspendedBy: by, suspendedUserMessage: userMessage || null }
+    : { suspendedAt: null, suspendedReason: null, suspendedBy: null, suspendedUserMessage: null };
   return withId(
     await this.findByIdAndUpdate(id, { $set: update }, { new: true, fields: PRIVATE_FIELDS, ...opts(client) }).lean(),
   );
 };
 
-// A date suspends the account and schedules its purge, null cancels both
-// The admin's reason and name are kept on the suspension, so the row shows why and who
-userSchema.statics.setDeletion = async function setDeletion(id, purgeAt, { reason, by } = {}, client) {
+// Suspend account and schedule purge at `purgeAt`, or pass null to cancel both
+userSchema.statics.setDeletion = async function setDeletion(id, purgeAt, { reason, by, userMessage } = {}, client) {
   const update = purgeAt
-    ? { suspendedAt: new Date(), suspendedReason: reason, suspendedBy: by, deletionScheduledFor: purgeAt }
-    : { suspendedAt: null, suspendedReason: null, suspendedBy: null, deletionScheduledFor: null };
+    ? { suspendedAt: new Date(), suspendedReason: reason, suspendedBy: by, suspendedUserMessage: userMessage || null, deletionScheduledFor: purgeAt }
+    : { suspendedAt: null, suspendedReason: null, suspendedBy: null, suspendedUserMessage: null, deletionScheduledFor: null };
   return withId(
     await this.findByIdAndUpdate(id, { $set: update }, { new: true, fields: PRIVATE_FIELDS, ...opts(client) }).lean(),
   );
 };
 
-// Accounts whose grace period has ended
 userSchema.statics.listDueForDeletion = async function listDueForDeletion(client) {
   const docs = await this.find({ deletionScheduledFor: { $lte: new Date() } }, 'role email fullName', opts(client)).lean();
   return docs.map(withId);
@@ -814,7 +703,6 @@ userSchema.statics.requirePasswordReset = async function requirePasswordReset(id
   );
 };
 
-// Undoes requirePasswordReset: the old password works again
 userSchema.statics.cancelPasswordReset = async function cancelPasswordReset(id, client) {
   return withId(
     await this.findByIdAndUpdate(

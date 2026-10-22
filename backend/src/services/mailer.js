@@ -4,10 +4,9 @@ const env = require('../../config/env');
 const PROVIDER = env.mail.provider;
 const LABEL = PROVIDER === 'brevo' ? 'Brevo' : 'SMTP';
 
-// Provider config check
 const isConfigured = PROVIDER === 'brevo' ? Boolean(env.mail.brevoApiKey) : Boolean(env.mail.host);
 
-// Required lazily, so Brevo-only deploys never load nodemailer
+// Lazy-load nodemailer only for SMTP
 const transporter = PROVIDER === 'smtp' && isConfigured
   ? require('nodemailer').createTransport({
       host: env.mail.host,
@@ -17,12 +16,9 @@ const transporter = PROVIDER === 'smtp' && isConfigured
     })
   : null;
 
-
-
-// Catch mail silently failing on health checks
 const status = {
   configured: isConfigured,
-  verified: null, // null = not checked yet
+  verified: null,
   sent: 0,
   failed: 0,
   consecutiveFailures: 0,
@@ -31,7 +27,7 @@ const status = {
   lastSuccessAt: null,
 };
 
-// Provider config validation on boot
+// Validate provider config on boot
 async function verifyMailer() {
   if (!isConfigured) {
     status.verified = false;
@@ -43,9 +39,9 @@ async function verifyMailer() {
       console.warn(`[mailer] ${message}`);
     }
     return false;
-  } 
+  }
 
-  // Brevo has no verify call, the key is first checked on the first send
+  // Brevo validates the key on first send
   if (PROVIDER === 'brevo') {
     status.verified = true;
     console.log('[mailer] Brevo ready');
@@ -67,7 +63,6 @@ async function verifyMailer() {
   }
 }
 
-// Brand colors, matching shared/theme/nutrifitai.js on the frontend
 const BRAND = {
   header: '#24680d',
   accent: '#4caf1f',
@@ -76,18 +71,15 @@ const BRAND = {
   muted: '#6a7282',
   border: '#d1d5dc',
 };
-// The app uses the platform's system font, so emails do the same
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
-// Escapes user-influenced text (the email address) before it goes into HTML
 function esc(value) {
   return String(value).replace(/[&<>"']/g, (ch) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
   ));
 }
 
-// Shared layout for every email. Tables and inline styles only, since most
-// mail clients strip <style> blocks and ignore flexbox
+// Shared table/inline-style layout for email client compatibility
 function renderEmail({ title, intro, code, actions = [], note }) {
   const codeBlock = code
     ? `<tr><td align="center" style="padding:8px 32px 24px;">
@@ -129,12 +121,10 @@ function renderEmail({ title, intro, code, actions = [], note }) {
 </body></html>`;
 }
 
-// Same recipient + same dedupe key (purpose + code) inside this window is sent once,
-// so a repeated call can't land a duplicate. In memory: resets on restart
+// In-memory deduplication window for repeated sends
 const DEDUPE_MS = 30 * 1000;
 const recentSends = new Map();
 
-// Sends one email, tracking status the same way for every kind
 async function deliver(to, subject, html, devLog, dedupeKey) {
   if (dedupeKey) {
     const key = `${to}:${dedupeKey}`;
@@ -143,7 +133,6 @@ async function deliver(to, subject, html, devLog, dedupeKey) {
     setTimeout(() => recentSends.delete(key), DEDUPE_MS).unref();
   }
 
-  // Print to console outside production, so flows work without SMTP
   if (env.nodeEnv !== 'production') {
     console.log(`[mailer:dev] ${devLog}`);
   }
@@ -167,7 +156,6 @@ async function deliver(to, subject, html, devLog, dedupeKey) {
     status.lastError = err.message;
     status.lastErrorAt = new Date();
 
-    // Log for three consecutive failures
     if (status.consecutiveFailures === 3) {
       console.error(
         `[mailer] ALERT: ${status.consecutiveFailures} consecutive send failures. ` +
@@ -175,16 +163,14 @@ async function deliver(to, subject, html, devLog, dedupeKey) {
       );
     }
 
-    throw err; // callers in authController decide what to do about it
+    throw err;
   }
 }
 
-// One send, whichever provider is selected
 async function send({ from, to, subject, html }) {
-  // Unique per message, so clients don't stack same-subject emails into one thread
+  // Unique ref ID prevents mail clients from threading same-subject emails
   const headers = { 'X-Entity-Ref-ID': crypto.randomUUID() };
   if (PROVIDER === 'brevo') {
-    // MAIL_FROM is "Name <address>", Brevo wants the two apart
     const match = from.match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
     const sender = match ? { name: match[1] || undefined, email: match[2] } : { email: from.trim() };
 
@@ -205,8 +191,6 @@ async function send({ from, to, subject, html }) {
   return transporter.sendMail({ from, to, subject, html, headers });
 }
 
-// Wording per purpose. login_mfa is the second sign-in step, mfa_change turns
-// email two-factor on or off from Settings
 const OTP_COPY = {
   email_verification: {
     subject: 'Verify your NutriFitAI account',
@@ -250,12 +234,11 @@ async function sendOtpEmail(to, code, purpose) {
     note: `This code expires in ${env.otp.ttlMinutes} minutes. If you didn't request it, you can safely ignore this email.`,
   });
 
-  // Subject stays code-free so the code isn't visible in inbox previews or notifications
+  // Omit code from subject to hide it from notification previews
   return deliver(to, copy.subject, html, `OTP for ${to} (${purpose}): ${code}`, `${purpose}:${code}`);
 }
 
-// Sent when someone registers with an email that already has a verified account,
-// or (emailChange) tries to move another account onto it
+// Sent when registering or changing email to an already-verified address
 async function sendRegistrationNoticeEmail(to, { emailChange = false } = {}) {
   const html = renderEmail({
     title: 'Someone tried to register with your email',
@@ -272,8 +255,7 @@ async function sendRegistrationNoticeEmail(to, { emailChange = false } = {}) {
   return deliver(to, 'Someone tried to register with your email', html, `Registration notice for ${to}`);
 }
 
-// Account notices (password changed, suspended, deleted...), sent by
-// services/notifications/notify.js. Plain text in, escaped here, so no caller builds HTML
+// Account notice emails with HTML-escaped body text
 async function sendNoticeEmail(to, { subject, title, intro, note }) {
   const html = renderEmail({
     title,
@@ -284,7 +266,6 @@ async function sendNoticeEmail(to, { subject, title, intro, note }) {
   return deliver(to, subject, html, `Notice for ${to}: ${subject}`);
 }
 
-// Health snapshot
 function getMailerStatus() {
   return {
     configured: status.configured,

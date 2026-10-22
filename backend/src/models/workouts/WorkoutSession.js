@@ -5,24 +5,15 @@ const { dayRangeToInstants } = require('../../utils/calendarDay');
 const { Schema } = mongoose;
 
 // Logged and planned workout sessions.
-//
-// Logged ones are one write at the end, no create-on-start: per-set writes
-// spend the ops budget on nothing, and the tracker has no resume, so a
-// session opened on Start would sit in "active" forever. Partials are still
-// stored (status "skipped", true completedSets) so weekly counts don't lie
+// Logged sessions are written once on completion (partial runs are saved with status "skipped").
 const workoutSessionSchema = new Schema(
   {
     userId: USER_REF,
-
-    // A session is either a single exercise or based on pre-built routine
-    // This discriminator key (NOT Mongoose) is used then as an explicit field
-    // of inferring the session rather than basing on what was empty and what wasn't
     kind: { type: String, enum: ['routine', 'exercise'], required: true },
 
     routineId: { type: Schema.Types.ObjectId, ref: 'WorkoutRoutine', default: null },
     exerciseRef: { type: Number, default: null },
     exerciseName: { type: String, maxlength: 150, default: null },
-    // Snapshot of the routine title for kind "routine", like exerciseName
     routineName: { type: String, maxlength: 150, default: null },
 
     targetSets: { type: Number, default: null },
@@ -40,15 +31,9 @@ const workoutSessionSchema = new Schema(
       required: true,
     },
     actualDurationSeconds: { type: Number, default: null },
-
-    // Whether it came from a plan or was started on the spot. scheduledFor
-    // still says WHEN it was planned; this says whether it was at all
     origin: { type: String, enum: ['scheduled', 'direct'], default: 'direct', required: true },
 
-    // kind "routine" only: the routine's exercises as they were when it was
-    // scheduled or run, with how each went. A copy, so editing or deleting
-    // the routine later doesn't rewrite history. Top-level exerciseRef and
-    // exerciseName stay null for routines, the entries here hold them
+    // Snapshot of routine exercises and per-exercise results (kind "routine" only)
     exercises: {
       type: [
         new Schema(
@@ -70,10 +55,7 @@ const workoutSessionSchema = new Schema(
   { versionKey: false, collection: 'workout_sessions' },
 );
 
-// Enforces having the session kind as explained above:
-// "must have either routine or an exercise, not both/neither"
-// which findOneAndUpdate deliberately skips. completePlanned only
-// touches result fields, never kind/routineId/exerciseRef, so it's safe
+// Enforce mutually exclusive routine vs. single-exercise fields
 workoutSessionSchema.pre('validate', function enforceSessionKind() {
   if (this.kind === 'routine') {
     if (!this.routineId) throw new Error('kind "routine" requires routineId');
@@ -85,27 +67,18 @@ workoutSessionSchema.pre('validate', function enforceSessionKind() {
   }
 });
 
-// Indexes are created by migrations/001_nutrifitai.js, not declared here
-
-// ===========================================================================
-
-// How long a missed plan can still be started late or rescheduled. After
-// that the planned-session TTL index (migration 001) removes it
+// 24h window during which a missed planned session can still be started or rescheduled
 const GRACE_MS = 24 * 60 * 60 * 1000;
 
-// Excludes userId; everything here is rendered
 const PROJECTION =
   'kind exerciseRef exerciseName routineId routineName targetSets targetReps completedSets ' +
   'scheduledFor startedAt completedAt status actualDurationSeconds origin exercises';
 
-// Server decides what a result means, not the client: "completed" only
-// when every target set was finished, anything less is "skipped"
 workoutSessionSchema.statics.deriveStatus = function deriveStatus(completedSets, targetSets) {
   return completedSets >= targetSets && targetSets > 0 ? 'completed' : 'skipped';
 };
 
-// Routine exercises -> session entries, merged with the player's results
-// by position. Totals follow from the entries: sets = exercises, done = finished
+// Merge routine exercises with per-position completion results
 workoutSessionSchema.statics.snapshotExercises = function snapshotExercises(exercises, results = []) {
   const byPosition = new Map(results.map((r) => [r.position, r]));
   return [...(exercises || [])]
@@ -124,7 +97,6 @@ workoutSessionSchema.statics.snapshotExercises = function snapshotExercises(exer
     });
 };
 
-// The result fields every logged session shares, whichever way it's logged
 function resultFields(model, input) {
   const completedSets = Number(input.completedSets) || 0;
   const targetSets = Number(input.targetSets) || 0;
@@ -145,7 +117,6 @@ workoutSessionSchema.statics.createExerciseSession = async function createExerci
     [
       {
         userId: input.userId,
-        // routineId left unset, which the pre('validate') hook requires
         kind: 'exercise',
         exerciseRef: input.exerciseRef,
         exerciseName: input.exerciseName ?? null,
@@ -159,7 +130,6 @@ workoutSessionSchema.statics.createExerciseSession = async function createExerci
   return withId(doc.toObject());
 };
 
-// A routine run logged as one session: sets = exercises finished of total
 workoutSessionSchema.statics.createRoutineSession = async function createRoutineSession(input, client) {
   const [doc] = await this.create(
     [
@@ -181,7 +151,6 @@ workoutSessionSchema.statics.createRoutineSession = async function createRoutine
 
 // ---- History ----------------------------------------------------------------
 
-// Sessions within an inclusive calendar-day range, newest first
 workoutSessionSchema.statics.findRange = async function findRange(input, client) {
   const { start, end } = dayRangeToInstants(input.from, input.to, input.timeZone);
 
@@ -196,8 +165,6 @@ workoutSessionSchema.statics.findRange = async function findRange(input, client)
   return rows.map(withId);
 };
 
-// Counts and totals for the dashboard, aggregated in the database since
-// the dashboard wants three numbers, not a list
 workoutSessionSchema.statics.summariseRange = async function summariseRange(input, client) {
   const { start, end } = dayRangeToInstants(input.from, input.to, input.timeZone);
 
@@ -207,8 +174,6 @@ workoutSessionSchema.statics.summariseRange = async function summariseRange(inpu
       $group: {
         _id: null,
         total: { $sum: 1 },
-        // Partials counted separately, so the weekly goal measures
-        // finished workouts while started ones stay visible
         completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
         totalSets: { $sum: '$completedSets' },
         totalSeconds: { $sum: { $ifNull: ['$actualDurationSeconds', 0] } },
@@ -216,15 +181,12 @@ workoutSessionSchema.statics.summariseRange = async function summariseRange(inpu
     },
   ]).session(opts(client).session || null);
 
-  // $group returns nothing when nothing matched, normalised to zeros
   return row
     ? { total: row.total, completed: row.completed, totalSets: row.totalSets, totalSeconds: row.totalSeconds }
     : { total: 0, completed: 0, totalSets: 0, totalSeconds: 0 };
 };
 
-// Sessions per calendar day in the user's timezone. `logged` counts every
-// session, partials included, `completed` only finished ones (what goals use)
-// { "2026-09-28": { logged: 2, completed: 1 } }
+// Session counts per local calendar day ({ "YYYY-MM-DD": { logged, completed } })
 workoutSessionSchema.statics.dailyCounts = async function dailyCounts(userId, start, end, timeZone, client) {
   const rows = await this.aggregate([
     { $match: { userId, completedAt: { $gte: start, $lt: end } } },
@@ -240,9 +202,6 @@ workoutSessionSchema.statics.dailyCounts = async function dailyCounts(userId, st
   return rows.reduce((acc, r) => ({ ...acc, [r._id]: { logged: r.logged, completed: r.completed } }), {});
 };
 
-// Most recent sessions regardless of calendar, paged. Keyed on completedAt,
-// which every logged session has (planned ones don't). `since` scopes it to
-// a rolling window, the history screen passes 30 days back
 workoutSessionSchema.statics.findRecent = async function findRecent(
   userId,
   { limit = 5, offset = 0, since = null } = {},
@@ -261,8 +220,6 @@ workoutSessionSchema.statics.findRecent = async function findRecent(
   return { sessions: rows.map(withId), total };
 };
 
-// One exercise's completed history, newest first, for the "last performed"
-// line. Abandoned partials aren't a reference point, so they're left out
 workoutSessionSchema.statics.findRecentForExercise = async function findRecentForExercise(
   userId,
   exerciseRef,
@@ -280,7 +237,6 @@ workoutSessionSchema.statics.findRecentForExercise = async function findRecentFo
   return rows.map(withId);
 };
 
-// Most recent session, for the dashboard card
 workoutSessionSchema.statics.findLatest = async function findLatest(userId, client) {
   return withId(
     await this.findOne({ userId, completedAt: { $ne: null } }, PROJECTION, opts(client))
@@ -291,7 +247,6 @@ workoutSessionSchema.statics.findLatest = async function findLatest(userId, clie
 
 // ---- Scheduling -------------------------------------------------------------
 
-// A planned session: an exercise or a routine, at a set time
 workoutSessionSchema.statics.createPlanned = async function createPlanned(input, client) {
   const [doc] = await this.create(
     [
@@ -315,9 +270,7 @@ workoutSessionSchema.statics.createPlanned = async function createPlanned(input,
   return withId(doc.toObject());
 };
 
-// Planned sessions, soonest first, including missed ones still inside the
-// 24h grace period (the client shows those apart). The lower bound also
-// hides expired plans in the up-to-60s before the TTL monitor deletes them
+// Upcoming planned sessions, including missed sessions within the 24h grace period
 workoutSessionSchema.statics.listUpcoming = async function listUpcoming(userId, { until }, client) {
   const rows = await this.find(
     { userId, status: 'planned', scheduledFor: { $gte: new Date(Date.now() - GRACE_MS), $lte: until } },
@@ -330,8 +283,6 @@ workoutSessionSchema.statics.listUpcoming = async function listUpcoming(userId, 
   return rows.map(withId);
 };
 
-// Every user's planned sessions starting in [from, to), for the workout
-// reminder (services/notifications/reminders.js). Across users, so it takes no userId
 workoutSessionSchema.statics.startingBetween = async function startingBetween(from, to, client) {
   return this.find({ status: 'planned', scheduledFor: { $gte: from, $lt: to } }, 'userId scheduledFor', opts(client)).lean();
 };
@@ -343,8 +294,6 @@ workoutSessionSchema.statics.findPlanned = async function findPlanned(id, userId
   );
 };
 
-// Moves a planned (or missed, within grace) session to a new time. Resets
-// the TTL clock too, since that runs off scheduledFor
 workoutSessionSchema.statics.reschedulePlanned = async function reschedulePlanned(id, userId, scheduledFor, client) {
   if (!mongoose.isValidObjectId(id)) return null;
   return withId(
@@ -356,7 +305,6 @@ workoutSessionSchema.statics.reschedulePlanned = async function reschedulePlanne
   );
 };
 
-// Logged sessions only (plans have their own remove). Owner-scoped filter
 workoutSessionSchema.statics.removeLogged = async function removeLogged(id, userId, client) {
   if (!mongoose.isValidObjectId(id)) return false;
   const { deletedCount } = await this.deleteOne(
@@ -366,7 +314,6 @@ workoutSessionSchema.statics.removeLogged = async function removeLogged(id, user
   return deletedCount > 0;
 };
 
-// Every logged session completed on one calendar day, in the user's timezone
 workoutSessionSchema.statics.removeLoggedOnDay = async function removeLoggedOnDay(userId, day, timeZone, client) {
   const { start, end } = dayRangeToInstants(day, day, timeZone);
   const { deletedCount } = await this.deleteMany(
@@ -382,7 +329,6 @@ workoutSessionSchema.statics.removePlanned = async function removePlanned(id, us
   return result.deletedCount > 0;
 };
 
-// A deleted routine's future plans go with it; past runs stay in history
 workoutSessionSchema.statics.removePlannedForRoutine = async function removePlannedForRoutine(
   routineId,
   userId,
@@ -392,10 +338,20 @@ workoutSessionSchema.statics.removePlannedForRoutine = async function removePlan
   await this.deleteMany({ routineId, userId, status: 'planned' }, opts(client));
 };
 
-// A deleted workout leaves nothing in the user's sessions: its single-exercise
-// ones (logged and planned) go, and routine sessions lose its entry, with the
-// totals and status following from what's left. A routine session left with
-// no exercises goes too
+workoutSessionSchema.statics.renameExercise = async function renameExercise(userId, exerciseRef, exerciseName, client) {
+  await this.updateMany(
+    { userId, kind: 'exercise', exerciseRef },
+    { $set: { exerciseName } },
+    opts(client),
+  );
+  await this.updateMany(
+    { userId, kind: 'routine', 'exercises.exerciseRef': exerciseRef },
+    { $set: { 'exercises.$[e].exerciseName': exerciseName } },
+    { arrayFilters: [{ 'e.exerciseRef': exerciseRef }], ...opts(client) },
+  );
+};
+
+// Remove a deleted exercise from sessions, recalculating routine session totals or deleting empty ones
 workoutSessionSchema.statics.removeExercise = async function removeExercise(userId, exerciseRef, client) {
   await this.deleteMany({ userId, kind: 'exercise', exerciseRef }, opts(client));
 
@@ -420,8 +376,7 @@ workoutSessionSchema.statics.removeExercise = async function removeExercise(user
   }
 };
 
-// Turns a planned row into the logged session, so starting a scheduled
-// workout doesn't leave the plan behind as a duplicate
+// Convert a planned session into a logged session in place
 workoutSessionSchema.statics.completePlanned = async function completePlanned(
   id,
   userId,
@@ -438,7 +393,6 @@ workoutSessionSchema.statics.completePlanned = async function completePlanned(
         $set: {
           ...resultFields(this, result),
           targetReps: result.targetReps != null ? Number(result.targetReps) : null,
-          // Routine results replace the planned snapshot entries
           ...(kind === 'routine' && result.exercises ? { exercises: result.exercises } : {}),
         },
       },

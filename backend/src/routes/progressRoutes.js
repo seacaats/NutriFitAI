@@ -6,7 +6,6 @@ const { progressQuerySchema } = require('../validators/progressValidators');
 
 const router = Router();
 
-// Dashboard data. Before '/' only for reading order; the paths don't overlap
 router.get(
     '/today', 
     controller.getToday

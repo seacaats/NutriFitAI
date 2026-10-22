@@ -1,9 +1,7 @@
 import { useEffect } from "react";
 import { Platform } from "react-native";
 
-// One thin rounded scrollbar thumb on a transparent track, for every scroll
-// area on web, instead of the browser's default boxed bar. The thumb follows
-// the theme. No-op on the phone, which has its own overlay scrollbars
+// Injects custom scrollbar styles on web that match the active theme
 const STYLE_ID = "nutrifit-scrollbar";
 
 export function useWebScrollbar(darkMode) {

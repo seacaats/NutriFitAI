@@ -25,12 +25,10 @@ function otpExpiryDate() {
 }
 
 // ---- Authenticator app (TOTP, RFC 6238) ------------------------------------
-// SHA-1, 6 digits, 30 s steps: what every authenticator app supports
 
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 const TOTP_STEP_SECONDS = 30;
 const TOTP_DIGITS = 6;
-// One step either side of now, for clock drift. Wider widens the guess window
 const TOTP_DRIFT_STEPS = 1;
 
 function base32Encode(buffer) {
@@ -66,7 +64,7 @@ function base32Decode(text) {
   return Buffer.from(bytes);
 }
 
-// 160 bits, the size RFC 4226 recommends
+// 160-bit secret per RFC 4226
 function generateTotpSecret() {
   return base32Encode(crypto.randomBytes(20));
 }
@@ -81,9 +79,7 @@ function totpAt(secret, step) {
 }
 
 /**
- * The time step `code` is valid for, or null. Compares every step in the
- * window (no early exit) in constant time. The caller must still claim the
- * step (User.claimTotpStep) so the same code can't be used twice
+ * Returns the matched TOTP time step within ±TOTP_DRIFT_STEPS using constant-time comparison, or null.
  */
 function matchTotpStep(secret, code) {
   if (!new RegExp(`^\\d{${TOTP_DIGITS}}$`).test(code)) return null;
@@ -97,16 +93,13 @@ function matchTotpStep(secret, code) {
   return matched;
 }
 
-// What the QR code and the "open in authenticator app" link carry
 function buildOtpauthUri({ secret, email }) {
   const issuer = encodeURIComponent(env.mfa.issuer);
   const label = `${issuer}:${encodeURIComponent(email)}`;
   return `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=${TOTP_DIGITS}&period=${TOTP_STEP_SECONDS}`;
 }
 
-// ---- Secrets at rest ----------------------------------------------------------
-// AES-256-GCM, bound to the user id so a stored secret can't be copied onto
-// another account. Format: v1.<iv>.<tag>.<ciphertext>, all base64url
+// ---- Secrets at rest (AES-256-GCM bound to userId: v1.<iv>.<tag>.<ciphertext>) ----
 
 const mfaKey = () => crypto.createHash('sha256').update(env.mfa.encryptionKey).digest();
 
@@ -127,10 +120,7 @@ function decryptMfaSecret(stored, userId) {
   return Buffer.concat([decipher.update(Buffer.from(data, 'base64url')), decipher.final()]).toString('utf8');
 }
 
-// ---- Recovery codes -------------------------------------------------------------
-// 10 characters from an alphabet without look-alikes (~50 bits each), shown
-// once as xxxxx-xxxxx. Stored only as a keyed hash: they're random and long,
-// so a fast HMAC is enough and lets the single-use check be one atomic update
+// ---- Recovery codes (xxxxx-xxxxx, stored as HMAC-SHA256 hashes) ----
 
 const RECOVERY_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 const RECOVERY_CODE_COUNT = 10;
@@ -144,7 +134,6 @@ function generateRecoveryCodes() {
   });
 }
 
-// Spaces, dashes and case don't matter when typing one in
 const normalizeRecoveryCode = (code) => String(code).toLowerCase().replace(/[^a-z0-9]/g, '');
 const isRecoveryCodeShape = (code) => normalizeRecoveryCode(code).length === RECOVERY_CODE_LENGTH;
 

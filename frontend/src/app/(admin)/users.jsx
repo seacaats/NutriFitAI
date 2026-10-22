@@ -14,16 +14,12 @@ import { adminStyles } from "@/shared/theme/screenStyles";
 import { isValidEmail, NAME_MAX } from "@/shared/utils/formValidators";
 import { formatDate, formatTimestamp } from "@/shared/utils/formatDate";
 import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 
 /**
- * Users management -- the directory every admin sees.
- *
- * One file rather than an index.jsx / index.web.jsx pair (DataTable.jsx). There is no
- * platform-specific data source here and no divergent design, only a
- * width-dependent column count, so a split would create exactly the
- * hand-synced duplicate that screenStyles.js exists to undo.
+ * Admin user directory and account management screen.
  */
 
 const ROLE_FILTERS = [
@@ -32,20 +28,10 @@ const ROLE_FILTERS = [
   { value: "admin", label: "Admins" },
 ];
 
-/**
- * Dates render through toLocaleDateString rather than being sliced from an
- * ISO string.
- *
- * Not a violation of this project's date rule, which is about CALENDAR DAYS
- * (steps, goals) that must stay YYYY-MM-DD strings so no timezone can shift
- * them. createdAt is a genuine instant stored as a BSON Date, and an instant
- * is SUPPOSED to be displayed in the reader's local timezone -- the admin in
- * Manila should see Manila time.
- */
-// Confirm-card copy per action. Every action needs a reason (adminValidators)
+// Confirmation copy per account action (every action requires an audit reason).
 const ACTION_COPY = {
   rename: { title: (p) => `Rename ${p.name}?`, button: "Save name" },
-  suspend: { title: (p) => `Suspend ${p.name}?`, body: "They are signed out within 15 minutes and can't sign in until reinstated.", button: "Suspend" },
+  suspend: { title: (p) => `Suspend ${p.name}?`, body: "They are emailed, signed out within 15 minutes and can't sign in until reinstated. The reason stays private: add a message below if they should be told why.", button: "Suspend" },
   reinstate: { title: (p) => `Reinstate ${p.name}?`, body: "They can sign in again right away.", button: "Reinstate" },
   reset: { title: (p) => `Require a password reset for ${p.name}?`, body: "Sign-in is refused until they set a new password through Forgot password.", button: "Require reset" },
   cancelReset: { title: (p) => `Cancel the password reset for ${p.name}?`, body: "Their current password works again right away.", button: "Cancel reset" },
@@ -53,11 +39,11 @@ const ACTION_COPY = {
   resetMfa: { title: (p) => `Reset the authenticator app for ${p.name}?`, body: "Their app and recovery codes stop working and they are signed out. At their next sign-in they set up a new one.", button: "Reset authenticator" },
   endSession: { title: (p) => `End this session of ${p.name}?`, body: "Admins are signed out at once, other users within 15 minutes.", button: "End session" },
   endAll: { title: (p) => `Sign ${p.name} out of every device?`, body: "Admins are signed out at once, other users within 15 minutes.", button: "Sign out everywhere" },
-  delete: { title: (p) => `Delete ${p.name}?`, body: "They are suspended and signed out now. Their account and all of their data are permanently deleted in 14 days unless you cancel.", button: "Schedule deletion" },
+  delete: { title: (p) => `Delete ${p.name}?`, body: "They are emailed, suspended and signed out now. Their account and all of their data are permanently deleted in 14 days unless you cancel. The reason stays private: add a message below if they should be told why.", button: "Schedule deletion" },
   cancelDelete: { title: (p) => `Cancel the deletion of ${p.name}?`, body: "They can sign in again right away.", button: "Cancel deletion" },
 };
 
-// "Chrome on Windows" from a user agent, which is all an admin needs to tell devices apart
+// Format a readable browser/OS label from a User-Agent string.
 function deviceOf(userAgent) {
   const ua = String(userAgent || "");
   const os = /Android/i.test(ua) ? "Android" : /iPhone|iPad|iOS/i.test(ua) ? "iOS" : /Windows/i.test(ua) ? "Windows" : /Mac OS/i.test(ua) ? "Mac" : /Linux/i.test(ua) ? "Linux" : "";
@@ -66,8 +52,7 @@ function deviceOf(userAgent) {
   return app || os || "Unknown device";
 }
 
-// A user's signed-in devices, loaded when the row opens. Ending one is the same
-// confirm-with-a-reason step as the account actions (never your own row, see canManage)
+// Active device sessions for an expanded user row, with controls to revoke individual or all sessions.
 function SessionList({ row, users, manage, startAction, tone }) {
   const [sessions, setSessions] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -85,7 +70,6 @@ function SessionList({ row, users, manage, startAction, tone }) {
     }
   };
 
-  // Once per open row, and again when the parent remounts it after an action
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -136,40 +120,38 @@ export default function AdminUsersScreen() {
 
   const { user } = useAuth();
 
-  // Mirrors loadManageableTarget: never yourself. A courtesy, the server enforces it
+  // Prevent self-targeting in UI controls (also enforced server-side).
   const canManage = (row) => row.id !== user?.id;
 
-  const users = useAdminUsers();
+  const { search: linkedSearch } = useLocalSearchParams();
+  const users = useAdminUsers({ search: typeof linkedSearch === "string" ? linkedSearch : "" });
   const [expandedId, setExpandedId] = useState(null);
   const [notice, setNotice] = useState(null);
 
-  /**
-   * Account actions are high-consequence, so each is a two-step interaction:
-   * pick it, then confirm with a reason. The reason is REQUIRED by the API
-   * (adminValidators) rather than optional -- it is the one part of the audit
-   * entry nothing else can reconstruct later
-   */
+  // Two-step confirmation state for administrative actions (requires an audit reason).
   const [pendingChange, setPendingChange] = useState(null);
   const [reason, setReason] = useState("");
+  // Optional user-facing message for suspension and deletion emails (audit reason remains internal).
+  const [userMessage, setUserMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  // Bumped after a session action so each open list loads again
   const [sessionsVersion, setSessionsVersion] = useState(0);
 
-  // A rename also needs a first name, the API rejects an empty one
   const canSubmit = reason.trim().length >= 3
+    && (!userMessage.trim() || userMessage.trim().length >= 3)
     && !(pendingChange?.kind === "rename" && !pendingChange.firstName.trim())
     && !(pendingChange?.kind === "create" && (!pendingChange.firstName.trim() || !isValidEmail(pendingChange.email)));
 
   const startAction = (kind, row, extra = {}) => {
     setPendingChange({ kind, id: row.id, name: row.fullName || row.email, ...extra });
     setReason("");
+    setUserMessage("");
     setNotice(null);
   };
 
-  // No row yet: the form starts empty
   const startCreate = () => {
     setPendingChange({ kind: "create", id: null, name: "", email: "", firstName: "", lastName: "", role: "user" });
     setReason("");
+    setUserMessage("");
     setNotice(null);
   };
 
@@ -181,7 +163,7 @@ export default function AdminUsersScreen() {
     let result;
     if (kind === "rename") {
       result = await users.updateName(id, { firstName: pendingChange.firstName.trim(), lastName: pendingChange.lastName.trim() || null }, why);
-    } else if (kind === "suspend") result = await users.suspend(id, why);
+    } else if (kind === "suspend") result = await users.suspend(id, why, userMessage.trim());
     else if (kind === "reinstate") result = await users.reinstate(id, why);
     else if (kind === "reset") result = await users.forcePasswordReset(id, why);
     else if (kind === "cancelReset") result = await users.cancelPasswordReset(id, why);
@@ -191,7 +173,7 @@ export default function AdminUsersScreen() {
     } else if (kind === "resetMfa") result = await users.resetAuthenticator(id, why);
     else if (kind === "endSession") result = await users.revokeSession(id, pendingChange.sessionId, why);
     else if (kind === "endAll") result = await users.revokeAllSessions(id, why);
-    else if (kind === "delete") result = await users.deleteUser(id, why);
+    else if (kind === "delete") result = await users.deleteUser(id, why, userMessage.trim());
     else if (kind === "cancelDelete") result = await users.cancelDeletion(id, why);
     else {
       setSubmitting(false);
@@ -203,6 +185,7 @@ export default function AdminUsersScreen() {
       if (kind === "endSession" || kind === "endAll") setSessionsVersion((v) => v + 1);
       setPendingChange(null);
       setReason("");
+      setUserMessage("");
     }
   };
 
@@ -218,7 +201,6 @@ export default function AdminUsersScreen() {
             {row.id === user?.id ? "  (you)" : ""}
           </Text>
           {row.suspendedAt && <Text style={[styles.subCell, { color: colors.danger }]}>{row.deletionScheduledFor ? "Scheduled for Deletion" : "Suspended"}</Text>}
-          {/* The email rides under the name below 1100px */}
           {width < 1100 && (
             <Text numberOfLines={1} style={[styles.subCell, { color: tone.muted }]}>{row.email}</Text>
           )}
@@ -237,7 +219,6 @@ export default function AdminUsersScreen() {
           name={row.emailVerified ? "checkmark-circle" : "ellipse-outline"}
           size={17}
           color={row.emailVerified ? colors.green600 : tone.muted}
-
           accessibilityLabel={row.emailVerified ? "Email verified" : "Email not verified"}
         />
       ),
@@ -270,10 +251,10 @@ export default function AdminUsersScreen() {
                 { label: row.deletionScheduledFor ? "Scheduled for Deletion" : "Suspended", value: formatDate(row.suspendedAt) },
                 { label: "By", value: row.suspendedBy || "Unknown" },
                 { label: "Reason", value: row.suspendedReason || "No reason recorded" },
+                { label: "Message to user", value: row.suspendedUserMessage || "None sent" },
               ]
               : []),
             ...(row.deletionScheduledFor ? [{ label: "Deletes on", value: formatDate(row.deletionScheduledFor) }] : []),
-            // Who required it and why, like the suspension above
             ...(row.passwordResetRequired
               ? [
                 { label: "Password reset required", value: formatDate(row.passwordResetRequiredAt) },
@@ -294,7 +275,7 @@ export default function AdminUsersScreen() {
               >
                 <Text style={[styles.roleBtnText, { color: tone.text }]}>Edit name</Text>
               </Pressable>
-              {/* Hidden while a deletion is waiting: cancelling it is what reinstates */}
+              {/* Hide manual suspend/reinstate while a scheduled deletion is pending */}
               {!row.deletionScheduledFor && (
                 <Pressable
                   onPress={() => startAction(row.suspendedAt ? "reinstate" : "suspend", row)}
@@ -303,7 +284,6 @@ export default function AdminUsersScreen() {
                   <Text style={[styles.roleBtnText, { color: tone.text }]}>{row.suspendedAt ? "Reinstate" : "Suspend"}</Text>
                 </Pressable>
               )}
-              {/* One button that flips, like Suspend / Reinstate */}
               <Pressable
                 onPress={() => startAction(row.passwordResetRequired ? "cancelReset" : "reset", row)}
                 style={[styles.roleBtn, { borderColor: tone.border, backgroundColor: tone.card }]}
@@ -312,7 +292,6 @@ export default function AdminUsersScreen() {
                   {row.passwordResetRequired ? "Cancel password reset" : "Require password reset"}
                 </Text>
               </Pressable>
-              {/* Lost device: back to first-time setup */}
               {row.role === "admin" && (
                 <Pressable
                   onPress={() => startAction("resetMfa", row)}
@@ -321,7 +300,6 @@ export default function AdminUsersScreen() {
                   <Text style={[styles.roleBtnText, { color: tone.text }]}>Reset authenticator</Text>
                 </Pressable>
               )}
-              {/* Flips to a cancel while the deletion waits out its grace period */}
               <Pressable
                 onPress={() => startAction(row.deletionScheduledFor ? "cancelDelete" : "delete", row)}
                 style={[styles.roleBtn, { borderColor: row.deletionScheduledFor ? tone.border : colors.danger, backgroundColor: tone.card }]}
@@ -342,9 +320,7 @@ export default function AdminUsersScreen() {
     );
   };
 
-  // The result and the confirm step of an action. A row's own action shows them inside its
-  // drawer, right where the button was pressed, so there is nothing to scroll to or back
-  // from. Add account (no row) shows them at the top
+  // Render confirmation and result notices inline inside the expanded row, or at the top of the page for account creation.
   const noticeNode = notice && (
     <View
       style={[
@@ -425,7 +401,6 @@ export default function AdminUsersScreen() {
             placeholderTextColor={tone.muted}
             style={[styles.reasonInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text, minHeight: 0 }]}
           />
-          {/* Role picker */}
           <View style={styles.roleBtnRow}>
             {["user", "admin"].map((r) => {
               const on = pendingChange.role === r;
@@ -452,9 +427,20 @@ export default function AdminUsersScreen() {
         style={[styles.reasonInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
         multiline
       />
+      {(pendingChange.kind === "suspend" || pendingChange.kind === "delete") && (
+        <RingInput
+          value={userMessage}
+          onChangeText={setUserMessage}
+          placeholder="Message to the user (optional)"
+          maxLength={300}
+          placeholderTextColor={tone.muted}
+          style={[styles.reasonInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
+          multiline
+        />
+      )}
       <View style={styles.confirmActions}>
         <Pressable
-          onPress={() => { setPendingChange(null); setReason(""); }}
+          onPress={() => { setPendingChange(null); setReason(""); setUserMessage(""); }}
           style={[styles.secondaryBtn, { borderColor: tone.border }]}
         >
           <Text style={[styles.secondaryBtnText, { color: tone.text }]}>Cancel</Text>
@@ -502,7 +488,6 @@ export default function AdminUsersScreen() {
           <TextInput
             {...ring.handlers}
             value={users.search}
-            // Same cap as the server search limit
             maxLength={120}
             onChangeText={users.setSearch}
             placeholder="Search by name or email"
@@ -555,7 +540,6 @@ export default function AdminUsersScreen() {
 const styles = StyleSheet.create({
   ...adminStyles,
 
-
   primaryCell: { fontSize: 13, fontWeight: "700" },
   subCell: { fontSize: 11, marginTop: 1 },
   bodyCell: { fontSize: 12 },
@@ -584,7 +568,6 @@ const styles = StyleSheet.create({
   dangerBtnText: { fontSize: 13, fontWeight: "700", color: colors.white },
   btnDisabled: { opacity: 0.5 },
 
-  // alignSelf: not stretched across the page when the header stacks
   refreshBtn: {
     alignSelf: "flex-start",
     flexDirection: "row",

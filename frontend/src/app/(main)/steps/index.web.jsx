@@ -16,8 +16,7 @@ import { Bar, BarChart, CartesianGrid, Cell, Tooltip, XAxis, YAxis } from "recha
 
 const CHART_HEIGHT = 260;
 
-// The weekly challenge card. Deep green on the dark theme; a soft green tint
-// on the light one, where the deep green stood out against every other card
+// Weekly challenge card tones: deep green in dark mode, soft green tint in light mode
 const CHALLENGE_TONES = {
   dark: {
     card: { backgroundColor: "#244c1b" }, icon: "rgba(255,255,255,0.12)", title: colors.white, accent: "#aeda9d",
@@ -30,13 +29,8 @@ const CHALLENGE_TONES = {
 };
 
 /**
- * Web is a READER of step data, never a source: there is no browser API for
- * step counts, so everything here comes from whatever the phone has already
- * synced to /api/steps. The connect affordance therefore points at the mobile
- * app rather than asking for a permission the browser cannot grant.
- *
- * All aggregation lives in useDailySteps, shared with app/(main)/steps/index.jsx,
- * so the two screens cannot disagree on what "daily average" means.
+ * Web steps screen: reads step data synced from the mobile app via /api/steps
+ * or entered manually. Shares aggregation logic in useDailySteps with mobile.
  */
 
 export default function StepsScreen() {
@@ -49,11 +43,9 @@ export default function StepsScreen() {
   // { date, current } while the edit dialog is open
   const [editing, setEditing] = useState(null);
 
-  // recharts needs a value per bar, so days with no data are mapped to 0 for
-  // layout purposes but tagged `hasData: false` -- the Cell fill and the
-  // tooltip both read that flag so a gap never renders as a real zero.
-  // Week bars are days; Month and Year bars are steps per day over each week
-  // or month (`avg`), so every bar compares against the same daily goal
+  // Map unrecorded buckets to 0 with hasData: false so recharts lays out every slot
+  // without rendering missing days as actual zero-step bars.
+  // Month and Year buckets use daily averages (`avg`) to compare against the daily goal.
   const data = steps.series.map((bucket) => ({
     key: bucket.key,
     day: bucket.label,
@@ -63,21 +55,15 @@ export default function StepsScreen() {
   const perDay = steps.range !== "Week";
 
   const connected = Boolean(steps.tracking.connectedAt);
-  // First load only: the page renders in full with its numbers and lists as
-  // placeholders. Switching ranges later keeps the old bars until the new ones land
+  // Show skeletons only on initial load; range switches keep existing bars until new data arrives
   const first = !steps.loaded;
-  // Ticks at quarters of the daily goal, which is the top of the chart.
-  // Without them recharts rounds the top up to a "nice" number (10.5k)
+  // Quarter-goal ticks prevent recharts from rounding the Y-axis ceiling to an arbitrary number
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(steps.dailyGoal * f));
 
-  // The weekly challenge is a real target measured against real steps rather
-  // than the hardcoded 58,947 it used to show.
   const CHALLENGE_TARGET = steps.dailyGoal * 7;
   const challengeTotal = steps.range === "Week" ? steps.total : 0;
   const challengeRemaining = Math.max(CHALLENGE_TARGET - challengeTotal, 0);
 
-  // Same card/border/text/muted/soft/track tones every dashboard screen shares
-  // (see shared/theme/nutrifitai.js)
   const palette = getScreenTones(darkMode);
   const ch = CHALLENGE_TONES[darkMode ? "dark" : "light"];
 
@@ -137,9 +123,6 @@ export default function StepsScreen() {
             )}
           </View>
         </View>
-        {/* Only metrics the database actually holds. Calories and active time
-            were invented constants before; showing a real "best day" beats
-            showing a plausible fiction. */}
         <MetricCard icon="navigate-outline" label="Distance" value={(steps.distanceMeters / 1000).toFixed(1)} suffix="km" palette={palette} loading={first} />
         <MetricCard icon="calendar-outline" label="Days logged" value={String(steps.recordedDays)} suffix={steps.range.toLowerCase()} palette={palette} loading={first} />
         <MetricCard icon="trophy-outline" label="Best day" value={steps.bestDay ? formatNumber(steps.bestDay.stepCount) : "--"} suffix="steps" palette={palette} loading={first} />
@@ -157,7 +140,7 @@ export default function StepsScreen() {
           <StepStats steps={steps} palette={palette} loading={first} wide />
           <View style={styles.chartWrap}>
             {first ? (
-              // Seven bars, like the Week view this page opens on
+              // Seven placeholder bars matching the default Week view
               <View style={styles.chartSkeleton}>
                 {[0.55, 0.3, 0.75, 0.45, 0.9, 0.35, 0.6].map((h, i) => (
                   <Skeleton key={i} width="9%" height={`${h * 100}%`} borderRadius={7} />
@@ -169,7 +152,7 @@ export default function StepsScreen() {
               <BarChart width={width} height={CHART_HEIGHT} data={data} margin={{ top: 8, right: 4, left: -14, bottom: 0 }}>
                 <CartesianGrid stroke={palette.border} vertical={false} strokeDasharray="3 3" />
                 <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: palette.muted, fontSize: 13, fontFamily: CHART_FONT }} />
-                {/* The daily goal is the top of the chart; a bar over it fills it */}
+                {/* Daily goal is the Y-axis ceiling; bars exceeding it cap at the top */}
                 <YAxis
                   domain={[0, steps.dailyGoal]}
                   ticks={ticks}
@@ -183,11 +166,7 @@ export default function StepsScreen() {
                   formatter={(value, name, entry) => [entry?.payload?.hasData ? formatNumber(value) : "No data", perDay ? "Steps per day" : "Steps"]}
                   cursor={{ fill: palette.soft }}
                   contentStyle={{ fontFamily: CHART_FONT, borderRadius: 8, borderColor: palette.border, backgroundColor: palette.card, color: palette.text }}
-                  // `contentStyle.color` only styles the tooltip's outer
-                  // wrapper -- recharts renders the label and each item's
-                  // text with their own default (black) color unless told
-                  // otherwise, which is why the tooltip read as solid black
-                  // text on hover regardless of theme.
+                  // Explicitly style item and label text since recharts defaults them to black
                   itemStyle={{ color: palette.text }}
                   labelStyle={{ color: palette.text }}
                 />
@@ -206,7 +185,7 @@ export default function StepsScreen() {
           </View>
         </View>
 
-        {/* The challenge beside the chart, stretched to the chart's height */}
+        {/* Weekly challenge card beside the chart */}
         <View style={[styles.challengeCard, ch.card, narrow && styles.stackItem]}>
           <View style={[styles.challengeIcon, { backgroundColor: ch.icon }]}><Ionicons name="trophy" size={22} color="#f9c74f" /></View>
           <Text style={[styles.challengeKicker, { color: ch.accent }]}>WEEKLY CHALLENGE</Text>
@@ -226,7 +205,7 @@ export default function StepsScreen() {
         </View>
       </View>
 
-      {/* Manual entry and the goal side by side under the chart */}
+      {/* Manual entry and daily goal cards side by side below the chart */}
       <View style={[styles.editRow, narrow && styles.stackRow]}>
         <TodayStepsCard
           todaySteps={steps.todaySteps}
@@ -282,8 +261,7 @@ const styles = StyleSheet.create({
   // Shrinks to the row so the description wraps instead of running off
   headerCopy: { flexShrink: 1, minWidth: 0 },
   stackRow: { flexDirection: "column" },
-  // Stacked (narrow) children size to their content. With flex: n they get a
-  // zero basis in a column, collapse, and the next card draws over them
+  // Stacked (narrow) children size to their content instead of collapsing on flex: n
   stackItem: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
   eyebrow: { fontSize: 12, fontWeight: "800", letterSpacing: 1.3 }, pageTitle: { marginTop: 2, fontSize: 24, fontWeight: "800" }, pageSubtitle: { marginTop: 4, fontSize: 14 },
   headerActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }, syncPill: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 }, syncText: { color: "#4f7150", fontSize: 12, fontWeight: "700" },
@@ -297,8 +275,6 @@ const styles = StyleSheet.create({
   editRow: { flexDirection: "row", alignItems: "stretch", gap: 12, marginTop: 12 },
   editItem: { flex: 1, minWidth: 0 }, chartCard: { minWidth: 280, flex: 2.2, borderWidth: 1, borderRadius: radii.md, padding: 18, flexDirection: "column" }, // Wraps the tabs under the title once the card is too narrow for both
   chartHeader: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12 }, sectionTitle: { fontSize: 17, fontWeight: "800" }, sectionSubtitle: { marginTop: 3, fontSize: 12 },
-  // Fixed height. The card no longer stretches to the side column (see
-  // contentRow), so there is no empty space under it either
   chartWrap: { height: CHART_HEIGHT, marginTop: 14 },
   chartSkeleton: { flex: 1, flexDirection: "row", alignItems: "flex-end", justifyContent: "space-around", paddingLeft: 30 },
   goalCopySkeleton: { marginTop: 9 },

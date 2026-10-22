@@ -8,7 +8,7 @@ const { notify } = require('../../services/notifications/notify');
 const { INVALID_CODE_MESSAGE, padResponse } = require('../../services/auth/authResponses');
 const { issueAndSendOtp, emailFailed, consumeOtpChallenge } = require('../../services/auth/otpChallenge');
 
-// api/auth/forgot-password
+// POST /api/auth/forgot-password
 const forgotPassword = asyncHandler(async (req, res) => {
   const startedAt = Date.now();
   const { email } = req.body;
@@ -31,7 +31,7 @@ const forgotPassword = asyncHandler(async (req, res) => {
   });
 });
 
-// api/auth/verify-password-reset
+// POST /api/auth/verify-password-reset
 const verifyPasswordReset = asyncHandler(async (req, res) => {
   const { email, code } = req.body;
 
@@ -54,7 +54,7 @@ const verifyPasswordReset = asyncHandler(async (req, res) => {
   });
 });
 
-// api/auth/reset-password
+// POST /api/auth/reset-password
 const resetPassword = asyncHandler(async (req, res) => {
   const { resetToken, password } = req.body;
 
@@ -76,7 +76,6 @@ const resetPassword = asyncHandler(async (req, res) => {
     throw ApiError.unauthorized('Your reset session has expired. Please start over.');
   }
 
-  // The token stays valid, so the user can simply pick another password
   if (await verifyPassword(password, user.passwordHash)) {
     throw ApiError.badRequest('Your new password must be different from your current password.', {
       code: 'SAME_PASSWORD',

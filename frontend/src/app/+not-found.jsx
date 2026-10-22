@@ -8,7 +8,7 @@ import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// Shown for any URL that matches no screen (a static export also writes it as 404.html)
+// Fallback 404 screen for unmatched routes (exported as 404.html on static web builds).
 export default function NotFoundScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -17,7 +17,7 @@ export default function NotFoundScreen() {
   const p = getPublicTones(darkMode);
   const styles = useMemo(() => createStyles(p), [p]);
 
-  // Signed in goes to their own home, everyone else to the landing page
+  // Route signed-in users to their role home screen; guests go to the landing page.
   const home = () => router.replace(isAuthenticated ? homeFor(role) : "/");
 
   return (

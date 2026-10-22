@@ -13,11 +13,9 @@ import { useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-// The onboarding, one screen for web and phone: one step at a time with
-// Back / Skip / Next at the bottom. A centered card on wide screens, full
-// width on phones. No sidebar, so the steps get the whole screen
+// Multi-step setup wizard shared across web and mobile.
 
-// Where each answer can be changed later, for the "Skip setup" dialog
+// Reference locations shown in the "Skip setup" confirmation dialog.
 const LATER_PLACES = [
   { icon: "nutrition-outline", what: "Calories and macros", where: "Food Scanner" },
   { icon: "footsteps-outline", what: "Daily steps", where: "Steps" },
@@ -38,10 +36,9 @@ export default function OnboardingScreen() {
 
   const [confirmSkip, setConfirmSkip] = useState(false);
 
-  // Enter in a text box moves on, like Next
   const onSubmit = isReview ? onboarding.finish : onboarding.next;
 
-  // Each step starts at the top, a long one (Workouts) can't leave the next scrolled down
+  // Scroll back to the top whenever the step changes.
   const scrollRef = useRef(null);
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -88,7 +85,6 @@ export default function OnboardingScreen() {
 
             <ScreenError message={onboarding.error} onDismiss={onboarding.clearError} />
 
-            {/* Back on the left, Skip and Next (or Finish) on the right */}
             <View style={[styles.footer, { borderTopColor: tone.border }]}>
               {index > 0 ? (
                 <ActionButton variant="secondary" label="Back" onPress={onboarding.back} disabled={saving} darkMode={darkMode} />
@@ -112,7 +108,6 @@ export default function OnboardingScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Nothing is saved until this is confirmed */}
       <ConfirmModal
         visible={confirmSkip}
         title="Skip setup for now?"

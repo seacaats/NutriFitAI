@@ -1,14 +1,10 @@
 import { useFocusEffect } from "expo-router";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-// Pull-to-refresh, and tapping the nav entry of the screen you're on. Data
-// hooks register a reset-and-reload while their screen is focused; refresh()
-// runs them all, so the screen goes back to its first-load skeletons, same as
-// opening it. The registry holds no state on purpose: a registry change must
-// never re-render the layout. Only usePullRefreshState() subscribers re-render
+// Pull-to-refresh and active nav tab refresh registry.
+// Screens register reset-and-reload callbacks while focused.
 
-// Longest a refresh spinner runs. Offline, uncached loads wait for the server;
-// the spinner doesn't
+// Maximum duration for a pull-to-refresh spinner
 const PULL_MAX_MS = 8000;
 
 const PullRefreshContext = createContext(null);
@@ -28,7 +24,7 @@ export function PullRefreshProvider({ children }) {
         fns.current.add(fn);
         return () => fns.current.delete(fn);
       },
-      // Silent reload, e.g. when the server comes back
+      // Silent reload across registered callbacks
       runAll,
       // Reload with the spinner showing
       async refresh() {
@@ -47,7 +43,7 @@ export function PullRefreshProvider({ children }) {
   return <PullRefreshContext.Provider value={value}>{children}</PullRefreshContext.Provider>;
 }
 
-// Registers `fn` while the screen is focused. A no-op outside the provider
+// Registers callback while the screen is focused
 export function usePullRefresh(fn) {
   const ctx = useContext(PullRefreshContext);
   const latest = useRef(fn);
@@ -55,12 +51,12 @@ export function usePullRefresh(fn) {
   useFocusEffect(useCallback(() => (ctx ? ctx.add(() => latest.current?.()) : undefined), [ctx]));
 }
 
-// Registry access for a silent runAll(). null outside the provider
+// Registry access for silent reloads
 export function usePullRefreshRunner() {
   return useContext(PullRefreshContext);
 }
 
-// { refreshing, refresh } for a RefreshControl or a nav tap. null outside the provider
+// Returns { refreshing, refresh } for refresh indicators
 export function usePullRefreshState() {
   const ctx = useContext(PullRefreshContext);
   const [refreshing, setRefreshing] = useState(() => ctx?.isRefreshing() ?? false);

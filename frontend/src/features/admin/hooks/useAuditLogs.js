@@ -4,28 +4,18 @@ import { Platform } from "react-native";
 
 /**
  * Backs the audit log table.
- *
- * What comes back per row is a rendered sentence (`message`) plus the columns
- * the table sorts on. The phrasing lives in the backend's
- * src/utils/audit-logs/actions registry, deliberately not mirrored here: a
- * second copy of the templates would drift, and would ship them in a bundle
- * every user downloads
+ * Each row includes a pre-rendered `message` from the backend action registry
+ * (`src/utils/audit-logs/actions`) along with sortable metadata columns.
  */
 
 const DEFAULT_LIMIT = 25;
 
-// Pseudo-category for the "By User" tab. Not a server category: it switches
-// the filter from "what kind of action" to "which person"
+// Client-side pseudo-categories for special audit log tabs
 export const BY_USER = "__byUser";
-
-// Pseudo-category for the "Held" tab: held copies (audit_holds) instead of
-// the live log
 export const HELD = "__held";
-
-// Pseudo-category for the "Noted" tab: live rows that have notes
 export const NOTED = "__noted";
 
-// Notes and holds want the whole envelope, for the server's message
+// Request full response envelope for note and hold actions
 const options = { auth: true, full: true };
 
 export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
@@ -33,7 +23,7 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
   const [action, setAction] = useState(null);
   const [page, setPage] = useState(1);
 
-  // "By User" tab: the picked account and which side of the action they're on
+  // "By User" tab: selected user account and role filter (actor/target/all)
   const [subject, setSubject] = useState(null); // { id, label }
   const [subjectMode, setSubjectMode] = useState("all");
   const byUser = category === BY_USER;
@@ -43,25 +33,15 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
   const [rows, setRows] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, pageCount: 1, total: 0 });
   const [meta, setMeta] = useState(null);
-  // Until the filter menu arrives: its pills and the Export button show as skeletons
+  // Keep filter pills and Export button in skeleton state until metadata and initial rows load
   const [metaLoading, setMetaLoading] = useState(true);
-  // The page's first load: filters and Export stay skeletons until the table has arrived too
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const requestId = useRef(0);
 
-  /**
-   * The filter menu's options, fetched once.
-   *
-   * Derived from the registry server-side rather than from distinct values in
-   * the collection -- which matters right now more than it will later, since
-   * nothing writes most of these actions yet. Deriving from data would render
-   * an empty filter menu over an empty table, and the catalogue is exactly
-   * what is worth seeing while the producers are still being wired up.
-   * 
-   */
+  // Fetch available categories and actions from the server registry once on mount
   useEffect(() => {
     let cancelled = false;
     apiClient
@@ -83,7 +63,7 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
   const load = useCallback(async () => {
     const id = ++requestId.current;
 
-    // Nothing to show on "By User" until someone is picked
+    // Wait until a user is selected on the "By User" tab before querying
     if (byUser && !subject) {
       setRows([]);
       setPagination({ page: 1, pageCount: 1, total: 0 });
@@ -109,7 +89,7 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
 
     try {
       const data = await apiClient.get(`/admin/audit-logs?${params.toString()}`, { auth: true });
-      // Discard a stale response that lost the race to a newer one
+      // Discard stale responses superseded by a newer request
       if (id !== requestId.current) return;
 
       setRows(data.rows || []);
@@ -132,8 +112,7 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
     load();
   }, [load]);
 
-  // Notes, holds: same { ok, message } contract as the user actions, and a
-  // reload so the row's markers (held, note count) catch up
+  // Execute a note or hold mutation, reload the table so row indicators update, and return { ok, message }
   const run = useCallback(async (request, fallback) => {
     try {
       const payload = await request();
@@ -144,7 +123,7 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
     }
   }, [load]);
 
-  // A row's notes, oldest first. Fetched when its drawer opens
+  // Fetch notes for a single audit log row (oldest first) when its drawer opens
   const listNotes = useCallback(
     (id) => apiClient.get(`/admin/audit-logs/${id}/notes`, { auth: true }),
     [],
@@ -162,9 +141,7 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
     [run],
   );
 
-  // Same filters as the table, no
-  // paging. Web downloads the file; native has nowhere useful to put a CSV,
-  // so it points to the web dashboard instead. Returns { ok, message }
+  // Export unpaginated CSV matching current filters (supported on web only)
   const exportCsv = useCallback(async () => {
     if (Platform.OS !== "web") {
       return { ok: false, message: "Export is available on the web dashboard." };
@@ -190,9 +167,7 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
     }
   }, [category, action, subjectId, byUser, subject, subjectMode]);
 
-  /** Selecting a category clears any action drilled into within the previous
-   *  one -- otherwise the two filters contradict each other and the table
-   *  goes empty for a reason nothing on screen explains */
+  // Changing category clears the sub-action filter and resets to page 1
   const updateCategory = useCallback((value) => {
     setCategory(value);
     setAction(null);
@@ -245,9 +220,7 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
   };
 }
 
-// Name/email lookup for the audit log's "By User" tab. Reuses GET /admin/users
-// (already admin-only), debounced so typing doesn't fire a request per key
-
+// Debounced name/email lookup for the "By User" filter tab via GET /admin/users
 const DEBOUNCE_MS = 300;
 const RESULT_LIMIT = 6;
 

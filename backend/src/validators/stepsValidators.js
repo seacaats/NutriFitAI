@@ -1,23 +1,18 @@
 const { z } = require('zod');
 const { CALENDAR_DAY_RE } = require('../utils/calendarDay');
 
-
 const STEP_SOURCES = ['healthkit', 'health_connect', 'device_sensor'];
-// Same ceiling for typed and synced days. Mirrors MAX_STEPS in the frontend's StepCards.jsx
 const MAX_STEPS_PER_DAY = 20000;
-
 const MAX_SYNC_DAYS = 31;
 
-// Dates stay as strings here and arrive as already-correct strings from the client
 const isoDate = z
   .string()
   .regex(CALENDAR_DAY_RE, 'Expected a YYYY-MM-DD date')
   .refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00Z`)), {
     message: 'Not a real calendar date',
   });
-  
 
-// Allow a one-day future-allowance as user might really be ahead of server time
+// Allow up to 1 day ahead of UTC to accommodate positive timezone offsets
 const notFarFuture = isoDate.refine(
   (value) => {
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -26,7 +21,6 @@ const notFarFuture = isoDate.refine(
   { message: 'Date is in the future' },
 );
 
-// `date` is optional on /today; the controller falls back to today in the user's timezone when it's omitted
 const todayQuerySchema = z
   .object({ date: z.string().regex(CALENDAR_DAY_RE).optional() })
   .strict();
@@ -39,7 +33,6 @@ const syncStepsSchema = z
         z
           .object({
             activityDate: notFarFuture,
-            // A phone reporting more is set to the ceiling instead of failing the whole sync
             stepCount: z.number().int().min(0).transform((n) => Math.min(n, MAX_STEPS_PER_DAY)),
             distanceMeters: z.number().min(0).max(1000000).nullable().optional(),
           })
@@ -47,7 +40,6 @@ const syncStepsSchema = z
       )
       .min(1, 'At least one day is required')
       .max(MAX_SYNC_DAYS, `At most ${MAX_SYNC_DAYS} days per sync`)
-      // Reject duplicate dates
       .refine(
         (days) => new Set(days.map((d) => d.activityDate)).size === days.length,
         { message: 'Duplicate dates in payload' },
@@ -62,7 +54,6 @@ const stepRangeSchema = z
   })
   .strict()
   .refine((q) => q.from <= q.to, { message: 'The start date must be before the end date.' })
-  // Lexical comparison is safe on zero-padded ISO dates
   .refine(
     (q) => {
       const days = (Date.parse(`${q.to}T00:00:00Z`) - Date.parse(`${q.from}T00:00:00Z`))
@@ -79,7 +70,6 @@ const manualStepsSchema = z
   })
   .strict();
 
-// Daily step goal, in steps. Mirrors the limits on the Steps page
 const stepGoalSchema = z
   .object({
     dailySteps: z.number().int()

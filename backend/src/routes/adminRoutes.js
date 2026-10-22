@@ -16,32 +16,52 @@ const {
   auditExportQuerySchema,
   userListQuerySchema,
   adminReasonSchema,
+  adminNoticeSchema,
   adminProfileSchema,
   auditNoteSchema,
   userIdParamSchema,
   auditLogIdParamSchema,
+  imageReviewIdParamSchema,
+  imageReviewQuerySchema,
   adminCreateUserSchema,
   sessionParamSchema,
 } = require('../validators/adminValidators');
 
 const router = Router();
 
-/**
- * The admin API.
- * 
- * requireAuth = who's making the request
- * requireFreshRole = what's that user's role
- * requireRole = is their role permitted
- * 
- */
-
-// Floor for the whole router: nothing mounted here, now or later, is reachable
-// below admin even if a route forgets its own check
+// Enforce authentication, live role check, and admin role across all admin routes
 router.use(requireAuth, requireFreshRole, requireRole('admin'));
 
 const adminOnly = requireRole('admin');
 
-// Counts across the app, no personal data (admin/analyticsController)
+// Image moderation queue
+router.get(
+  '/image-reviews',
+  adminOnly,
+  validateQuery(imageReviewQuerySchema),
+  controller.listImageReviews,
+);
+router.get(
+  '/image-reviews/:id/image',
+  adminOnly,
+  validateParams(imageReviewIdParamSchema),
+  controller.viewImageReview,
+);
+router.post(
+  '/image-reviews/:id/approve',
+  adminOnly,
+  validateParams(imageReviewIdParamSchema),
+  validateBody(adminReasonSchema),
+  controller.approveImageReview,
+);
+router.post(
+  '/image-reviews/:id/remove',
+  adminOnly,
+  validateParams(imageReviewIdParamSchema),
+  validateBody(adminReasonSchema),
+  controller.removeImageReview,
+);
+
 router.get(
   '/analytics',
   adminOnly,
@@ -73,7 +93,6 @@ router.get(
   controller.getAuditMeta
 );
 
-// Notes and holds on a row. A hold keeps a row past its expiry, or lets it go
 router.get(
   '/audit-logs/:id/notes',
   adminOnly,
@@ -88,7 +107,6 @@ router.post(
   controller.addAuditNote,
 );
 
-// Adds a regular or admin account. The person sets their own password (see the controller)
 router.post(
   '/users',
   adminOnly,
@@ -96,7 +114,6 @@ router.post(
   controller.createUser,
 );
 
-// Sessions: see a user's signed-in devices, end one or all of them
 router.get(
   '/users/:id/sessions',
   adminOnly,
@@ -118,7 +135,6 @@ router.delete(
   controller.revokeAllUserSessions,
 );
 
-// Clears another admin's authenticator so they set up a new one at their next sign-in
 router.post(
   '/users/:id/authenticator-reset',
   adminOnly,
@@ -127,7 +143,6 @@ router.post(
   controller.resetUserAuthenticator,
 );
 
-// Acting on an account. Nobody acts on themselves (checked in the controller)
 router.patch(
   '/users/:id/profile',
   adminOnly,
@@ -139,7 +154,7 @@ router.post(
   '/users/:id/suspend',
   adminOnly,
   validateParams(userIdParamSchema),
-  validateBody(adminReasonSchema),
+  validateBody(adminNoticeSchema),
   controller.suspendUser,
 );
 router.post(
@@ -164,12 +179,11 @@ router.post(
   controller.cancelPasswordReset,
 );
 
-// Schedules the deletion (see the controller), and takes it back
 router.delete(
   '/users/:id',
   adminOnly,
   validateParams(userIdParamSchema),
-  validateBody(adminReasonSchema),
+  validateBody(adminNoticeSchema),
   controller.deleteUser,
 );
 router.post(
@@ -180,7 +194,6 @@ router.post(
   controller.cancelUserDeletion,
 );
 
-// Keep a row past its expiry, or let it go
 router.post(
   '/audit-logs/:id/hold',
   adminOnly,
@@ -196,7 +209,6 @@ router.delete(
   controller.releaseAuditHold,
 );
 
-// CSV of every row matching the filters
 router.get(
   '/audit-logs/export',
   adminOnly,

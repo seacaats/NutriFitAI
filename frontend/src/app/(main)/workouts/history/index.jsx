@@ -18,15 +18,7 @@ import {
 } from "react-native";
 
 /**
- * Full workout history, paged.
- *
- * The workouts tab shows the five most recent; everything older lived in the
- * database and was unreachable. This is where it goes.
- *
- * Grouped under day headings rather than shown as a flat list, because the
- * question people bring to a training log is "what did I do on Tuesday", not
- * "what was my 47th most recent session". Grouping also makes a rest day
- * legible as a gap between headings rather than as nothing at all.
+ * Paginated workout history screen grouped by day.
  */
 export default function WorkoutHistoryScreen() {
   const { shell: c, darkMode } = useTheme();
@@ -38,19 +30,9 @@ export default function WorkoutHistoryScreen() {
     deletes, groups, imageOf, collapsed, toggleGroup,
   } = useWorkoutHistory();
 
-  /**
-   * Flattened into a single list of headers and rows rather than nested
-   * FlatLists or a SectionList.
-   *
-   * SectionList would be the idiomatic choice, but its sticky headers fight
-   * with DashboardLayout's own header on web, and the section data would have
-   * to be rebuilt on every page append anyway. One flat array keeps
-   * virtualisation working and the append cheap.
-   *
-   * Collapsing a day just skips pushing its session rows — the header stays
-   * in the list either way, so the dropdown toggle is a plain array filter,
-   * not a second render pass.
-   */
+  // Flatten day headers and session rows into a single array so FlatList
+  // virtualization works without nested lists or SectionList sticky-header conflicts.
+  // Collapsing a day simply omits its session rows from the flat array.
   const rows = [];
   for (const group of groups) {
     const isOpen = !collapsed.has(group.key);
@@ -72,7 +54,7 @@ export default function WorkoutHistoryScreen() {
 
   const pull = usePullRefreshState();
 
-  // The FlatList does the scrolling; a page ScrollView around it breaks its windowing
+  // Disable DashboardLayout scrolling so FlatList handles windowing and pull-to-refresh directly
   return (
     <DashboardLayout scrollable={false} hideTabBar>
       <View style={styles.header}>
@@ -89,13 +71,6 @@ export default function WorkoutHistoryScreen() {
           )}
         </View>
 
-        {/*
-          Persistent, not only in the empty state. The "Browse exercises"
-          button below disappears the moment a user logs their first session,
-          which would leave this screen with no route back to the catalog at
-          all — the empty state was doubling as navigation, which it should
-          never be.
-        */}
         <Pressable
           onPress={() => router.push("/workouts")}
           hitSlop={8}
@@ -105,7 +80,7 @@ export default function WorkoutHistoryScreen() {
         </Pressable>
       </View>
 
-      {/* Header stays real while loading; only the list is a placeholder */}
+      {/* Keep header visible while loading; show skeletons only for the session list */}
       {loading ? (
         <View style={styles.skeletonWrap}>
           {[0, 1, 2].map((g) => (
@@ -124,7 +99,6 @@ export default function WorkoutHistoryScreen() {
           ))}
         </View>
       ) : sessions.length === 0 ? (
-        // Empty state, not an error: the copy points at the next action
         <View style={styles.empty}>
           <Ionicons name="barbell-outline" size={34} color={screenTones.light.mutedAlt} />
           <Text style={[styles.emptyTitle, textColor]}>No workouts yet</Text>
@@ -154,20 +128,14 @@ export default function WorkoutHistoryScreen() {
                 </Pressable>
               </Pressable>
             ) : (
-              // Same image cards as the Recent tab
               <View style={styles.tileSlot}>
                 <SessionTile session={item.session} imageOf={imageOf} darkMode={darkMode} timeOnly onDelete={deletes.askSession} onOpen={openSession} />
               </View>
             )
           }
-          // The list scrolls here, not the layout, so the pull lives here too
           refreshControl={pull ? <RefreshControl refreshing={pull.refreshing} onRefresh={pull.refresh} tintColor={c.primary} /> : undefined}
           onEndReached={loadMore}
-          /**
-           * 0.4 rather than the default 0.5: rows are short, so a later trigger
-           * means the spinner appears only after the user has already hit the
-           * bottom and stopped.
-           */
+          // Trigger pagination slightly early so the next page loads before reaching the bottom
           onEndReachedThreshold={0.4}
           style={styles.list}
           contentContainerStyle={styles.listContent}

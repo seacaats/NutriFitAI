@@ -1,5 +1,4 @@
-
-// Uses server midnight, might not line up with actual quota resets
+// Uses server midnight for daily quota rollover
 function nextLocalMidnight() {
   const d = new Date();
   d.setHours(24, 0, 0, 0);
@@ -25,12 +24,10 @@ function get(provider) {
     entry = blank();
     state.set(provider, entry);
   }
-  // Reset is checked on-access
   if (Date.now() >= entry.resetsAt) {
     const preserved = entry.cooldownUntil;
     Object.assign(entry, blank());
-    // A short cooldown (a per-minute limit) should survive the daily rollover;
-    // a day-length one is exactly what the rollover is meant to clear
+    // Preserve short per-minute cooldowns across daily rollover; clear day-length ones
     entry.cooldownUntil = preserved > entry.resetsAt ? 0 : preserved;
   }
   return entry;
@@ -48,8 +45,6 @@ function canAttempt(provider, limits = {}) {
     const seconds = Math.ceil((entry.cooldownUntil - Date.now()) / 1000);
     return { ok: false, reason: `cooling down for ${seconds}s` };
   }
-  // Check requests and tokens against limts before 
-  // attempting a call to a specific model
   if (limits.requestsPerDay && entry.requestsToday >= limits.requestsPerDay) {
     return { ok: false, reason: 'daily request budget spent' };
   }
@@ -59,8 +54,6 @@ function canAttempt(provider, limits = {}) {
   return { ok: true };
 }
 
-// Provider-reported token count, reports that default to 0
-// can't really enforce limit checks
 function recordSuccess(provider, usage) {
   const entry = get(provider);
   entry.requestsToday += 1;
@@ -70,22 +63,18 @@ function recordSuccess(provider, usage) {
 }
 
 /**
- * Benches a provider.
- *
  * @param {string} provider
- * @param {number} ms how long to skip it for
- * @param {string} [reason] kept for logging and the /coach/health endpoint
+ * @param {number} ms
+ * @param {string} [reason]
  */
 function cooldown(provider, ms, reason) {
   const entry = get(provider);
   entry.cooldownUntil = Math.max(entry.cooldownUntil, Date.now() + ms);
   entry.consecutiveFailures += 1;
   entry.lastError = reason || null;
-  // Failed calls still consume provider-side quota
   entry.requestsToday += 1;
 }
 
-// Diagnostics for stale data such as requestsToday, tokensToday, cooldownUntil.
 function snapshot() {
   const out = {};
   for (const [provider, entry] of state.entries()) {
@@ -101,7 +90,6 @@ function snapshot() {
   return out;
 }
 
-// Test clear provider state
 function reset() {
   state.clear();
 }

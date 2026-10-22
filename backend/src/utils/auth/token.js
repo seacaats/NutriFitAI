@@ -12,8 +12,6 @@ const UNIT_MS = {
   y: 31557600000, yr: 31557600000, yrs: 31557600000, year: 31557600000, years: 31557600000,
 };
 
-
-// Convert jsonwebtoken expiresIn duration string to ms
 function durationToMs(value) {
   const match = /^(\d+(?:\.\d+)?)\s*([a-z]*)$/i.exec(String(value).trim());
   const factor = match && UNIT_MS[match[2].toLowerCase() || 'ms'];
@@ -23,19 +21,16 @@ function durationToMs(value) {
   return Math.round(parseFloat(match[1]) * factor);
 }
 
-// Sliding window, refreshing constantly through activity
 const REFRESH_TTL_MS = {
   remembered: durationToMs(env.jwt.refreshExpiresIn),
   session: durationToMs(env.jwt.refreshExpiresInShort),
 };
 
-// Longest a session may live after being used
 const SESSION_MAX_MS = {
   remembered: durationToMs(env.jwt.sessionMax),
   session: durationToMs(env.jwt.sessionMaxShort),
 };
 
-// Validate session max as never being shorter than sliding window
 for (const key of ['remembered', 'session']) {
   if (SESSION_MAX_MS[key] < REFRESH_TTL_MS[key]) {
     throw new Error(
@@ -46,15 +41,11 @@ for (const key of ['remembered', 'session']) {
 }
 
 /**
- * Access token: short-lived, carried in Authorization header, used to
- * authenticate normal API requests. Payload is intentionally minimal.
- * @param {{ id: string, email: string }} user
+ * Short-lived access token for authenticating API requests.
+ * @param {{ id: string, email: string, role?: string }} user
  */
 function signAccessToken(user, sid = null) {
   return jwt.sign(
-    // User role is embedded on the access token.
-    // Access tokens are short-lived (15m by default), which
-    // bounds how long a revoked/demoted role stays usable.
     { sub: user.id, email: user.email, role: user.role || 'user', type: 'access', ...(sid ? { sid } : {}) },
     env.jwt.accessSecret,
     { expiresIn: env.jwt.accessExpiresIn },
@@ -62,30 +53,17 @@ function signAccessToken(user, sid = null) {
 }
 
 /**
- * Refresh token: long-lived, httpOnly cookie, exchanged for access tokens at
- * /api/auth/refresh.
- *
- *   rmb  the rememberMe choice made at login
- *
- *   sxp  the max session deadline, as epoch ms, fixed at login and
- *        carried unchanged through every rotation.
- *
+ * Long-lived refresh token carrying `rmb` (rememberMe), `sxp` (absolute session expiry), and `sid` (session ID).
  * @param {{ id: string }} user
  * @param {boolean} rememberMe
- *
- *   sid  the auth_sessions row this token belongs to, carried through every
- *        rotation. Revoking the row ends the session at its next refresh
- *
- * @param {number} [sessionExpiresAt] epoch ms; pass through on rotation
- * @param {string} [sid]
+ * @param {number|null} [sessionExpiresAt]
+ * @param {string|null} [sid]
  */
 function signRefreshToken(user, rememberMe = false, sessionExpiresAt = null, sid = null) {
   const idleMs = rememberMe ? REFRESH_TTL_MS.remembered : REFRESH_TTL_MS.session;
   const maxMs = rememberMe ? SESSION_MAX_MS.remembered : SESSION_MAX_MS.session;
-  // Set once at login; every rotation passes the original value straight back
   const absolute = sessionExpiresAt || Date.now() + maxMs;
 
-  // Never issue a token that outlives the session deadline\
   const remainingMs = Math.max(absolute - Date.now(), 0);
   const expiresInSeconds = Math.max(Math.floor(Math.min(idleMs, remainingMs) / 1000), 1);
 
@@ -96,8 +74,6 @@ function signRefreshToken(user, rememberMe = false, sessionExpiresAt = null, sid
   );
 }
 
-// Token minted before 'sxp' existed — fall back to the full 
-// idle window instead of failing on the missing field
 function refreshSessionRemainingMs(payload) {
   if (!payload || !payload.sxp) {
     return payload && payload.rmb ? REFRESH_TTL_MS.remembered : REFRESH_TTL_MS.session;
@@ -106,8 +82,6 @@ function refreshSessionRemainingMs(payload) {
 }
 
 /**
- * Lifetime of the refresh cookie, in ms. Uses the same config as
- * signRefreshToken so the cookie and the token it carries expire together
  * @param {boolean} rememberMe
  */
 function refreshTokenMaxAgeMs(rememberMe = false) {
@@ -123,8 +97,7 @@ function verifyRefreshToken(token) {
 }
 
 /**
- * Short-lived authorization returned after a password-reset OTP is verified
- * Proves the caller already passed the OTP challenge, without re-sending it
+ * Short-lived token issued after verifying a password-reset OTP.
  * @param {{ userId: string, challengeId: string }} payload
  */
 function signResetToken({ userId, challengeId }) {
@@ -137,20 +110,11 @@ function verifyResetToken(token) {
   return jwt.verify(token, env.resetToken.secret);
 }
 
-/**
- * Challenge returned when the password was right but two-factor is on. It
- * proves only that step, so it carries no access: it can't call the API, only
- * be exchanged at /auth/login/mfa together with a valid code.
- *
- *   rmb  the rememberMe choice, carried to the real session
- *   pv   fingerprint of the password hash, so changing the password (or a
- *        reset) kills any challenge issued before it
- */
 function passwordFingerprint(passwordHash) {
   return crypto.createHash('sha256').update(String(passwordHash)).digest('hex').slice(0, 16);
 }
 
-// via: how the first step was passed, 'password' or 'google'
+// Short-lived MFA challenge token bound to the current password hash fingerprint (`pv`)
 function signMfaToken(user, rememberMe = false, via = 'password') {
   return jwt.sign(
     { sub: user.id, type: 'mfa', rmb: Boolean(rememberMe), via, pv: passwordFingerprint(user.passwordHash) },
@@ -175,9 +139,6 @@ function verifyOauthExchangeToken(token) {
   return jwt.verify(token, env.oauthExchange.secret);
 }
 
-// Prevent scenarios where cookies outlive the idle window or a set sxp,
-// where a token would continue to sit in the browser when that cookie
-// doesn't actually work anymore, returning invalid diagnostics for the user
 function refreshCookieMaxAgeMs(payload) {
   const idleMs = payload && payload.rmb ? REFRESH_TTL_MS.remembered : REFRESH_TTL_MS.session;
   return Math.min(idleMs, refreshSessionRemainingMs(payload));

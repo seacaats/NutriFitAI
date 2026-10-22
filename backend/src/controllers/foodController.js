@@ -4,6 +4,8 @@ const Meal = require('../models/food/Meal');
 const User = require('../models/user/User');
 const storage = require('../utils/storage');
 const { looksLikeImage } = require('../utils/storage/keys');
+const { moderateImage, throwIfRejected } = require('../services/moderation/imageModeration');
+const { logModeration } = require('../services/moderation/moderationLog');
 const { logAction } = require('../utils/audit-logs/auditLogger');
 const { today } = require('../utils/calendarDay');
 const { asyncHandler, sendSuccess, ApiError } = require('../utils/httpResponse');
@@ -11,18 +13,13 @@ const { userTimeZone } = require('../services/user/userTimeZone');
 const { invalidateRecommendations } = require('./recommendationController');
 const { round1 } = require('../utils/numbers');
 
-// Daily calorie and macro targets on the active goal; null when not set
 const NUTRITION_TARGETS = ['dailyCaloriesKcal', 'dailyProteinG', 'dailyCarbsG', 'dailyFatG'];
 
 const nutritionGoalsOf = (goal) => Object.fromEntries(NUTRITION_TARGETS.map((k) => [k, goal?.[k] ?? null]));
 
 // ---- Detection server --------------------------------------------------------
 
-/**
- * Sends one image to the FastAPI model server and returns its raw items.
- * Throws with a `stage` so the audit entry says where it broke: 'unreachable'
- * (down, timed out) or 'rejected' (non-2xx, e.g. a wrong AI_DETECT_API_KEY)
- */
+// Send image to the FastAPI detection server; throws with `stage` ('unreachable' | 'rejected')
 async function detectFood(buffer, mimetype) {
   const form = new FormData();
   form.append('image', new Blob([buffer], { type: mimetype }), `scan.${storage.keys.extensionFor(mimetype)}`);
@@ -51,25 +48,34 @@ async function detectFood(buffer, mimetype) {
   return Array.isArray(body.items) ? body.items : [];
 }
 
-// Model output -> food_scans item. Values are per ONE serving
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const NUTRIENTS = ['caloriesKcal', 'proteinG', 'carbsG', 'fatG'];
+
+// Nutrition per 100g (from model server or derived from serving values)
+function per100gOf(raw, serving, grams) {
+  const sent = raw.per100g && typeof raw.per100g === 'object' ? raw.per100g : {};
+  const out = {};
+  for (const key of NUTRIENTS) {
+    out[key] = num(sent[key]) ?? (grams > 0 && serving[key] !== null ? round1((serving[key] / grams) * 100) : null);
+  }
+  return out.caloriesKcal === null ? null : out;
+}
+
 function toScanItem(raw) {
-  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const grams = num(raw.servingGrams);
+  const serving = Object.fromEntries(NUTRIENTS.map((key) => [key, num(raw[key])]));
   return {
     foodName: String(raw.foodName || 'unknown').slice(0, 150),
     serving: raw.serving ? String(raw.serving).slice(0, 60) : null,
-    estimatedGrams: num(raw.servingGrams),
-    caloriesKcal: num(raw.caloriesKcal),
-    proteinG: num(raw.proteinG),
-    carbsG: num(raw.carbsG),
-    fatG: num(raw.fatG),
+    estimatedGrams: grams,
+    per100g: per100gOf(raw, serving, grams),
+    ...serving,
     confidence: num(raw.confidence),
   };
 }
 
 // ---- Payloads ----------------------------------------------------------------
 
-// What the scanner screen renders. `missing` lists foods the model found but
-// the nutrition table doesn't cover, the user types those values in
 async function toScanPayload(scan) {
   const items = (scan.items || []).map((item) => ({
     ...item,
@@ -80,7 +86,6 @@ async function toScanPayload(scan) {
     id: scan.id,
     status: scan.status,
     scannedAt: scan.scannedAt,
-    // Relative path, the app resolves it against the API origin (mediaUrl.js)
     imageUrl: scan.storageKey ? await storage.urlFor(scan.storageKey) : null,
     items,
     missing: [...new Set(items.filter((i) => !i.hasNutrition).map((i) => i.foodName))],
@@ -89,19 +94,21 @@ async function toScanPayload(scan) {
 
 // ---- Scans -------------------------------------------------------------------
 
-// POST /api/food/scans   (multipart/form-data, field name: "image")
+// POST /api/food/scans
 const createScan = asyncHandler(async (req, res) => {
   const file = req.file;
   if (!file || !file.buffer) {
     throw ApiError.badRequest('No image was uploaded', { code: 'NO_FILE' });
   }
 
-  // Declared type must be one we store, AND the bytes must actually be it
   const mimetype = (file.mimetype || '').split(';')[0].trim().toLowerCase();
   const ext = storage.keys.EXT_BY_TYPE[mimetype];
   if (!ext || !looksLikeImage(file.buffer, ext)) {
     throw ApiError.badRequest('Upload a JPEG, PNG or WebP photo.', { code: 'INVALID_IMAGE' });
   }
+
+  // Run moderation in parallel with storage and food detection
+  const moderation = moderateImage(file.buffer, mimetype);
 
   const { key } = await storage.save(file.buffer, {
     key: storage.keys.scanKey(req.userId, mimetype),
@@ -113,8 +120,6 @@ const createScan = asyncHandler(async (req, res) => {
   try {
     rawItems = await detectFood(file.buffer, mimetype);
   } catch (err) {
-    // The scan and its photo are kept as 'failed' (the purge still clears the
-    // photo later), so the failure rate shows up in the audit trail
     await FoodScan.fail(pending.id);
     await logAction(req, {
       action: 'nutrition.scan.failed',
@@ -125,12 +130,22 @@ const createScan = asyncHandler(async (req, res) => {
     throw new ApiError(502, "We couldn't analyze that photo right now. Please try again.", { code: 'SCAN_FAILED' });
   }
 
-  const scan = await FoodScan.complete(pending.id, rawItems.map(toScanItem));
+  const checked = await moderation;
+  if (checked.verdict === 'block') {
+    await FoodScan.fail(pending.id);
+    await storage.remove(key);
+    await logModeration({ userId: req.userId, kind: 'scan', refId: pending.id }, checked);
+    throwIfRejected(checked);
+  }
+  await logModeration({ userId: req.userId, kind: 'scan', storageKey: key, refId: pending.id }, checked);
+
+  const { minConfidence } = env.ai.detect;
+  const items = rawItems.map(toScanItem).filter((item) => item.confidence === null || item.confidence >= minConfidence);
+  const scan = await FoodScan.complete(pending.id, items);
   return sendSuccess(res, { statusCode: 201, data: await toScanPayload(scan) });
 });
 
-// GET /api/food/scans?limit=10&before=<ISO> -- completed scans, newest first.
-// nextBefore is null once there's nothing older
+// GET /api/food/scans?limit=10&before=<ISO>
 const listScans = asyncHandler(async (req, res) => {
   const limit = req.validatedQuery?.limit || 10;
   const before = req.validatedQuery?.before ? new Date(req.validatedQuery.before) : null;
@@ -143,27 +158,25 @@ const listScans = asyncHandler(async (req, res) => {
   });
 });
 
-// GET /api/food/scans/:id -- reopens a past scan to log it
+// GET /api/food/scans/:id
 const getScan = asyncHandler(async (req, res) => {
   const scan = await FoodScan.getOwned(req.params.id, req.userId);
   if (!scan) throw ApiError.notFound('Scan not found');
   return sendSuccess(res, { data: await toScanPayload(scan) });
 });
 
-// DELETE /api/food/scans/:id -- the scan and its photo
+// DELETE /api/food/scans/:id
 const removeScan = asyncHandler(async (req, res) => {
   const scan = await FoodScan.removeOwned(req.params.id, req.userId);
   if (!scan) throw ApiError.notFound('Scan not found');
 
-  // Never throws (see localStore.remove), a missing file is already gone
   if (scan.storageKey) await storage.remove(scan.storageKey);
   return sendSuccess(res, { message: 'Scan deleted', data: { id: scan.id } });
 });
 
 // ---- Meals -------------------------------------------------------------------
 
-
-// POST /api/food/meals -- logs the selected foods of a scan as eaten today
+// POST /api/food/meals
 const logMeal = asyncHandler(async (req, res) => {
   const { scanId, mealType, items } = req.body;
 
@@ -184,7 +197,7 @@ const logMeal = asyncHandler(async (req, res) => {
     }
     seen.add(input.scanItemId);
 
-    // The scan's values win. Typed values only fill foods the table lacks
+    // Prefer scan nutrition values, falling back to user-provided values when missing from the catalog
     const per = (key) => source[key] ?? input[key] ?? null;
     if (per('caloriesKcal') === null) {
       throw ApiError.badRequest(`Enter the calories for ${source.foodName}.`, { code: 'MISSING_NUTRITION' });
@@ -205,18 +218,14 @@ const logMeal = asyncHandler(async (req, res) => {
     };
   });
 
-  // The user's own today, never the server's, see calendarDay.js
   const mealDate = today(await userTimeZone(req));
   const meal = await Meal.logConsumed({ userId: req.userId, mealType, mealDate, items: mealItems });
 
-  // What's left of today's calories changed, so the food cards may
   invalidateRecommendations(req.userId);
   return sendSuccess(res, { statusCode: 201, message: 'Meal logged', data: meal });
 });
 
-// GET /api/food/meals/history?before=YYYY-MM-DD&days=14 -- days with meals,
-// newest first. nextBefore is null once there's nothing older. The scanner's
-// "Recent Meals" card asks for the first few days of the same list
+// GET /api/food/meals/history?before=YYYY-MM-DD&days=14
 const getMealHistory = asyncHandler(async (req, res) => {
   const days = req.validatedQuery?.days || 14;
   const [page, goal] = await Promise.all([
@@ -226,7 +235,6 @@ const getMealHistory = asyncHandler(async (req, res) => {
   return sendSuccess(res, {
     data: {
       days: page,
-      // The day's targets, for the totals under each day
       goals: nutritionGoalsOf(goal),
       nextBefore: page.length === days ? page[page.length - 1].date : null,
     },
@@ -249,8 +257,7 @@ const getNutritionGoals = asyncHandler(async (req, res) => {
   return sendSuccess(res, { data: nutritionGoalsOf(goal) });
 });
 
-// PATCH /api/food/goals -- any of the four; null clears one. Set in place on
-// the active goal, like the water and step targets
+// PATCH /api/food/goals
 const setNutritionGoals = asyncHandler(async (req, res) => {
   let goal = null;
   for (const key of NUTRITION_TARGETS) {

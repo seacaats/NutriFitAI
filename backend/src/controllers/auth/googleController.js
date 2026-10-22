@@ -12,21 +12,14 @@ const { buildAuthUrl, exchangeCodeForProfile } = require('../../services/auth/go
 const { accountHold } = require('../../services/auth/authResponses');
 const { finishLogin, startMfaChallenge, logHeldLogin } = require('./loginController');
 
-// api/auth/google — kicks off the flow
+// GET /api/auth/google
 const googleAuthStart = asyncHandler(async (req, res) => {
   const { redirectUri, popup } = req.query;
 
-  // Precise matches against APP_REDIRECT_URIS rejects every native deep
-  // link, because Expo Go URL contains a LAN address or a per-run tunnel
-  // host. isAllowedRedirectUri() handles those without loosening the rule for
-  // https redirects (lib/auth/redirectUri.js)
   if (!(await isAllowedRedirectUri(redirectUri))) {
     throw ApiError.badRequest('We couldn\'t start Google sign-in from this page. Please go back to the app and try again.');
   }
 
-  // "popup" is carried through an encoded state parameter
-  // as it's the only reliable way to detect it. Courtesy of Google's
-  // login page breaking connections to the main window
   const state = Buffer.from(
     JSON.stringify({ redirectUri, popup: popup === '1', nonce: crypto.randomUUID() }),
   ).toString('base64url');
@@ -34,7 +27,7 @@ const googleAuthStart = asyncHandler(async (req, res) => {
   return res.redirect(url);
 });
 
-// api/auth/google/callback
+// GET /api/auth/google/callback
 const googleAuthCallback = asyncHandler(async (req, res) => {
   const { code, state, error: googleError } = req.query;
 
@@ -58,11 +51,7 @@ const googleAuthCallback = asyncHandler(async (req, res) => {
     return res.redirect(`${redirectUri}?error=google_email_unverified&popup=${popupParam}`);
   }
 
-  // Google sign-in only authenticates verified, registered accounts. Anything
-  // else -- no account, or one that never finished email verification -- is
-  // sent to registration with ONE error code, so the redirect can't be used to
-  // tell those two apart. Registering again with an unverified email just
-  // re-sends its code (see register)
+  // Require an existing, email-verified account before linking or signing in via Google
   const registrationRequired = () => res.redirect(
     `${redirectUri}?error=registration_required`
       + `&email=${encodeURIComponent(profile.email)}&popup=${popupParam}`,
@@ -75,9 +64,7 @@ const googleAuthCallback = asyncHandler(async (req, res) => {
   }
 
   if (user) {
-    // Already linked. Refresh the avatar so a changed Google photo is picked up
     if (profile.avatarUrl) {
-      // Never overwrite a photo the user uploaded themselves
       const current = await User.getProfile(user.id);
       if (!isUserUploaded(current?.avatarStorageKey)) {
         const stored = await saveRemoteAvatar(user.id, profile.avatarUrl);
@@ -92,8 +79,6 @@ const googleAuthCallback = asyncHandler(async (req, res) => {
       return registrationRequired();
     }
 
-    // Verified account, first Google sign-in: link it.
-    // Avatar downloaded before the transaction
     const storedAvatar = profile.avatarUrl ? await saveRemoteAvatar(existing.id, profile.avatarUrl) : null;
 
     user = await withTransaction(async (client) => {
@@ -119,7 +104,7 @@ const googleAuthCallback = asyncHandler(async (req, res) => {
   return res.redirect(`${redirectUri}?exchangeToken=${exchangeToken}&popup=${popupParam}`);
 });
 
-// api/auth/google/exchange
+// POST /api/auth/google/exchange
 const googleExchange = asyncHandler(async (req, res) => {
   const { exchangeToken } = req.body;
 
@@ -142,8 +127,6 @@ const googleExchange = asyncHandler(async (req, res) => {
     throw hold.error;
   }
 
-  // Google stands in for the password only. Two-factor still follows: the emailed
-  // code, or an admin's authenticator app (scanned in here on a first sign-in)
   if (user.mfa && user.mfa.enabled) return startMfaChallenge(res, user, true, 'google');
 
   return finishLogin(req, res, user, true, 'google');

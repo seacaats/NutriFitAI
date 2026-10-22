@@ -11,49 +11,39 @@ const { userTimeZone } = require('../services/user/userTimeZone');
 
 const SURFACE = 'coach';
 
-// A user keeps at most this many conversations. Starting another at the
-// limit is refused, never silently dropping an old one. The client shows
-// the same number in the history panel
 const MAX_CONVERSATIONS = 10;
 
-// A reply slower than this gets a push too, since the user has likely
-// switched away. A disconnect cancels generation (see signal below), so
-// slowness is the only sign left
+// Send a push notification when a reply takes longer than this threshold
 const COACH_PUSH_AFTER_MS = 20 * 1000;
 
 function toClientMessage(row) {
   return {
     id: row.id,
     role: row.role,
-    // Replies saved before plain-text normalising existed get it on the way out
     content: row.role === 'assistant' ? toPlainText(row.content) : row.content,
     createdAt: row.createdAt,
-    // See model chain
     ...(env.nodeEnv === 'development' && row.provider ? { provider: row.provider } : {}),
   };
 }
 
-// First line of the latest message sent by the user, used as conversation title
 function deriveTitle(message) {
   const firstLine = message.split('\n')[0].trim();
   return firstLine.length > 60 ? `${firstLine.slice(0, 57)}...` : firstLine;
 }
 
-// What a stored thread is about, in the shape describeSubject takes
 function refOf(conversation) {
   if (conversation.scanRef?.scanId) return { scanId: conversation.scanRef.scanId };
   if (conversation.mealRef?.mealId) return { mealId: conversation.mealRef.mealId };
   return {};
 }
 
-// POST /api/coach/chat -- scanId/mealId start a thread about that scan or meal
+// POST /api/coach/chat
 const sendMessage = asyncHandler(async (req, res) => {
   const { message, conversationId, scanId, mealId } = req.body;
 
   let conversation;
   if (conversationId) {
     conversation = await ChatConversation.findOwned({ id: conversationId, userId: req.userId });
-    // 404 rather than 403 to avoid leaks of existing conversations
     if (!conversation) throw ApiError.notFound('Conversation not found');
   } else {
     const count = await ChatConversation.countByUser({ userId: req.userId, surface: SURFACE });
@@ -63,8 +53,6 @@ const sendMessage = asyncHandler(async (req, res) => {
         { code: 'CONVERSATION_LIMIT' },
       );
     }
-    // Owner-checked before the thread exists, so a foreign or deleted id
-    // can't start a conversation pointing at it
     if (scanId || mealId) {
       const subject = await describeSubject(req.userId, { scanId, mealId });
       if (!subject || subject.missing) throw ApiError.notFound(scanId ? 'Scan not found' : 'Meal not found');
@@ -72,16 +60,12 @@ const sendMessage = asyncHandler(async (req, res) => {
     conversation = await ChatConversation.start({ userId: req.userId, surface: SURFACE, scanId, mealId });
   }
 
-  // Fetch conversation history before saving to avoid,
-  // appended messages by the Coach to appear twice
   const stored = await ChatMessage.listByConversation({
     conversationId: conversation.id,
     limit: HISTORY_TURNS,
   });
 
-  // The last user message got no reply (it failed). This one overwrites it,
-  // whether it's a retry or a rephrase, so failed turns never stack up and
-  // the model never sees two user turns in a row
+  // Overwrite a trailing unanswered user message on retry so failed turns do not stack
   const last = stored[stored.length - 1];
   const unanswered = last?.role === 'user' ? last : null;
   const history = unanswered ? stored.slice(0, -1) : stored;
@@ -102,20 +86,14 @@ const sendMessage = asyncHandler(async (req, res) => {
       ref: refOf(conversation),
       history,
       message,
-      // Cancel currently ongoing AI requests if the user disconnects
-      // to preserve quota and storage
       signal: AbortSignal.any
         ? AbortSignal.any([req.signal].filter(Boolean))
         : undefined,
     });
   } catch (err) {
-    // User messages are persisted even when generation fails, but
-    // failed assistant turns aren't stored
     await saveUserMessage();
     await ChatConversation.touch(conversation.id, deriveTitle(message));
 
-    // Hand the conversation id back so the client keeps using this thread.
-    // Replaces any provider details, which should never reach the client
     const failure = err instanceof ApiError
       ? err
       : ApiError.internal('The coach could not reply. Please try again.');
@@ -133,7 +111,6 @@ const sendMessage = asyncHandler(async (req, res) => {
 
   await ChatConversation.touch(conversation.id, deriveTitle(message));
 
-  // Not awaited: notify never throws, and the reply shouldn't wait on Expo
   if (Date.now() - startedAt >= COACH_PUSH_AFTER_MS) {
     notify(req.userId, 'coach_reply', { dedupeKey: `coach:${assistantRow.id}` });
   }
@@ -177,15 +154,13 @@ const getConversation = asyncHandler(async (req, res) => {
     data: {
       id: conversation.id,
       title: conversation.title,
-      // The scan or meal it's about, for the pinned chip. Null for general chats
       subject,
       messages: messages.map(toClientMessage),
     },
   });
 });
 
-// GET /api/coach/subject?scanId=|mealId= -- the chip shown when "Ask AI
-// Coach" opens the chat, before anything is sent. Nothing is created here
+// GET /api/coach/subject?scanId=|mealId=
 const getSubject = asyncHandler(async (req, res) => {
   const { scanId, mealId } = req.validatedQuery;
   const subject = await describeSubject(req.userId, { scanId, mealId }, await userTimeZone(req));
@@ -200,22 +175,19 @@ const deleteConversation = asyncHandler(async (req, res) => {
   return sendSuccess(res, { data: null, message: 'Conversation deleted' });
 });
 
-// DELETE /api/coach/conversations -- all of this user's coach conversations
+// DELETE /api/coach/conversations
 const deleteAllConversations = asyncHandler(async (req, res) => {
   const removed = await ChatConversation.removeAllOwned({ userId: req.userId, surface: SURFACE });
   return sendSuccess(res, { data: { removed }, message: 'Conversations deleted' });
 });
 
-// GET /api/coach/health
-//
-// Names internal and rate-limited hosts
+// GET /api/coach/health (disabled in production)
 const getHealth = asyncHandler(async (req, res) => {
   if (env.nodeEnv === 'production') throw ApiError.notFound('Not found');
   return sendSuccess(res, { data: health() });
 });
 
-// Languages the voice picker offers: national languages Whisper supports (keep in step with
-// VOICE_LANGUAGES in useCoachChat). 'auto' sends no language so Whisper detects it
+// Supported Whisper language codes (kept in sync with frontend VOICE_LANGUAGES; 'auto' lets Whisper detect)
 const VOICE_LANGUAGES = new Set([
   'af', 'sq', 'am', 'ar', 'hy', 'az', 'be', 'bn', 'bs', 'bg', 'my', 'zh', 'hr', 'cs', 'da', 'nl', 'en', 'et', 'fi', 'fr',
   'ka', 'de', 'el', 'ht', 'ha', 'he', 'hi', 'hu', 'is', 'id', 'it', 'ja', 'kk', 'km', 'ko', 'lo', 'lv', 'ln', 'lt', 'lb',
@@ -223,13 +195,11 @@ const VOICE_LANGUAGES = new Set([
   'es', 'sw', 'sv', 'tl', 'tg', 'ta', 'th', 'tr', 'tk', 'uk', 'ur', 'uz', 'vi', 'yo',
 ]);
 
-// Voice input: one short recording in, its text out. Nothing is saved, the
-// text goes into the message box and is only stored once the user sends it
+// POST /api/coach/voice
 const transcribe = asyncHandler(async (req, res) => {
   const file = req.file;
   if (!file || !file.mimetype.startsWith('audio/')) throw ApiError.badRequest('Send a short audio recording.');
 
-  // Anything not on the list falls back to the env default
   const asked = req.query.language;
   let language;
   if (asked === 'auto') language = '';

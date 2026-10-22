@@ -12,20 +12,11 @@ const {
 } = require('../utils/calendarDay');
 const { userTimeZone } = require('../services/user/userTimeZone');
 const { round1 } = require('../utils/numbers');
-// Same fallbacks the steps and water screens use
 const { DEFAULT_DAILY_STEP_GOAL, MIN_WATER_GOAL_ML, MAX_WATER_GOAL_ML } = require('../utils/goals/goalLimits');
 
-// Inclusive day count, both "YYYY-MM-DD"
 const daysInclusive = (from, to) => daysBetween(from, to) + 1;
 
-/**
- * The period's first and last day. `offset` steps back whole periods:
- * 0 is the one holding today, 1 the one before it, and so on
- *   week   Sunday to Saturday, like the workouts summary
- *   month  a calendar month
- *   3m     three calendar months, the current one last
- *   year   a calendar year
- */
+// Start and end calendar days for `period` ('week' | 'month' | '3m' | 'year') stepped back by `offset`
 function periodRange(period, offset, day) {
   if (period === 'week') {
     const from = addDays(weekStart(day), -7 * offset);
@@ -43,10 +34,7 @@ function periodRange(period, offset, day) {
   return { from: `${year}-01-01`, to: `${year}-12-31` };
 }
 
-/**
- * Chart groups: a day each for week and month, a week each for 3m (clipped
- * to the period), a month each for year. Each one keeps its own from/to
- */
+// Chart buckets: daily for week/month, weekly for 3m, monthly for year
 function bucketsFor(period, from, to) {
   const buckets = [];
   if (period === 'week' || period === 'month') {
@@ -64,14 +52,7 @@ function bucketsFor(period, from, to) {
   return buckets;
 }
 
-
-/**
- * Weight inside the period, one point per day (the day's last reading), and
- * the change from the last reading before the period, or from its first
- * reading when there's nothing earlier. With `vsPrevious` (the dashboard) the
- * change is instead from the reading right before the latest one, so each new
- * log is compared with the one before it, not with the first of the window
- */
+// Daily weight points within [from, to] and change relative to baseline (or previous reading when vsPrevious is true)
 async function weightFor(userId, from, to, timeZone, { vsPrevious = false } = {}) {
   const { start, end } = dayRangeToInstants(from, to, timeZone);
   const [rows, before] = await Promise.all([
@@ -95,7 +76,6 @@ async function weightFor(userId, from, to, timeZone, { vsPrevious = false } = {}
   return { points, startKg, currentKg, changeKg };
 }
 
-
 // GET /api/progress?period=week|month|3m|year&offset=0
 const getProgress = asyncHandler(async (req, res) => {
   const period = req.validatedQuery?.period || 'week';
@@ -105,7 +85,6 @@ const getProgress = asyncHandler(async (req, res) => {
 
   const { from, to } = periodRange(period, offset, day);
   const { start, end } = dayRangeToInstants(from, to, timeZone);
-  // Days of the period that have happened. The whole period once it's past
   const lastDay = to < day ? to : day;
   const elapsedDays = from > day ? 0 : daysInclusive(from, lastDay);
 
@@ -118,7 +97,6 @@ const getProgress = asyncHandler(async (req, res) => {
     activityStreak(req.userId, day, timeZone),
     User.getActiveGoal(req.userId),
     User.getProfile(req.userId),
-    // The trend is about now, so only the current period works it out
     offset === 0
       ? WeightLog.findSince(req.userId, dayRangeToInstants(addDays(day, -LOOKBACK_DAYS), day, timeZone).start)
       : null,
@@ -134,7 +112,6 @@ const getProgress = asyncHandler(async (req, res) => {
     })
     : null;
 
-  // One pass over the days fills both the buckets and the period totals
   const totals = { caloriesKcal: 0, proteinG: 0, carbsG: 0, fatG: 0, steps: 0, waterMl: 0, workouts: 0, mealDays: 0 };
   const buckets = bucketsFor(period, from, to).map((b) => {
     const row = { from: b.from, to: b.to, days: 0, caloriesKcal: 0, mealDays: 0, steps: 0, waterMl: 0, workouts: 0 };
@@ -172,9 +149,6 @@ const getProgress = asyncHandler(async (req, res) => {
       today: day,
       isCurrent: offset === 0,
       elapsedDays,
-      // Only the goals a user can actually set. fitnessGoal is the one picked
-      // at registration and in Profile ("Lose weight", or their own words)
-      // Target weight and pace are set on the Weight card
       goals: {
         fitnessGoal: goal?.fitnessGoal ?? null,
         dailySteps,
@@ -182,8 +156,6 @@ const getProgress = asyncHandler(async (req, res) => {
         targetWeightKg: profile?.targetWeightKg ?? null,
         weeklyPaceKg: profile?.weeklyPaceKg ?? null,
       },
-      // Daily goals add up over the days that have happened, so a period in
-      // progress isn't measured against days still to come
       targets: {
         steps: dailySteps * elapsedDays,
         waterMl: dailyWaterMl * elapsedDays,
@@ -197,19 +169,14 @@ const getProgress = asyncHandler(async (req, res) => {
       },
       buckets,
       weight,
-      // Smoothed weight, weekly rate and projected target date. Null with too few weigh-ins
       weightTrend: trend,
       streak,
     },
   });
 });
 
-// GET /api/progress/today -- the dashboard: today's food, steps and the
-// next planned workouts, the last 7 days of calories and steps, 30 days of
-// weight, and the streak. Water and the weekly workout count aren't here:
-// the dashboard reuses useWater and the workouts summary for those
+// GET /api/progress/today
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'];
-// Planned sessions listed on the dashboard
 const PLANNED_SHOWN = 3;
 
 const getToday = asyncHandler(async (req, res) => {
@@ -228,8 +195,6 @@ const getToday = asyncHandler(async (req, res) => {
   ]);
   const stepsByDay = Object.fromEntries(steps.map((s) => [s.activityDate, Number(s.stepCount) || 0]));
 
-  // Consumed meals only, one entry per meal type even when empty, so the
-  // dashboard always shows the same four slots
   const eaten = todaysMeals.filter((m) => m.mealDate === day && m.status === 'consumed');
   const mealSlots = MEAL_TYPES.map((type) => {
     const ofType = eaten.filter((m) => m.mealType === type);
@@ -238,8 +203,6 @@ const getToday = asyncHandler(async (req, res) => {
   });
 
   const nutrition = meals[day] || { caloriesKcal: 0, proteinG: 0, carbsG: 0, fatG: 0 };
-  // The next few plans: missed ones still in the grace period first (so they
-  // can still be done), then the soonest. The count is every future plan
   const now = new Date();
   const missed = upcoming.filter((w) => new Date(w.scheduledFor) <= now);
   const ahead = upcoming.filter((w) => new Date(w.scheduledFor) > now);
@@ -261,7 +224,6 @@ const getToday = asyncHandler(async (req, res) => {
       today: day,
       goals: {
         dailySteps: goal?.dailySteps ?? DEFAULT_DAILY_STEP_GOAL,
-        // Set on the Food Scanner; null when not set
         dailyCaloriesKcal: goal?.dailyCaloriesKcal ?? null,
         dailyProteinG: goal?.dailyProteinG ?? null,
         dailyCarbsG: goal?.dailyCarbsG ?? null,

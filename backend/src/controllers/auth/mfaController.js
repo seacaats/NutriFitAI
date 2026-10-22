@@ -15,7 +15,7 @@ const {
 const { issueAndSendOtp, emailFailed, consumeOtpChallenge } = require('../../services/auth/otpChallenge');
 const { finishLogin } = require('./loginController');
 
-// POST /api/auth/login/mfa -- second step. Single-use codes either way
+// POST /api/auth/login/mfa
 const loginMfa = asyncHandler(async (req, res) => {
   const { user, rememberMe, via } = await userFromMfaToken(req.body.mfaToken);
 
@@ -41,7 +41,7 @@ const loginMfa = asyncHandler(async (req, res) => {
   return finishLogin(req, res, user, rememberMe, kind === 'recovery' ? `${via}+recovery_code` : `${via}+totp`);
 });
 
-// POST /api/auth/login/mfa/resend -- a fresh emailed code (regular users)
+// POST /api/auth/login/mfa/resend
 const resendLoginMfa = asyncHandler(async (req, res) => {
   const { user } = await userFromMfaToken(req.body.mfaToken);
   if (mfaMethodOf(user) !== 'email') throw ApiError.badRequest('This account uses an authenticator app.');
@@ -51,11 +51,8 @@ const resendLoginMfa = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'A new code has been sent.' });
 });
 
-// ---- First sign-in of an admin: authenticator setup ------------------------------
-// The first step (the password, or Google) was just proven and the challenge token
-// carries that, so neither step asks for it again. The token is only ever issued after it
+// ---- Admin first-login authenticator setup ---------------------------------------
 
-// The admin behind a challenge token who still has to scan the app in
 async function setupUserFromMfaToken(mfaToken) {
   const { user, rememberMe, via } = await userFromMfaToken(mfaToken);
   if (!needsAuthenticatorSetup(user)) throw ApiError.conflict('Your authenticator app is already set up.', { code: 'MFA_ALREADY_SET_UP' });
@@ -63,7 +60,7 @@ async function setupUserFromMfaToken(mfaToken) {
   return { user, rememberMe, via };
 }
 
-// POST /api/auth/login/mfa/setup { mfaToken } -- secret and QR, not active yet
+// POST /api/auth/login/mfa/setup
 const loginMfaSetup = asyncHandler(async (req, res) => {
   const { user } = await setupUserFromMfaToken(req.body.mfaToken);
 
@@ -72,14 +69,11 @@ const loginMfaSetup = asyncHandler(async (req, res) => {
   const otpauthUri = buildOtpauthUri({ secret, email: user.email });
   const qrDataUrl = await QRCode.toDataURL(otpauthUri, { errorCorrectionLevel: 'M', margin: 1, width: 224 });
 
-  // The secret is in this response, so nothing may cache it
   res.set('Cache-Control', 'no-store');
   return sendSuccess(res, { data: { secret, otpauthUri, qrDataUrl } });
 });
 
-// POST /api/auth/login/mfa/enable { mfaToken, code } -- the first code from the app
-// finishes the setup and the sign-in. The recovery codes come back with the session,
-// the only time they're shown
+// POST /api/auth/login/mfa/enable
 const loginMfaEnable = asyncHandler(async (req, res) => {
   const { user, rememberMe, via } = await setupUserFromMfaToken(req.body.mfaToken);
 
@@ -108,10 +102,8 @@ const loginMfaEnable = asyncHandler(async (req, res) => {
   return finishLogin(req, res, user, rememberMe, `${via}+totp`, { recoveryCodes });
 });
 
-// ---- Settings: the emailed code (regular users) and recovery codes (admins) ----------
+// ---- Settings: email MFA (regular users) and recovery codes (admins) -------------
 
-// The signed-in account, after re-checking its password. Changing a second
-// factor must not be possible from a borrowed session alone
 async function requirePasswordFor(req, password, method) {
   const user = await User.getById(req.userId);
   if (!user) throw ApiError.notFound("We couldn't find your account.");
@@ -126,14 +118,14 @@ async function requirePasswordFor(req, password, method) {
 const mfaAudit = (req, user, action) =>
   logAction(req, { action, targetType: 'user', targetId: user.id, targetLabel: User.displayName(user), targetRole: user.role });
 
-// Regular users. POST /api/auth/mfa/email/request -- sends the confirmation code
+// POST /api/auth/mfa/email/request
 const mfaEmailRequest = asyncHandler(async (req, res) => {
   const user = await requirePasswordFor(req, req.body.password, 'email');
   if (!(await issueAndSendOtp(user.id, user.email, 'mfa_change'))) throw emailFailed();
   return sendSuccess(res, { message: 'We sent a code to your email.' });
 });
 
-// POST /api/auth/mfa/email/confirm { code, enable }
+// POST /api/auth/mfa/email/confirm
 const mfaEmailConfirm = asyncHandler(async (req, res) => {
   const user = await User.getById(req.userId);
   if (!user || mfaMethodOf(user) !== 'email') throw ApiError.forbidden('That option isn\'t available for this account.');
@@ -145,7 +137,6 @@ const mfaEmailConfirm = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: req.body.enable ? 'Two-factor sign-in is on.' : 'Two-factor sign-in is off.', data: { mfaEnabled: req.body.enable } });
 });
 
-// New recovery codes need the password and a current code
 async function requireAuthenticatorProof(req) {
   const user = await requirePasswordFor(req, req.body.password, 'totp');
   if (!user.mfa || !user.mfa.enabled) throw ApiError.badRequest('Two-factor sign-in is off.');
@@ -156,7 +147,7 @@ async function requireAuthenticatorProof(req) {
   return user;
 }
 
-// POST /api/auth/mfa/recovery-codes { password, code } -- replaces all of them
+// POST /api/auth/mfa/recovery-codes
 const mfaRecoveryCodes = asyncHandler(async (req, res) => {
   const user = await requireAuthenticatorProof(req);
   const recoveryCodes = generateRecoveryCodes();

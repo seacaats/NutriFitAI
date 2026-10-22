@@ -37,7 +37,7 @@ export default function AICoachScreen() {
     deleteConversation, deleteAllConversations, atLimit, subject,
     scrollRef, message, setMessage, loadingThread, empty, sendMessage, voice,
   } = useCoach();
-  // The chat has its own scroller, so it carries the pull-to-refresh
+  // Attach pull-to-refresh to the inner message ScrollView.
   const pull = usePullRefreshState();
 
   const card = { backgroundColor: c.cardBg, borderColor: c.dropdownBorder };
@@ -66,7 +66,6 @@ export default function AICoachScreen() {
             </View>
           </View>
 
-          {/* Coach tone, also in Settings */}
           <CoachToneButton color={c.sidebarText} darkMode={darkMode} />
 
           <ConversationHistoryDrawer
@@ -87,10 +86,9 @@ export default function AICoachScreen() {
           />
         </View>
 
-        {/* Under the header, like every screen */}
         <ScreenAlert style={{ marginHorizontal: 12, marginTop: 8 }} />
 
-        {/* What this thread is about, when opened from a scan or meal */}
+        {/* Context chip when the thread is linked to a scan or logged meal */}
         {!!subject && (
           <View style={styles.subjectWrap}>
             <SubjectChip subject={subject} darkMode={darkMode} />
@@ -117,13 +115,12 @@ export default function AICoachScreen() {
             placeholder={atLimit ? "Delete a conversation to start a new one" : "Type a message..."}
           />
           {voice.error ? <Text style={[styles.counter, styles.counterFull]}>{voice.error}</Text> : null}
-          {/* Only near the limit, so it doesn't clutter normal typing */}
+          {/* Show character counter only when approaching MAX_MESSAGE_LENGTH */}
           {message.length >= COUNTER_FROM && (
             <Text style={[styles.counter, message.length >= MAX_MESSAGE_LENGTH && styles.counterFull]}>
               {message.length.toLocaleString()}/{MAX_MESSAGE_LENGTH.toLocaleString()}
             </Text>
           )}
-          {/* Always under the input, whatever's in the chat */}
           <Text style={styles.disclaimer}>Not medical advice. For symptoms or injuries, see a professional.</Text>
         </View>
       </KeyboardAvoidingView>
@@ -134,7 +131,6 @@ export default function AICoachScreen() {
 const styles = StyleSheet.create({
   ...aiCoachStyles,
 
-  // Top bar
   topBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -145,9 +141,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     marginBottom: 8,
   },
-  topBarTitle: {flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  topBarTitle: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
   botIcon: { width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  topBarText: { fontSize: 16, fontWeight: "700"},
+  topBarText: { fontSize: 16, fontWeight: "700" },
   topBarSub: { fontSize: 11, color: colors.textMuted },
   grow: { flexGrow: 1 },
   subjectWrap: { paddingHorizontal: 16, paddingBottom: 4 },
@@ -155,9 +151,6 @@ const styles = StyleSheet.create({
   counterFull: { color: colors.danger, fontWeight: "700" },
   disclaimer: { fontSize: 10, color: colors.textMuted, textAlign: "center", marginTop: 6 },
 
-  // Messages, the bubbles themselves are in ChatMessages
   messagesContent: { paddingHorizontal: 16, paddingVertical: 12, gap: 16 },
-
-  // Input
   inputBar: { paddingTop: 8, paddingHorizontal: 16 },
 });

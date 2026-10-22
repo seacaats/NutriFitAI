@@ -10,16 +10,10 @@ const { today, dayRangeToInstants, addDays } = require('../../utils/calendarDay'
 const { activityStreak } = require('../progress/activityStreak');
 const { MIN_WATER_GOAL_ML, DEFAULT_DAILY_STEP_GOAL } = require('../../utils/goals/goalLimits');
 
-// Runs every RUN_EVERY_MS from server.js. Each reminder has a local start
-// time and fires on the run that lands inside [at, at + RUN_EVERY_MS), so it
-// is checked once a day per user, in their own zone. A missed run (server
-// down) skips that reminder for the day rather than sending it late
+// Periodic scheduler for local-time daily reminders, workout reminders, streaks, and push receipt checks.
 const RUN_EVERY_MS = 15 * 60 * 1000;
 const STALE_TOKEN_MS = 60 * 24 * 60 * 60 * 1000;
 
-// Goal fallbacks, the same ones the water and steps screens use
-
-// `due` skips the reminder when the user already did the thing
 const DAILY_REMINDERS = [
   {
     key: 'water-midday',
@@ -55,7 +49,6 @@ async function waterToday(user, day, timeZone) {
   return (await WaterLog.dailyTotals(user.id, range.start, range.end, timeZone))[day] || 0;
 }
 
-// Minutes since midnight, for "HH:MM" strings
 function minutes(hhmm) {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
@@ -66,8 +59,6 @@ function inWindow(now, at) {
   return diff >= 0 && diff < RUN_EVERY_MS / 60000;
 }
 
-// Daily reminders for every user who can get them. Users are streamed so a
-// run never holds the whole collection in memory
 async function runDailyReminders(at) {
   const cursor = User.find(
     {
@@ -102,14 +93,11 @@ async function runDailyReminders(at) {
 }
 
 // ---- Streaks ----
-// Checked each morning against yesterday, so today never breaks a streak
-// before the user has had the chance to log. The count is the same one the
-// Progress tile shows (services/progress/activityStreak.js)
+// Evaluated each morning against yesterday's completed logs
 const STREAK_CHECK_AT = '08:00';
 const STREAK_MILESTONES = [3, 7, 30];
 
-// 08:00, or the end of the user's quiet hours when 08:00 falls inside
-// them, so the check never lands where notify would hold the push
+// Defers 08:00 check to the end of quiet hours if 08:00 falls inside them
 function streakCheckTime(prefs) {
   const { quietStart: start, quietEnd: end } = prefs || {};
   if (!start || !end) return STREAK_CHECK_AT;
@@ -138,10 +126,8 @@ async function runStreaks(at) {
 
     try {
       const yesterday = addDays(today(timeZone, at), -1);
-      // `loggedToday` here means yesterday: a streak that ended earlier isn't announced
       const { days: length, loggedToday } = await activityStreak(user.id, yesterday, timeZone);
       if (!loggedToday || !STREAK_MILESTONES.includes(length)) continue;
-      // Keyed on the streak's first day: a later streak can reach it again
       const firstDay = addDays(yesterday, -(length - 1));
       await notify(user.id, `streak_${length}`, { user, dedupeKey: `streak${length}:${firstDay}` });
     } catch (err) {
@@ -150,11 +136,7 @@ async function runStreaks(at) {
   }
 }
 
-// Every planned session starting 5 to 45 minutes from now that hasn't been
-// reminded yet. Usually that's 30-45 minutes ahead; one planned at short
-// notice is caught on the next run instead of skipped. Under 5 minutes the
-// user is about to start anyway. The key holds the start time, so moving a
-// session gets it a fresh reminder
+// Notifies planned workout sessions starting 5 to 45 minutes from now
 const WORKOUT_REMIND_MIN_MS = 5 * 60 * 1000;
 const WORKOUT_REMIND_MAX_MS = 45 * 60 * 1000;
 
@@ -168,8 +150,6 @@ async function runWorkoutReminders(at) {
   }
 }
 
-// One run. Each part fails on its own, so a broken query in one doesn't
-// stop the others
 async function runReminders(at = new Date()) {
   for (const [name, job] of [
     ['daily', () => runDailyReminders(at)],

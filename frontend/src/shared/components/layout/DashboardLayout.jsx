@@ -12,8 +12,6 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Animated, Easing, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// insets to avoid overlapping with device
-
 // Bottom bar: two tabs either side of the menu in the middle
 const TABS_LEFT = [
   { name: "Home", icon: "home", route: "/dashboard" },
@@ -207,11 +205,9 @@ export default function DashboardLayout({ children, hideTabBar = false, scrollab
                   onPress={() => go(item.route)}
                   style={[
                     styles.menuItem,
-                    // One look for every tile, like the web sidebar; the open screen's gets the green highlight
                     { backgroundColor: active ? c.activeNavBg : tone.card, borderColor: active ? c.primary : tone.border },
                   ]}
                 >
-                  {/* Green icon on a soft green disc: the colour accent, same on all tiles */}
                   <View style={[styles.menuIcon, { backgroundColor: active ? tone.card : tone.soft }]}>
                     <Ionicons name={item.icon} size={20} color={c.primary} />
                   </View>

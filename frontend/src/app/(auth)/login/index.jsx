@@ -36,7 +36,6 @@ export default function LoginScreen() {
           contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + spacing.lg }]}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Back to the landing page (or wherever they came from) */}
           <AuthBackLink />
 
           <View style={styles.headerBlock}>
@@ -67,7 +66,7 @@ export default function LoginScreen() {
               icon="lock-closed-outline"
               placeholder="Password"
               value={form.password}
-              // Login accepts older, looser passwords, so the cap is the server's 200
+              // Match server login password limit (200 chars) to accommodate legacy passwords.
               maxLength={200}
               onChangeText={form.setPassword}
               onSubmitEditing={form.onSubmitEditing}

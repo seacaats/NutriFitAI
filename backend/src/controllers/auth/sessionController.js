@@ -10,13 +10,7 @@ const { sendSuccess, ApiError, asyncHandler } = require('../../utils/httpRespons
 const { logAction } = require('../../utils/audit-logs/auditLogger');
 const { accountHold } = require('../../services/auth/authResponses');
 
-// api/auth/refresh
-
-// rmb = rememberMe (Seven day window)
-// sxp = absolute session deadline (Thirty day window, absolute max)
-// No revocation as these are stateless JWTs, meaning stolen cookies
-// can still remain valid until sxp
-// Implement JWT ID eventually
+// POST /api/auth/refresh
 function rejectRefresh(req, targetId, reason) {
   return logAction(
     req,
@@ -36,9 +30,7 @@ const refresh = asyncHandler(async (req, res) => {
     payload = verifyRefreshToken(token);
     if (payload.type !== 'refresh') throw new Error('wrong token type');
   } catch (err) {
-    // Clears refresh cookies on any validation failure
     clearRefreshCookie(res, req);
-    // Unverified token, so its subject can't be trusted -- recorded without one
     await rejectRefresh(req, null, err.name === 'TokenExpiredError' ? 'expired' : 'invalid');
     throw ApiError.unauthorized('Your session has expired. Please log in again.');
   }
@@ -50,7 +42,6 @@ const refresh = asyncHandler(async (req, res) => {
     throw ApiError.unauthorized('This account no longer exists.');
   }
 
-  // Ends existing sessions within one access-token lifetime of the hold
   const hold = accountHold(user);
   if (hold) {
     clearRefreshCookie(res, req);
@@ -58,7 +49,6 @@ const refresh = asyncHandler(async (req, res) => {
     throw hold.error;
   }
 
-  // Check for sxp, regardless of refresh/replacement cookie
   const remainingMs = refreshSessionRemainingMs(payload);
   if (remainingMs <= 0) {
     clearRefreshCookie(res, req);
@@ -66,9 +56,7 @@ const refresh = asyncHandler(async (req, res) => {
     throw ApiError.unauthorized('Your session has expired. Please log in again.');
   }
 
-  // The session row decides whether this token still counts. A revoked or
-  // missing row ends the session here. Tokens from before sessions existed
-  // carry no sid, so they get a row now
+  // Validate active session row (or create one for legacy tokens without sid)
   const expiresAt = new Date(Date.now() + refreshCookieMaxAgeMs(payload));
   let sid = payload.sid;
   if (sid) {
@@ -83,8 +71,6 @@ const refresh = asyncHandler(async (req, res) => {
 
   const accessToken = signAccessToken(user, sid);
   const rotated = signRefreshToken(user, Boolean(payload.rmb), payload.sxp || Date.now() + remainingMs, sid);
-  // Same options helper as login -- maxAge is min(idle 
-  // window, remaining ceiling), see refreshCookieMaxAgeMs
   res.cookie(REFRESH_COOKIE_NAME, rotated, refreshCookieOptions(req, refreshCookieMaxAgeMs(payload)));
 
   return sendSuccess(res, {
@@ -96,10 +82,8 @@ const refresh = asyncHandler(async (req, res) => {
   });
 });
 
-// api/auth/logout
+// POST /api/auth/logout
 const logout = asyncHandler(async (req, res) => {
-  // Unauthenticated route, so the actor comes from the refresh cookie. No
-  // valid cookie means there was no session to end, and nothing is recorded
   let sub = null;
   let sid = null;
   try {
@@ -112,7 +96,6 @@ const logout = asyncHandler(async (req, res) => {
     sub = null;
   }
   if (sub) {
-    // The row ends with the session, so it stops showing in the admin's list
     if (sid) await Session.revoke(sub, sid).catch(() => {});
     await logAction(req, { action: 'auth.logout', targetType: 'user' }, { userId: sub });
   }
@@ -121,7 +104,7 @@ const logout = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Logged out' });
 });
 
-// api/auth/me
+// GET /api/auth/me
 const me = asyncHandler(async (req, res) => {
   const user = await User.getById(req.userId);
   if (!user) {
@@ -152,7 +135,6 @@ const me = asyncHandler(async (req, res) => {
       avatarUrl: await toPublicAvatarUrl(profile?.avatarStorageKey),
       weightKg: latestWeight?.weightKg ?? null,
       fitnessGoal: goal?.fitnessGoal ?? null,
-      // Setup wizard: shown until onboarded, then a banner while it's all empty
       onboarded: Boolean(profile?.onboardedAt),
       setupPending: User.isSetupPending(profile, goal),
     },

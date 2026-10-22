@@ -12,14 +12,13 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { Platform } from "react-native";
 
-// Every <Text> and <TextInput> uses Inter from here on
+// Set Inter as the default font on all Text and TextInput components.
 applyAppFont();
 
 function RootLayoutInner() {
   const { darkMode, shell } = useTheme();
-  // Push registration and tap handling, inside AuthProvider so it knows the session
+  // Register push notifications and notification tap handlers within the active auth session.
   usePushSetup();
-  // Thin themed scrollbars on web
   useWebScrollbar(darkMode);
 
   return (
@@ -27,10 +26,8 @@ function RootLayoutInner() {
       <StatusBar style={darkMode ? "light" : "dark"} />
 
       <PullRefreshProvider>
-        {/* The theme's background behind every screen, so a screen change
-            never flashes white (or black). Public and auth pages are mint in light */}
+        {/* Match screen container backgrounds to the active theme to prevent flashes during navigation */}
         <Stack screenOptions={{ headerShown: false, animation: "fade", contentStyle: { backgroundColor: shell.shellBg } }}>
-          {/* Public and auth pages follow the theme */}
           <Stack.Screen name="(public)" options={{ contentStyle: { backgroundColor: getPublicTones(darkMode).bg } }} />
           <Stack.Screen name="(auth)" options={{ contentStyle: { backgroundColor: getAuthColors(darkMode).bgMint } }} />
           <Stack.Screen name="(admin)" />
@@ -42,11 +39,9 @@ function RootLayoutInner() {
 }
 
 export default function RootLayout() {
-  // Holds the first render until Inter and the icon font are ready, so text never
-  // swaps fonts mid-screen and icons never show as empty boxes.
+  // Wait for Inter and Ionicons fonts before initial render to prevent font swapping or missing glyphs.
   const [fontsLoaded, fontError] = useFonts({ ...appFonts, ...Ionicons.font });
-  // Web: useFonts can resolve before the browser has the font ready to paint, so
-  // the text would show up in the fallback font first. Wait for the faces too
+  // On web, wait until document.fonts finishes loading the font faces before painting.
   const [webReady, setWebReady] = useState(Platform.OS !== "web");
   useEffect(() => {
     if (Platform.OS !== "web" || (!fontsLoaded && !fontError)) return;

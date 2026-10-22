@@ -3,8 +3,7 @@ const { USER_REF, CALENDAR_DAY, withId } = require('../shared');
 
 const { Schema } = mongoose;
 
-// Every notification sent, push or not. inInbox decides whether the bell
-// shows it: a "drink water" push is recorded only so it isn't sent twice
+// Sent notifications (in-inbox and push-only entries tracked for deduplication)
 const notificationSchema = new Schema(
   {
     userId: USER_REF,
@@ -12,29 +11,24 @@ const notificationSchema = new Schema(
     category: { type: String, enum: ['reminders', 'achievements', 'coach', 'account'], required: true },
     title: { type: String, required: true, maxlength: 120 },
     body: { type: String, required: true, maxlength: 300 },
-    // Expo Router path opened by a tap ("/water"), null for none
     link: { type: String, maxlength: 200, default: null },
     inInbox: { type: Boolean, default: true },
 
-    // The user's own calendar day it was sent on, for the daily limit
+    // Local calendar day for daily rate limits
     day: { ...CALENDAR_DAY, required: true },
-    // "water:2026-10-04:midday". Unique, so a job that runs twice, or two
-    // server instances, never send the same reminder twice
+    // Unique key to prevent duplicate reminders across runs or instances
     dedupeKey: { type: String, maxlength: 200, default: null },
 
     readAt: { type: Date, default: null },
     createdAt: { type: Date, default: () => new Date() },
-    // createdAt + 90 days, removed by the notifications_expiry TTL index
     expiresAt: { type: Date, required: true },
   },
   { versionKey: false, collection: 'notifications' },
 );
 
-// Indexes are created by migrations/004_nutrifitai.js, not declared here
-
 const RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
-// Returns the row, or null when the dedupeKey was already used
+// Returns the created notification, or null on duplicate dedupeKey
 notificationSchema.statics.record = async function record(input, client) {
   try {
     const [doc] = await this.create(
@@ -48,12 +42,10 @@ notificationSchema.statics.record = async function record(input, client) {
   }
 };
 
-// `exceptTypes` leaves out types that don't count toward the daily limit
 notificationSchema.statics.countToday = async function countToday(userId, category, day, exceptTypes = [], client) {
   return this.countDocuments({ userId, category, day, type: { $nin: exceptTypes } }, opts(client));
 };
 
-// Inbox page, newest first, with the unread count beside it
 notificationSchema.statics.inbox = async function inbox(userId, { before = null, limit = 30 } = {}, client) {
   const filter = { userId, inInbox: true };
   const pageFilter = before ? { ...filter, createdAt: { $lt: before } } : filter;
@@ -67,7 +59,7 @@ notificationSchema.statics.inbox = async function inbox(userId, { before = null,
   return { rows: rows.map(withId), unread };
 };
 
-// One id, or every unread one when ids is empty
+// Marks specific IDs as read, or all unread when `ids` is empty
 notificationSchema.statics.markRead = async function markRead(userId, ids = [], client) {
   const filter = { userId, inInbox: true, readAt: null };
   if (ids.length) filter._id = { $in: ids.filter((id) => mongoose.isValidObjectId(id)) };

@@ -17,23 +17,9 @@ const HISTORY_PAGE = 15;
 
 export const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"];
 
-// Photos wider than this are scaled down before upload. Plenty for the model,
-// and a fraction of a full-resolution phone photo over a tunnel
+// Photos wider than this are scaled down before upload
 const MAX_PHOTO_WIDTH = 1280;
 
-/**
- * Every taken or picked photo goes through here before it's shown or sent.
- *
- * Android can hand back a bare path ("/data/user/0/.../x.jpg") with no
- * scheme. Bare, it rendered as a blank preview (read as a server path) and
- * the upload failed on the device before leaving it, reported as "unable to
- * reach the server". A file:// prefix fixes both.
- *
- * Then JPEG, PNG and WebP photos are kept as they are unless they're large,
- * when they're scaled down in the same format. Anything else (HEIC gallery
- * photos) becomes a JPEG the server accepts. If that step fails, the prefixed
- * original is used as is
- */
 // Camera shots get a dated name; picked photos keep theirs. The extension
 // only changes when the format does (HEIC and the like become JPEG)
 export function photoName(date = new Date()) {
@@ -42,13 +28,18 @@ export function photoName(date = new Date()) {
 }
 const withExt = (name, ext) => `${(name || photoName()).replace(/\.[^./]+$/, "")}.${ext}`;
 
-// The formats the server takes as they are
+// Formats the server accepts without conversion
 const KEEP_FORMATS = {
   "image/jpeg": { ext: "jpg", format: ImageManipulator.SaveFormat.JPEG },
   "image/png": { ext: "png", format: ImageManipulator.SaveFormat.PNG },
   "image/webp": { ext: "webp", format: ImageManipulator.SaveFormat.WEBP },
 };
 
+/**
+ * Normalizes a taken or picked photo before preview or upload:
+ * - Prefixes bare Android paths ("/data/...") with file:// so previews and uploads succeed.
+ * - Scales down images wider than MAX_PHOTO_WIDTH and converts unsupported formats (e.g. HEIC) to JPEG.
+ */
 async function preparePhoto(asset) {
   const uri = asset.uri?.startsWith("/") ? `file://${asset.uri}` : asset.uri;
   try {
@@ -202,10 +193,7 @@ function useScanner({ onMealLogged } = {}) {
       refreshRecent();
       return true;
     } catch (err) {
-      // The staged photo is kept, so the user can retry or swap it
-      // A network error here means the upload itself didn't go through, not
-      // necessarily that the server is down, so say that
-      // In development the native reason is appended (see apiClient.uploadFile)
+      // Keep the staged photo so the user can retry or swap it
       setError(err instanceof ApiClientError && err.code === "NETWORK_ERROR"
         ? `The photo couldn't be uploaded. Check your connection, or try another photo.${__DEV__ ? `\n${err.message}` : ""}`
         : messageOf(err, "Couldn't analyze that photo."));

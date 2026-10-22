@@ -39,7 +39,7 @@ function firstParam(value) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-/** Resolves a single-select dropdown to what gets sent: the label, or the typed text for "Other" */
+/** Resolves a single-select dropdown to the chosen label, or the custom text when "Other" is selected */
 function resolveChoice(choice, otherText) {
   if (!choice) return "";
   return choice === OTHER_OPTION ? otherText.trim() : choice;
@@ -49,8 +49,7 @@ export function useRegisterForm() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  // Arrives prefilled when Google sign-in found no verified account for this
-  // address (see useLoginForm's registration_required handling)
+  // Prefilled when redirected from Google sign-in with an unverified or unregistered email
   const [email, setEmail] = useState(() => firstParam(params.email) || "");
   const [notice, setNotice] = useState(() =>
     firstParam(params.from) === "google"
@@ -70,7 +69,7 @@ export function useRegisterForm() {
   const [weight, setWeight] = useState("");
   const [sex, setSex] = useState("");
 
-  // Step 2: dropdowns. Each stores the display label; "Other" pairs with a text field
+  // Step 2: dropdowns store display labels; "Other" pairs with a custom text input
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [openPicker, setOpenPicker] = useState(null); // "diet" | "health" | "activity" | "goal" | null
   const [dietPreference, setDietPreference] = useState([]);
@@ -92,8 +91,7 @@ export function useRegisterForm() {
   const dismissError = () => setError("");
   const dismissNotice = () => setNotice("");
 
-  // Sex is optional, so tapping the active pill clears it
-  // Conditions that no longer fit the new sex are dropped
+  // Tapping the active sex pill clears it; drops any health conditions not applicable to the new selection
   const selectSex = (label) => {
     const next = sex === label ? "" : label;
     const allowed = healthConditionsFor(next);
@@ -110,7 +108,7 @@ export function useRegisterForm() {
     };
   }
 
-  // Multi-select toggle where `exclusive` ("None", "No Preference") stands alone
+  // Multi-select toggle where `exclusive` ("None", "No Preference") clears other selections
   function multiToggle(setter, exclusive) {
     return (label) => setter((current) => {
       if (label === exclusive) return current.includes(label) ? [] : [label];
@@ -119,7 +117,7 @@ export function useRegisterForm() {
     });
   }
 
-  // Health conditions and diet are both multi-select, comma-joined on submit
+  // Health conditions and diet preferences are multi-select and comma-joined on submit
   const toggleHealthCondition = multiToggle(setHealthConditions, NO_HEALTH_CONDITIONS);
   const toggleDietPreference = multiToggle(setDietPreference, NO_DIET_PREFERENCE);
 
@@ -132,7 +130,7 @@ export function useRegisterForm() {
   const resolvedHealthConditions = () => resolveMulti(healthConditions, healthOther);
   const resolvedDietPreference = () => resolveMulti(dietPreference, dietOther);
 
-  /** Step 1. Bounds mirror registerSchema in the backend's authValidators.js */
+  /** Step 1 validation matching registerSchema in backend authValidators.js */
   function validateAccount() {
     if (!firstName.trim() && !lastName.trim() && !email.trim() && !password && !confirmPassword) {
       return "Please enter your details.";
@@ -140,7 +138,7 @@ export function useRegisterForm() {
 
     const firstNameError = validateName(firstName, { label: "First name", required: true });
     if (firstNameError) return firstNameError;
-    // Deliberately NOT required: a mononym is a real name
+    // Last name is optional to support mononyms
     const lastNameError = validateName(lastName, { label: "Last name" });
     if (lastNameError) return lastNameError;
 
@@ -156,7 +154,7 @@ export function useRegisterForm() {
     return "";
   }
 
-  /** Step 2 (About You). Every field but sex is required, same as registerSchema; "Other" requires its text */
+  /** Step 2 (About You) validation; all fields except sex are required */
   function validateDetails() {
     const ageError = validateNumber(age, { label: "Age", min: AGE_MIN, max: AGE_MAX, integer: true, required: true });
     if (ageError) return ageError;
@@ -194,12 +192,12 @@ export function useRegisterForm() {
     return "";
   }
 
-  /** What Enter would submit right now: step 1 continues, step 2 creates the account */
+  /** Validates the active step for Enter-to-submit */
   function validateCurrentStep() {
     return detailsOpen ? validateAccount() || validateDetails() : validateAccount();
   }
 
-  /** Advances from step 1 to step 2, only once step 1 is actually valid. */
+  /** Advances from step 1 to step 2 once step 1 is valid */
   function continueToDetails() {
     const validationError = validateAccount();
     if (validationError) {
@@ -210,7 +208,7 @@ export function useRegisterForm() {
     setDetailsOpen(true);
   }
 
-  /** Back to step 1. Nothing already entered is lost. */
+  /** Returns to step 1 while preserving entered values */
   function backToAccount() {
     setDetailsOpen(false);
     setOpenPicker(null);
@@ -218,9 +216,6 @@ export function useRegisterForm() {
   }
 
   async function handleCreateAccount() {
-    // Re-checks step 1 too -- defensive, since nothing prevents step 1 state
-    // from having been left invalid if this is ever reachable without going
-    // through continueToDetails first
     const validationError = validateAccount() || validateDetails();
     if (validationError) {
       setError(validationError);
@@ -234,13 +229,10 @@ export function useRegisterForm() {
     const goalValue = resolveChoice(goal, goalOther);
 
     try {
-      // The server answers identically whether the email is new, pending
-      // verification (a fresh code is sent), or already verified -- so this
-      // screen never learns, or reveals, which one it was
+      // Server responds identically for new, pending, or existing emails to prevent enumeration
       await apiClient.post("/auth/register", {
         firstName: firstName.trim(),
-        // Omitted rather than sent empty, so the server stores null instead of
-        // an empty string for someone with one name
+        // Omit empty lastName so the backend stores null rather than an empty string
         lastName: lastName.trim() || undefined,
         email: normalizedEmail,
         password,
@@ -255,8 +247,7 @@ export function useRegisterForm() {
         termsAccepted: agreeTerms,
       });
 
-      // Back from the code screen ("update your email address") should land on
-      // step 1, where the email field is. Everything typed is kept
+      // Reset to step 1 so returning via "update your email address" opens on the email input
       setDetailsOpen(false);
       setOpenPicker(null);
       router.push({ pathname: "/verify-registration", params: { email: normalizedEmail } });
@@ -268,7 +259,7 @@ export function useRegisterForm() {
     }
   }
 
-  // Mirrors useLoginForm.goToRegister: go back if we came from login
+  // Navigate back if opened from login to avoid stacking duplicate history entries
   function goToLogin() {
     if (firstParam(params.from) === "login" && router.canGoBack()) {
       router.back();
@@ -281,7 +272,7 @@ export function useRegisterForm() {
     router.push("/terms");
   }
 
-  // Where Back goes when there's no history, e.g. sent here by Google sign-in
+  // Fallback destination for Back when history is empty (e.g. after a Google redirect)
   const backTo = ["google", "login"].includes(firstParam(params.from)) ? "/login" : "/";
 
   // Enter in any field: step 1 continues, step 2 creates the account
@@ -366,8 +357,6 @@ export function useVerifyRegistration() {
   const [resending, setResending] = useState(false);
 
   async function handleVerify() {
-    // Reached directly or after a reload, this screen can render without the
-    // email it needs to verify against
     if (!email) {
       setSuccess("");
       setError("We don't know which account to verify. Please register again.");
@@ -398,7 +387,6 @@ export function useVerifyRegistration() {
       const message =
         err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.";
       setError(message);
-      // A wrong or expired code leaves stale digits in the boxes otherwise
       otp.reset();
     } finally {
       setLoading(false);
@@ -423,8 +411,6 @@ export function useVerifyRegistration() {
         { email: email.toLowerCase() },
         { full: true },
       );
-      // The server answers generically on purpose, so show its wording
-      // rather than implying the account exists
       setSuccess(payload?.message || "If an account exists for this email, a new code has been sent.");
       resend.start();
       otp.reset();
@@ -437,11 +423,7 @@ export function useVerifyRegistration() {
     }
   }
 
-  /**
-   * Back to the register form. Going back (rather than replacing) keeps
-   * everything already typed; resubmitting with a corrected email starts a
-   * fresh verification for that address
-   */
+  /** Returns to the registration form with existing field values intact */
   function updateEmail() {
     if (router.canGoBack()) {
       router.back();

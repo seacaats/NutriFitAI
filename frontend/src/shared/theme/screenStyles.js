@@ -1,14 +1,11 @@
 import { Platform } from "react-native";
 import { colors, radii, shellColors, spacing, typography } from "./nutrifitai";
 
-// A long email has no spaces to wrap at, so on web it breaks anywhere instead of overflowing
+// Word-break helper for email labels on web
 const breakAnywhere = Platform.OS === "web" ? { wordBreak: "break-all" } : null;
 
 /**
- * Per-screen style rules that were byte-identical between a screen's native
- * (index.jsx / DashboardLayout.jsx) and web (index.web.jsx /
- * DashboardLayout.web.jsx) file, deduplicated so a change only has to happen
- * once instead of being hand-kept-in-sync across both
+ * Shared cross-platform screen style rules
  */
 
 // ===========================================================================
@@ -32,17 +29,11 @@ export const loginStyles = (colors) => ({
   footerText: { ...typography.caption, color: colors.textSecondary },
 });
 
-/**
- * register: the two screens use different outer layouts (single column vs.
- * split panel), but the shared form pieces -- sex pills, the consent
- * checkbox, footer links -- live here. The dropdowns are OptionSelect and
- * messages are FormAlert, both self-styled.
- */
+// Shared form styles for registration screens
 export const registerStyles = (colors) => ({
   row: { flexDirection: "row", gap: 12 },
   thirdField: { flex: 1 },
-  // Step 1 (account) is a few plain fields, so it gets the login screen's
-  // roomier gap; step 2's section labels already space it out
+  // Account form field spacing
   accountFieldSpacing: { marginBottom: 20 },
   sectionLabel: { ...typography.bodyBold, color: colors.textSecondary, marginBottom: 6 },
   required: { color: colors.danger },
@@ -116,22 +107,14 @@ export const aiCoachStyles = {
   },
 };
 
-/**
- * dashboard: includes shortcutRowCompact/stackRow, which used different key
- * names for the exact same rule in native vs. web.
- *
- */
+// Dashboard styles
 export const dashboardStyles = {
   progressFill: { height: 8, borderRadius: 4 },
   viewAll: { fontSize: 12, fontWeight: "600", color: shellColors.primary },
   stackRow: { flexDirection: "column" },
 };
 
-/**
- * food-scanner: includes a few that used different key names for the exact
- * same rule (topBarTitle/heading, detectedRowCompact/stackRow,
- * detectedLeft/flexHalf/flex1) -- unified here under one name each.
- */
+// Food scanner styles
 export const foodScannerStyles = {
   heading: { fontSize: 17, fontWeight: "700" },
   flex1: { flex: 1 },
@@ -153,12 +136,7 @@ export const foodScannerStyles = {
   uploadBtnText: { fontSize: 14, fontWeight: "600", color: shellColors.primary },
 };
 
-/**
- * profile: includes a few that used different key names for the exact same
- * rule (nameRow/rowGap, overviewRowCompact/wrapRow, btnDisabled/actionBtnDisabled)
- * -- unified here under one name each
- *
- */
+// Profile screen styles
 export const profileStyles = {
   flex1: { flex: 1 },
   rowGap: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -175,11 +153,7 @@ export const stepsStyles = {
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
 };
 
-/**
- * workouts: the card grid and modal layout differ a lot between native and
- * web, but the "Last performed" info card and several pill/badge text
- * styles were retyped rule-for-rule in both
- */
+// Workout screen styles
 export const workoutsStyles = {
   flex1: { flex: 1 },
 
@@ -221,7 +195,6 @@ export const adminStyles = {
 
   statRow: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 20 },
 
-  // A column at every width, like the Audit Logs filters: the search box, then the chips
   controls: { gap: 12, marginBottom: 16 },
   controlsNarrow: {},
   searchBox: {
@@ -231,8 +204,7 @@ export const adminStyles = {
     borderWidth: 1,
     borderRadius: radii.sm,
     paddingHorizontal: 12,
-    // Same as the Audit Logs "By User" box: fixed height, as wide as the
-    // screen allows up to 560, never past it
+    // Max-width search input container
     height: 40,
     minWidth: 0,
     maxWidth: 560,

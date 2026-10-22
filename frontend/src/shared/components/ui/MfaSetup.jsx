@@ -6,20 +6,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Platform, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
-// Two-factor authentication (2FA), from Settings and the onboarding.
-// method "email": regular users get a code by email at sign-in, and turn it on and
-// off here.
-// method "totp": admins always have it on. Scanning the
-// authenticator app in happens at their first sign-in (the login screen), so here
-// there's only the status and new recovery codes. Every change re-asks the
-// password, and the server checks it again, so nothing here is trusted on its own
-//
-// step: idle | password | code | recovery | regen
+// Two-factor authentication (2FA) component for Settings and onboarding.
+// Supports email verification code method for users and TOTP method for admins.
+// Step states: idle | password | code | recovery | regen
 
 export default function MfaSetup({ method, enabled, recoveryCodesLeft = 0, onChange, darkMode }) {
   const tone = getScreenTones(darkMode);
   const email = method === "email";
-  // Phone-width: the buttons go below the text instead of squeezing beside it
+  // Responsive layout: stack buttons vertically on narrow viewports
   const narrow = useWindowDimensions().width < 600;
   const [step, setStep] = useState("idle");
   const [intent, setIntent] = useState("enable"); // enable | disable, for the email flow
@@ -52,14 +46,14 @@ export default function MfaSetup({ method, enabled, recoveryCodesLeft = 0, onCha
     }
   }
 
-  // ---- Starting a change ------------------------------------------------------
+  // ---- Flow step management ---------------------------------------------------
   const begin = (nextStep, nextIntent = "enable") => {
     setNotice("");
     setIntent(nextIntent);
     setStep(nextStep);
   };
 
-  // Email users: the password first, then it sends the code
+  // Email flow: verify password before requesting a verification code
   const submitPassword = () => run(async () => {
     if (!password) throw new Error("Please enter your password.");
     await apiClient.post("/auth/mfa/email/request", { password }, { auth: true });
@@ -76,7 +70,7 @@ export default function MfaSetup({ method, enabled, recoveryCodesLeft = 0, onCha
     onChange?.(enable);
   });
 
-  // App users: new recovery codes take the password and a code
+  // TOTP flow: regenerate recovery codes using password and TOTP code
   const submitRecoveryCodes = () => run(async () => {
     if (!password) throw new Error("Please enter your password.");
     if (!code.trim()) throw new Error("Please enter a code from your app, or a recovery code.");
@@ -139,7 +133,7 @@ export default function MfaSetup({ method, enabled, recoveryCodesLeft = 0, onCha
 
   return (
     <View style={styles.wrap}>
-      {/* The status and its button share a row, like Change password. On a phone the buttons drop below */}
+      {/* Status and action buttons layout */}
       <View style={styles.inline}>
         <View style={[styles.info, narrow && styles.infoFull]}>
           {status}

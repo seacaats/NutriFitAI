@@ -11,8 +11,7 @@ const { getResolved } = require('./utils/network/publicUrl');
 
 const app = express();
 
-// Behind Render's proxy: rate limits and logs use the client's real IP,
-// not the proxy's (one shared IP would lock everyone out together)
+// Trust single reverse proxy so rate limits and logs use client IP
 app.set('trust proxy', 1);
 
 const LAN = /^http:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/;
@@ -21,14 +20,13 @@ const allowed = env.corsOrigin.split(',').map((s) => s.trim()).filter(Boolean);
 
 app.use(
   helmet({
-    // Overriden in oautheadersMiddleware, where explicit
-    // configuration is made for the OAuth authentication process
+    // Handled explicitly in oauthHeadersMiddleware
     crossOriginOpenerPolicy: false,
   }),
 );
 app.use(cors({
   origin(origin, cb) {
-    if (!origin) return cb(null, true);           // Mobile apps send no origin
+    if (!origin) return cb(null, true); // Mobile apps send no origin
     if (allowed.includes(origin)) return cb(null, true);
     if (env.nodeEnv !== 'production' && LAN.test(origin)) return cb(null, true);
     if (env.nodeEnv !== 'production' && origin.endsWith('.ngrok-free.dev')) {
@@ -40,14 +38,10 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
-// req.timeZone from the X-Timezone header, see authMiddleware.js
 app.use(readTimeZone);
 
 
-// Locally stored avatars and scan photos (STORAGE_DRIVER=local only; R2
-// serves its own signed links). Different files have different
-// hashes, avatars aren't overwritten and have set cache.
-// If-None-Match triggers after 30 days to fetch avatar from server.
+// Serve local uploads with immutable caching (content-hashed filenames)
 if (env.storage.driver === 'local') app.use(
   '/uploads',
   express.static(env.uploadsDir, {
@@ -57,18 +51,14 @@ if (env.storage.driver === 'local') app.use(
     dotfiles: 'deny',
 
     setHeaders: (res) => {
-      // Block any potential scripts uploaded such as .js file
       res.setHeader('X-Content-Type-Options', 'nosniff');
-      // Load avatars regardless of frontend domain
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     },
   }),
 );
 
 
-// Health check. Production gets only liveness: LAN IP, tunnel URL and the
-// resolved host are dev conveniences for phones on the local network and
-// would otherwise be public, unauthenticated reconnaissance.
+// Health check: production exposes liveness only; dev includes local network info
 app.get('/health', (req, res) => {
   if (env.nodeEnv === 'production') {
     return res.json({ success: true, data: { status: 'ok' } });
@@ -82,7 +72,6 @@ app.get('/health', (req, res) => {
       source: reachable.source,
       lanIp: reachable.lanIp,
       ngrokUrl: reachable.ngrokUrl,
-      // Echoed back so a phone can confirm which host it actually resolved.
       seenHost: req.headers.host || null,
     },
   });

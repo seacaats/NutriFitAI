@@ -6,8 +6,7 @@ const {
   registerTokenSchema, revokeTokenSchema, inboxQuerySchema, markReadSchema,
 } = require('../validators/notificationValidators');
 
-// Mounted with requireAuth in routes/index.js. Every role gets an inbox:
-// admins receive account notices too
+// Mounted with requireAuth in routes/index.js (available to all roles)
 const router = Router();
 
 router.post(

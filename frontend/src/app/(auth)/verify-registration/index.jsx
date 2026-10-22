@@ -59,14 +59,12 @@ export default function VerifyRegistrationScreen() {
 }
 
 const createStyles = (colors) => StyleSheet.create({
-  // Centred under the code boxes: FormAlert stretches by default, so with a
-  // maxWidth alone it sat against the left edge
+  // Center the alert beneath the OTP inputs while capping its width.
   alert: { marginTop: spacing.sm, marginBottom: 0, maxWidth: 384, width: "100%", alignSelf: "center" },
   ...verifyRegistrationStyles(colors),
 
   flex1: { flex: 1 },
   container: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: "center" },
-
 
   iconCircle: {
     width: 96,

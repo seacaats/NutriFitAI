@@ -1,4 +1,4 @@
-import { deleteSession, deleteSessionsOnDay, fetchExerciseInfo, getEnglishTranslation, getExerciseImages, getMuscleNames } from "@/features/workouts/hooks/useWorkoutApi";
+import { deleteSession, deleteSessionsOnDay } from "@/features/workouts/hooks/useWorkoutApi";
 import { useExerciseImages } from "@/features/workouts/hooks/useWorkoutSessions";
 import { groupByDay } from "@/features/workouts/utils/groupByDay";
 import { requireOnline } from "@/shared/api/apiClient";
@@ -11,9 +11,10 @@ import { useHeldWhileClosing } from "@/shared/hooks/useHeldWhileClosing";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import EmptyState from "./EmptyState";
+import ExerciseInfoSheet from "./ExerciseInfoSheet";
 import FavoriteButton from "./FavoriteButton";
 import { estimateMinutes } from "./PlanModals";
 import { Cover, COVER_HEIGHT, coverImagesFor, Tile, TileBody, TileGrid, tileStyles } from "./PlanTiles";
@@ -588,70 +589,15 @@ export function RoutineDetailsModal({ visible, routine: routineProp, imageOf, on
 // and what was done that time. Workout History's version of Browse's
 // details; nothing to start or log from a past session
 export function ExerciseSessionModal({ visible, session: sessionProp, onClose, darkMode }) {
-  const tone = getScreenTones(darkMode);
   const session = useHeldWhileClosing(visible, sessionProp);
-  const [info, setInfo] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!visible || !sessionProp?.exerciseRef) return undefined;
-    let live = true;
-    // Cancelled outright when the dialog closes
-    const abort = new AbortController();
-    setLoading(true);
-    setInfo(null);
-    fetchExerciseInfo(sessionProp.exerciseRef, { signal: abort.signal })
-      .then((data) => live && setInfo(data))
-      .catch(() => live && setInfo(null))
-      .finally(() => live && setLoading(false));
-    return () => {
-      live = false;
-      abort.abort();
-    };
-  }, [visible, sessionProp?.exerciseRef]);
-
   if (!session) return null;
   const minutes = session.actualDurationSeconds ? Math.round(session.actualDurationSeconds / 60) : null;
   const done = [`${session.completedSets} of ${session.targetSets ?? "?"} sets`, `${session.targetReps ?? "?"} reps`, minutes ? `${minutes} min` : null]
     .filter(Boolean).join(" · ");
-  const image = info ? getExerciseImages(info)[0] : null;
-  const muscles = info ? getMuscleNames(info) : [];
-  const description = info ? getEnglishTranslation(info).description.replace(/<[^>]*>/g, "").trim() : "";
-
-  return (
-    <SheetModal visible={visible} onClose={onClose} darkMode={darkMode} title={session.exerciseName} subtitle={done}>
-      {/* Same shape as what loads: photo, category, muscles, how-to */}
-      {loading ? (
-        <>
-          <Skeleton width="100%" height={180} borderRadius={radii.md} />
-          <Skeleton width="30%" height={13} />
-          <Skeleton width={70} height={11} />
-          <Skeleton width="60%" height={13} />
-          <Skeleton width={60} height={11} />
-          <Skeleton width="100%" height={13} />
-          <Skeleton width="90%" height={13} />
-          <Skeleton width="70%" height={13} />
-        </>
-      ) : image ? <Image source={{ uri: image }} style={detailStyles.hero} contentFit="cover" /> : null}
-      {!!info?.category?.name && <Text style={[detailStyles.description, { color: tone.muted }]}>{info.category.name}</Text>}
-      {muscles.length > 0 && (
-        <>
-          <SectionLabel darkMode={darkMode}>Muscles</SectionLabel>
-          <Text style={[detailStyles.description, { color: tone.text }]}>{muscles.join(", ")}</Text>
-        </>
-      )}
-      {!!description && (
-        <>
-          <SectionLabel darkMode={darkMode}>How to</SectionLabel>
-          <Text style={[detailStyles.description, { color: tone.muted }]}>{description}</Text>
-        </>
-      )}
-    </SheetModal>
-  );
+  return <ExerciseInfoSheet visible={visible} exerciseRef={session.exerciseRef} name={session.exerciseName} subtitle={done} onClose={onClose} darkMode={darkMode} />;
 }
 
 const detailStyles = StyleSheet.create({
-  hero: { width: "100%", height: 180, borderRadius: radii.md },
   description: { fontSize: fs(14, 13), lineHeight: 19 },
   row: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: radii.sm, padding: 10 },
   index: { fontSize: fs(14, 13), fontWeight: "800", width: 18 },

@@ -1,7 +1,4 @@
-// OAuth is set with this specific header and configuration to avoid
-// reverse proxy, or any platform defaults to reintroduce a value
-// that can break the popup handshake
-
+// Allows OAuth popup handshakes across origins (helmet COOP is disabled in app.js)
 function allowOauthPopup(req, res, next) {
   res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
   return next();

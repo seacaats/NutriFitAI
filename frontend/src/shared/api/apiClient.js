@@ -6,25 +6,12 @@ import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 /**
- * Base URL of the NutriFitAI API, resolved at startup rather than hardcoded.
- * 
- * The app was DOWNLOADED from Metro, running on the dev machine, so the host
- * the bundle arrived from is by definition the machine the API is on too.
- * Expo publishes that as `hostUri` -- e.g. "192.168.1.42:8081" on LAN, or the
- * tunnel host when running `--tunnel`. Reusing its hostname with the API port
- * means the address is rediscovered on every launch and never needs editing
- *
- * PRECEDENCE, and why this order:
- *   1. EXPO_PUBLIC_API_URL, when set -- an explicit override must always win
- *      (production builds, or pointing at a staging server on purpose)
- *   2. On web, the page's own origin's hostname -- the browser already
- *      reached this host, so it is reachable by definition
- *   3. hostUri from Expo
- *   4. localhost -- simulator only. On a physical device "localhost" is the
- *      PHONE, which is why this is last and not the default it used to be
- *
- * Only the hostname is taken from hostUri; the port is always the API's own
- * (8081 is Metro, not the server). Set EXPO_PUBLIC_API_PORT if it is not 4000
+ * Resolves the base URL for the API at startup.
+ * Precedence:
+ * 1. EXPO_PUBLIC_API_URL (explicit override for production/staging)
+ * 2. Window origin hostname on web
+ * 3. Expo hostUri (local development via LAN/tunnel)
+ * 4. Localhost fallback
  */
 const API_PORT = process.env.EXPO_PUBLIC_API_PORT || "4000";
 
@@ -38,12 +25,7 @@ function resolveBaseUrl() {
     return `${protocol}//${hostname}:${API_PORT}/api`;
   }
 
-  /**
-   * Native. hostUri lives in different places across SDK versions and build
-   * types, so each is tried rather than assuming one shape -- a missing key
-   * here would silently fall through to localhost and fail only on a real
-   * device, which is the slowest possible place to notice
-   */
+  // Native: inspects available hostUri properties from Expo config
   const hostUri =
     Constants.expoConfig?.hostUri ||
     Constants.expoGoConfig?.debuggerHost ||
@@ -52,8 +34,7 @@ function resolveBaseUrl() {
     null;
 
   if (hostUri) {
-    // Strip any scheme, then the port -- keeping Metro's 8081 would point at
-    // the bundler instead of the API
+    // Strip scheme and bundler port to target the API port
     const host = String(hostUri).replace(/^\w+:\/\//, "").split("/")[0].split(":")[0];
     if (host) return `http://${host}:${API_PORT}/api`;
   }
@@ -65,8 +46,7 @@ const BASE_URL = resolveBaseUrl();
 setPingBase(BASE_URL);
 
 /**
- * What to say when a request gets no answer: the phone's own connection is
- * down (NetInfo), or the network is fine and the server is what's down
+ * Returns user-facing message when requests fail to connect.
  */
 export function unreachableMessage() {
   return hasNoConnection()
@@ -75,12 +55,10 @@ export function unreachableMessage() {
 }
 
 if (__DEV__) {
-  // Printed once at startup: when a device cannot reach the API this is the
-  // single most useful line to see, and it costs nothing to log
   console.log(`[apiClient] base URL: ${BASE_URL}`);
 }
 
-// Device IANA zone ("Asia/Manila"), or null if the runtime can't tell
+// Device IANA zone ("Asia/Manila"), or null if unavailable
 function deviceTimeZone() {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
@@ -93,10 +71,7 @@ function deviceTimeZone() {
 const DEFAULT_TIMEOUT_MS = 20000;
 
 /**
- * Thin wrapper around the backend's { success, data } / { success:false, code,
- * message, details } envelope (see src/middleware/errorHandlerMiddleware.js /
- * src/utils/httpResponse.js on the server). Throws an ApiClientError on any non-2xx
- * response or network failure so callers can catch a single error type
+ * Standard API error wrapper around the server's response envelope.
  */
 export class ApiClientError extends Error {
   constructor(message, { status, code, details } = {}) {
@@ -109,8 +84,7 @@ export class ApiClientError extends Error {
 }
 
 /**
- * Human labels for the field names used by validators/authValidators.js, so a
- * zod issue on "heightCm" reads as "Height" rather than the raw key
+ * Human-readable field labels for validation error formatting.
  */
 const FIELD_LABELS = {
   firstName: "First name",
@@ -147,10 +121,7 @@ const FIELD_LABELS = {
 };
 
 /**
- * validateBody() rejects with the generic message "Validation failed" and puts
- * the useful per-field reasons in `details`. Nothing was rendering `details`,
- * so the user only ever saw "Validation failed" — flatten it into a readable
- * message instead
+ * Formats structured validation issues into human-readable text.
  * @param {Array<{ path?: string, message?: string }>|undefined} details
  */
 function formatValidationDetails(details) {
@@ -163,8 +134,6 @@ function formatValidationDetails(details) {
       if (!message) return "";
       const key = detail.path ? String(detail.path).split(".").pop() : "";
       const label = FIELD_LABELS[key] || (key ? key : "");
-      // Server messages that already name their field ("Password can't contain
-      // spaces.") read badly with a "Password: " prefix, so skip it for those
       if (!label || message.toLowerCase().includes(label.toLowerCase())) return message;
       return `${label}: ${message}`;
     })
@@ -173,7 +142,7 @@ function formatValidationDetails(details) {
   return lines.join("\n");
 }
 
-/** Last-resort copy when the server sends no usable message (proxy pages, 502s, …). Plain wording for users; the status stays on err.status/code for admins and logs */
+/** Fallback user-facing message when server provides no payload */
 function statusFallbackMessage(status) {
   if (status === 400) return "Something doesn't look right. Please check what you entered and try again.";
   if (status === 401) return "Your session has expired. Please log in again.";
@@ -185,7 +154,7 @@ function statusFallbackMessage(status) {
   return "Something went wrong. Please try again.";
 }
 
-/** The rate limiters reply with a bare { success:false, message } and no code */
+/** Code fallback for unformatted HTTP errors */
 function codeFallback(status) {
   if (status === 429) return "RATE_LIMITED";
   if (status === 401) return "UNAUTHORIZED";
@@ -196,55 +165,24 @@ function codeFallback(status) {
   return "ERROR";
 }
 
-/**
- * Lets AuthContext learn about a session dying from WHEREVER it's discovered,
- * not just from its own /auth/me check
- *
- * apiClient is a plain module with no knowledge of React state, and
- * AuthContext already imports from apiClient (never the reverse) — so this is
- * a one-directional registration point rather than a circular import: React
- * hands apiClient a callback once, apiClient calls it when it has something
- * to report. Deliberately a single slot, not an event emitter with multiple
- * subscribers — there is exactly one thing in this app that owns "is there a
- * session" (AuthContext's own doc comment says as much), so there is only
- * ever one listener to register
- */
 let onSessionExpired = null;
 export function setSessionExpiredHandler(fn) {
   onSessionExpired = fn;
 }
 
-/**
- * Separate slot for "the server could not be reached", which is NOT the same
- * event as "the session is over" and must not be treated as one
- */
 let onSessionUnreachable = null;
 export function setSessionUnreachableHandler(fn) {
   onSessionUnreachable = fn;
 }
 
-/**
- * True when a failure says nothing about whether the session is still valid:
- * no network, a timeout, or a server-side fault. status 0 is this client's
- * own marker for NETWORK_ERROR / TIMEOUT (see request())
- */
+/** True when the failure is transport-related and does not indicate an expired session */
 function isTransportFailure(err) {
   const status = err instanceof ApiClientError ? err.status : 0;
   return status === 0 || status >= 500;
 }
 
 /**
- * Coalesces concurrent refresh attempts into one network call
- *
- * A screen that fires several auth:true requests at once (a dashboard loading
- * steps + workouts + profile in parallel, say) can have all of them 401 in
- * the same tick if the access token expired between renders. Without this,
- * each one would independently POST /auth/refresh — three redundant calls
- * that all race to write the same token to storage. Every caller instead
- * awaits the same in-flight promise, and it's cleared once that settles so
- * the NEXT expiry still triggers a fresh attempt rather than reusing a dead
- * promise forever
- *
+ * Coalesces concurrent refresh attempts into a single network call.
  * @returns {Promise<string>} the new access token
  */
 let refreshPromise = null;
@@ -256,39 +194,14 @@ function refreshAccessToken() {
         await setAccessToken(data.accessToken);
         return data.accessToken;
       } catch (err) {
-        /**
-         * Every failure here used to clear the stored token and declare the
-         * session over. But this catch fires for two completely different
-         * situations, and only one of them means anything about the session:
-         *
-         *   - the refresh cookie is genuinely gone, expired or invalid (401);
-         *   - the request never reached the server at all -- Wi-Fi dropped,
-         *     the laptop running the API is asleep, a timeout, a 502
-         *
-         * Treating the second as the first is what logged people out whenever
-         * the connection blipped: clearAccessToken() DELETED a perfectly good
-         * token from storage, so the session could not recover even once the
-         * network came back. Reloading then genuinely had no credentials left
-         *
-         * A transport failure is now non-destructive: the token stays, and
-         * the app is told the server is unreachable so it can show that and
-         * retry, rather than pretending the user signed out
-         */
+        // Transport failures are non-destructive to preserve stored credentials
         if (isTransportFailure(err)) {
           if (onSessionUnreachable) onSessionUnreachable(err);
           throw err;
         }
 
-        // A real authentication failure. Nothing here can recover, so drop
-        // the now-useless access token: AuthContext's next check then reads a
-        // clean "logged out" state instead of a stale token that will only
-        // 401 again
+        // On genuine auth failure, clear token and notify session listener
         await clearAccessToken();
-
-        // Fires exactly once per dead session, however many requests were
-        // in flight when it was discovered: every caller of refreshAccessToken()
-        // during that window awaits this SAME promise (see refreshPromise
-        // above), so this catch runs once, not once per caller
         if (onSessionExpired) onSessionExpired();
 
         throw err;
@@ -303,33 +216,19 @@ function refreshAccessToken() {
 /**
  * @param {string} path e.g. "/auth/login" (leading slash, no BASE_URL prefix)
  * @param {{ method?: string, body?: any, auth?: boolean, full?: boolean, timeoutMs?: number }} [options]
- *   `full: true` resolves with the whole envelope ({ success, message, data })
- *   instead of just `data`, for callers that want to show the server's own
- *   success message rather than hardcoding their own.
- * @param {boolean} [isRetry] internal only -- marks a request as already
- *   having gone through one refresh-and-retry cycle, so a second 401 (a
- *   genuinely dead session, not just an expired access token) falls straight
- *   through to the caller instead of looping
+ * @param {boolean} [isRetry] internal flag for refresh retry handling
  */
 async function request(
   path,
   { method = "GET", body, auth = false, full = false, as = "json", timeoutMs = DEFAULT_TIMEOUT_MS, signal } = {},
   isRetry = false,
 ) {
-  // `signal`: the caller gave up (a dialog closed). Nothing comes back after that
   if (signal?.aborted) throw cancelledError();
 
-  // FormData must NOT get an explicit Content-Type: the runtime sets it along
-  // with the multipart boundary, and overriding it makes the body unparseable
-  // on the server
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const headers = isFormData ? {} : { "Content-Type": "application/json" };
 
-  // Free ngrok endpoints serve an HTML interstitial to browser user-agents on
-  // GET requests. That breaks JSON parsing, and AuthContext reads any /auth/me
-  // failure as "logged out" — so the guard bounces a valid session
   headers["ngrok-skip-browser-warning"] = "true";
-  // Read fresh each request, so a user who travels is picked up immediately
   const timeZone = deviceTimeZone();
   if (timeZone) headers["X-Timezone"] = timeZone;
 
@@ -370,45 +269,29 @@ async function request(
   }
   if (signal?.aborted) throw cancelledError();
 
-  // `as: "text"` for non-JSON downloads (the audit CSV). Errors still come
-  // back as the JSON envelope, so only a success skips the parse below
   if (as === "text" && response.ok) return response.text();
 
   let payload = null;
   try {
     payload = await response.json();
   } catch {
-    // Non-JSON response (e.g. a proxy error page) — fall through with no payload
+    // Non-JSON response (e.g. proxy error page)
   }
 
   if (!response.ok || !payload || payload.success === false) {
-    // A 401 on an authenticated request most often means the short-lived
-    // access token expired mid-session (15m by default) — not that the user
-    // was deliberately logged out. Try once to silently exchange the
-    // httpOnly refresh cookie for a new access token and replay the original
-    // request, so an expired token surfaces as a slightly slower response
-    // rather than an unexpected trip back to the login screen
-    //
-    // Excludes /auth/refresh itself: a 401 FROM that endpoint means the
-    // refresh cookie is the thing that's dead, and retrying it would recurse
-    // forever via refreshAccessToken() calling back into request()
+    // Retry once with a refreshed token on 401 for authenticated requests (except /auth/refresh)
     if (response.status === 401 && auth && !isRetry && path !== "/auth/refresh") {
       try {
         await refreshAccessToken();
         return request(path, { method, body, auth, full, as, timeoutMs, signal }, true);
       } catch {
-        // Refresh failed too (refresh cookie missing/expired/invalid) — fall
-        // through and report the ORIGINAL 401 below, exactly as if no retry
-        // had been attempted. AuthContext already treats a 401 from /auth/me
-        // as "log the user out", which is the correct outcome here
+        // Refresh failed; fall through to return original 401
       }
     }
 
     const details = payload && payload.details;
     const detailMessage = formatValidationDetails(details);
     const serverMessage = payload && payload.message;
-
-    // Prefer the specific per-field reasons over the generic wrapper message
     const message = detailMessage || serverMessage || statusFallbackMessage(response.status);
 
     throw new ApiClientError(message, {
@@ -422,17 +305,8 @@ async function request(
 }
 
 /**
- * Uploads one local file as multipart/form-data. `file` is { uri, name, type }.
- *
- * Why not `request` with a FormData body: on Android, React Native 0.84+ has a
- * networking bug where multipart uploads with a { uri, name, type } part fail
- * with a bare "Network request failed" while every JSON call works
- * (react-native#55841). Native uploads therefore go through expo-file-system's
- * own uploader, which doesn't use that code path. Web keeps FormData, where
- * the page's blob: / data: URL is fetched back into real bytes first.
- *
- * Same contract as `request`: resolves with `data`, throws ApiClientError,
- * and a 401 gets one silent refresh-and-retry
+ * Uploads one local file as multipart/form-data.
+ * Uses expo-file-system on native to avoid multipart bugs, FormData on web.
  */
 async function uploadFile(path, file, { field = "file", auth = false, timeoutMs = DEFAULT_TIMEOUT_MS } = {}, isRetry = false) {
   if (Platform.OS === "web") {
@@ -442,7 +316,6 @@ async function uploadFile(path, file, { field = "file", auth = false, timeoutMs 
     return request(path, { method: "POST", body: formData, auth, timeoutMs });
   }
 
-  // Native only, so web bundles never load it
   const FileSystem = require("expo-file-system/legacy");
 
   const headers = { "ngrok-skip-browser-warning": "true" };
@@ -462,15 +335,12 @@ async function uploadFile(path, file, { field = "file", auth = false, timeoutMs 
       mimeType: file.type || "application/octet-stream",
       headers,
     });
-    // uploadAsync has no timeout of its own
     const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), timeoutMs));
     result = await Promise.race([upload, timeout]);
   } catch (err) {
     if (err?.message === "timeout") {
       throw new ApiClientError("This is taking longer than expected. Please try again.", { status: 0, code: "TIMEOUT" });
     }
-    // The native reason (missing file, refused connection...) is shown in
-    // development, where it's the one line that explains the failure
     const reason = __DEV__ && err?.message ? ` (${err.message})` : "";
     throw new ApiClientError(`${unreachableMessage()}${reason}`, {
       status: 0,
@@ -482,7 +352,7 @@ async function uploadFile(path, file, { field = "file", auth = false, timeoutMs 
   try {
     payload = JSON.parse(result.body);
   } catch {
-    // Non-JSON body (proxy error page) -- handled as a failure below
+    // Non-JSON body
   }
 
   const ok = result.status >= 200 && result.status < 300;
@@ -492,7 +362,7 @@ async function uploadFile(path, file, { field = "file", auth = false, timeoutMs 
         await refreshAccessToken();
         return uploadFile(path, file, { field, auth, timeoutMs }, true);
       } catch {
-        // Refresh failed too: report the original 401 below
+        // Refresh failed
       }
     }
     const details = payload && payload.details;
@@ -509,20 +379,15 @@ async function uploadFile(path, file, { field = "file", auth = false, timeoutMs 
 
 // ---- Offline handling ------------------------------------------------------
 
-// The request never got an answer: no network, a timeout, or a proxy saying
-// the server is down. Other errors came FROM the server and are passed on
 const isUnreachable = (err) =>
   err instanceof ApiClientError && (err.status === 0 || err.status === 502 || err.status === 503 || err.status === 504);
 
 const offlineError = () => new ApiClientError(unreachableMessage(), { status: 0, code: "OFFLINE" });
 
-// The caller cancelled (its `signal` aborted). Not a failure to show: no
-// message, and status -1 so it never counts as the server being unreachable
 function cancelledError() {
   return new ApiClientError("", { status: -1, code: "CANCELLED" });
 }
 
-// Waits for the server, unless the caller cancels first
 function waitForOnlineOrCancel(signal) {
   if (!signal) return waitForOnline();
   return new Promise((resolve, reject) => {
@@ -533,32 +398,22 @@ function waitForOnlineOrCancel(signal) {
 }
 
 /**
- * GETs. While the server can't be reached:
- *   - a signed-in GET with a saved copy returns that copy (offlineCache),
- *     and the OfflineBanner says how old it is
- *   - anything else waits until the server is back and then retries, so the
- *     screen keeps its loading skeleton instead of showing empty data.
- *     `wait: false` throws instead (the session check, which has its own screen)
- * Known offline, the network isn't even tried: answers come at once, and
- * connection.js's /health check is what notices the server is back
+ * Handles GET requests with offline fallback and background retry.
  */
 async function get(path, options = {}) {
   const { wait = true, ...rest } = options;
-  // Downloads (the audit CSV export) are actions, not loads: refused at once
   if (rest.as === "text") return send(() => request(path, { ...rest, method: "GET" }));
   const cacheable = rest.auth && !rest.full && rest.as !== "text" && isCacheable(path);
 
   if (!isOffline()) {
     try {
       const data = await request(path, { ...rest, method: "GET" });
-      // Any answer clears the offline state and the banner
       setOnline();
       if (cacheable) saveCached(path, data);
       return data;
     } catch (err) {
       if (err?.code === "CANCELLED") throw err;
       if (!isUnreachable(err)) {
-        // The server answered, just with an error
         setOnline();
         throw err;
       }
@@ -568,10 +423,7 @@ async function get(path, options = {}) {
 
   const hit = cacheable ? await readCached(path) : null;
   if (hit) {
-    // Not an error: the OfflineBanner says the data is saved, and from when
     noteSavedData(hit.savedAt);
-    // Saved copy now, and the real request still tried in the background:
-    // if it gets through, that alone marks the app online (and reloads)
     if (isOffline()) retryInBackground(path, rest, cacheable);
     return hit.data;
   }
@@ -595,8 +447,7 @@ function retryInBackground(path, options, cacheable) {
 }
 
 /**
- * Everything that changes data. Blocked outright while offline, so nothing
- * is half-done, and the screen alert says why
+ * Wraps mutating requests; blocks immediately when offline.
  */
 async function send(run) {
   if (isOffline()) {
@@ -621,9 +472,7 @@ async function send(run) {
 }
 
 /**
- * For actions that only reach the server later (starting a workout logs it
- * when it ends): refuse up front while offline, with the same message.
- * `if (!requireOnline()) return;`
+ * Checks connectivity before starting uncommitted actions.
  */
 export function requireOnline() {
   if (!isOffline()) return true;
@@ -631,9 +480,7 @@ export function requireOnline() {
   return false;
 }
 
-// Back online: the connection message goes; screens reload (DashboardLayout)
 onReconnect(clearNetworkError);
-// Still offline, but for a different reason: the message follows
 onConnectionChange(() => isOffline() && rewordNetworkError(unreachableMessage()));
 
 export const apiClient = {
@@ -642,11 +489,7 @@ export const apiClient = {
   patch: (path, body, options) => send(() => request(path, { ...options, method: "PATCH", body })),
   put: (path, body, options) => send(() => request(path, { ...options, method: "PUT", body })),
   delete: (path, options) => send(() => request(path, { ...options, method: "DELETE" })),
-
-  /** Multipart POST. Pass a FormData; headers are left to the runtime */
   upload: (path, formData, options) => send(() => request(path, { ...options, method: "POST", body: formData })),
-
-  /** One local file, multipart. Use this for native file uploads, see uploadFile */
   uploadFile: (path, file, options) => send(() => uploadFile(path, file, options)),
 };
 

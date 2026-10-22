@@ -41,9 +41,7 @@ import {
 // ──────────────────────────────────────────────
 export default function WorkoutsScreen() {
   const ring = useFocusRing();
-  // darkMode is read here (not just `shell`) because it's threaded down to
-  // RecentSessionRow below, which needs the raw boolean for its own
-  // light/dark text color -- not the resolved shell palette.
+  // Read both shell palette and raw darkMode boolean for child components
   const { shell: c, darkMode } = useTheme();
   const router = useRouter();
 
@@ -59,6 +57,8 @@ export default function WorkoutsScreen() {
     closeDetail,
     detailLoading,
     detailPlan,
+    editingWorkout,
+    editWorkout,
     editor,
     equipment,
     equipmentList,
@@ -87,6 +87,7 @@ export default function WorkoutsScreen() {
     sessionsLoading,
     setActiveCategory,
     setAddOpen,
+    setEditingWorkout,
     setEditor,
     setEquipment,
     setMuscles,
@@ -104,7 +105,7 @@ export default function WorkoutsScreen() {
     workoutSource,
     removeWorkout,
   } = useWorkouts();
-  // The own workout asked about in the delete dialog, and what it says
+  // Custom workout pending deletion and its error state
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -130,17 +131,12 @@ export default function WorkoutsScreen() {
           <Ionicons name="chevron-back" size={22} color={c.sidebarText} />
         </Pressable>
         <Text style={[styles.pageTitle, textColor]}>Workouts</Text>
-        {/* Same width as the back button, so the title stays centered */}
+        {/* Same width as the back button so the title stays centered */}
         <View style={styles.backBtn}><MenuButton /></View>
       </View>
       <Text style={styles.pageSubtitle}>Browse workouts with photos</Text>
 
-      {/* Quick Stats */}
-      {/*
-        Was "1,400+ Exercises / 15 Categories / All Muscles" — facts about the
-        catalog. Nothing on this screen told the user anything about themselves.
-        Same component and position, the user's own week instead.
-      */}
+      {/* Weekly Summary & Catalog Stats */}
       <View style={styles.statsRow}>
         <View style={[styles.statCard, { backgroundColor: getChipTint("green", darkMode).backgroundColor }]}>
           <Ionicons name="barbell" size={18} color={shellColors.primary} />
@@ -247,7 +243,7 @@ export default function WorkoutsScreen() {
           placeholder="Search exercises, muscles…"
           placeholderTextColor={colors.textMuted}
           value={searchQuery}
-          // Same cap as the server search limit
+          // Matches server search query limit
           maxLength={100}
           onChangeText={setSearchQuery}
         />
@@ -258,7 +254,7 @@ export default function WorkoutsScreen() {
         )}
       </View>
 
-      {/* Category, equipment and muscles, behind one "Filters" button */}
+      {/* Category, equipment, and muscle filters */}
       <WorkoutFilters
         categories={categories}
         category={activeCategory}
@@ -373,7 +369,8 @@ export default function WorkoutsScreen() {
         onSchedule={() =>
           selectedExercise &&
           setScheduleTarget({ kind: "exercise", refId: selectedExercise.id, name: selectedExercise.name })}
-        // Only the user's own workouts can be deleted
+        // Only custom workouts created by the user can be edited or deleted
+        onEdit={selectedExercise?.source === "user" ? () => setEditingWorkout(selectedExercise) : undefined}
         onDelete={selectedExercise?.source === "user" ? () => setDeleteTarget({ id: selectedExercise.id, name: selectedExercise.name }) : undefined}
       />
 
@@ -392,7 +389,7 @@ export default function WorkoutsScreen() {
         visible={scheduleTarget !== null}
         target={scheduleTarget}
         onClose={() => setScheduleTarget(null)}
-        // A missed plan moves its own row instead of adding a new one
+        // Rescheduling a missed plan updates its existing row rather than inserting a new one
         onSubmit={(body) => (scheduleTarget?.rescheduleId
           ? plan.reschedule(scheduleTarget.rescheduleId, body.scheduledFor)
           : plan.scheduleWorkout(body))}
@@ -417,9 +414,10 @@ export default function WorkoutsScreen() {
       />
 
       <AddWorkoutModal
-        visible={addOpen}
-        onClose={() => setAddOpen(false)}
-        onSave={addWorkout}
+        visible={addOpen || editingWorkout !== null}
+        workout={editingWorkout}
+        onClose={() => { setAddOpen(false); setEditingWorkout(null); }}
+        onSave={editingWorkout ? (body, photo) => editWorkout(editingWorkout.id, body, photo) : addWorkout}
         categories={categories}
         equipmentList={equipmentList}
         muscleList={muscleList}
@@ -509,10 +507,10 @@ function ExerciseDetailModal({
   favorite: favoriteProp,
   onToggleFavorite,
   onSchedule,
+  onEdit,
   onDelete,
 }) {
-  // Kept while the modal fades out: the parent clears the exercise as it
-  // closes, which used to blank the card for a moment first
+  // Retain exercise state during the close fade animation so the modal content does not blank out early
   const { exercise, loading, lastSession, planned, favorite } = useHeldWhileClosing(visible, {
     exercise: exerciseProp,
     loading: loadingProp,
@@ -521,17 +519,12 @@ function ExerciseDetailModal({
     favorite: favoriteProp,
   });
   const { darkMode } = useTheme();
-  // Note: `shellColors` here is the resolved-per-theme prop (see call site),
-  // not the theme module's raw shellColors export, so the dark literal below
-  // can't be swapped for `shellColors.dark.shellBg` without breaking on this
-  // shadowed name -- left as a literal rather than threading another prop
-  // through for one modal background.
+  // `shellColors` is the resolved theme prop rather than the raw theme export
   const bg = darkMode ? "#1a1a1a" : colors.white;
   const textColor = { color: darkMode ? colors.white : screenTones.light.text };
 
   return (
     <Modal
-      // Never over another screen: hidden once you've navigated away
       visible={visible}
       animationType="fade"
       transparent
@@ -634,7 +627,7 @@ function ExerciseDetailModal({
                 </View>
               )}
 
-              {/* Plan actions. Hidden when this run is a scheduled session */}
+              {/* Plan actions (hidden during a scheduled session run) */}
               {!planned && (
                 <View style={styles.detailActions}>
                   <ActionButton
@@ -645,6 +638,7 @@ function ExerciseDetailModal({
                     darkMode={darkMode}
                   />
                   <ActionButton variant="secondary" label="Schedule" onPress={onSchedule} darkMode={darkMode} />
+                  {onEdit && <ActionButton variant="secondary" label="Edit" onPress={onEdit} darkMode={darkMode} />}
                   {onDelete && <ActionButton variant="danger" label="Delete" onPress={onDelete} darkMode={darkMode} />}
                 </View>
               )}
@@ -765,7 +759,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     gap: 10,
   },
-  // Bigger thumbnail so the exercise reads at a glance
   exerciseImage: {
     width: 76,
     height: 76,

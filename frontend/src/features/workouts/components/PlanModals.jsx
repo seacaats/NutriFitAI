@@ -1,3 +1,4 @@
+import ExerciseInfoSheet from "@/features/workouts/components/ExerciseInfoSheet";
 import ExerciseWorkoutTracker from "@/features/workouts/components/ExerciseWorkoutTracker";
 import { fetchCategories, fetchEquipment, fetchExerciseInfoPage, findWorkoutByName, getEnglishTranslation } from "@/features/workouts/hooks/useWorkoutApi";
 import ActionButton from "@/shared/components/ui/ActionButton";
@@ -262,15 +263,14 @@ const scheduleStyles = StyleSheet.create({
   periodText: { fontSize: fs(15, 14), fontWeight: "800" },
 });
 
-// Add a workout of your own to the catalog: same fields as a synced one. The
-// name is checked against the catalog as it's typed, and a match with a wger
-// workout asks before creating it anyway
+// Add or edit a personal workout in the catalog: checks for name collisions with catalog workouts
 
 const NAME_CHECK_MS = 350;
 const WARN = "#d97706";
 
-export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmentList, muscleList = [], darkMode }) {
+export function AddWorkoutModal({ visible, workout, onClose, onSave, categories, equipmentList, muscleList = [], darkMode }) {
   const tone = getScreenTones(darkMode);
+  const isEditing = Boolean(workout?.id);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState(null);
@@ -282,26 +282,30 @@ export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmen
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  // Optional photo, { uri, name, type }. Uploaded once the workout is added
+  // Optional new photo, { uri, name, type }, or the existing photo URL when editing
   const [photo, setPhoto] = useState(null);
-  // Added, but the photo didn't make it: the button turns into Done
+  const [existingImage, setExistingImage] = useState(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
+  // Added / saved, but the photo didn't make it: the button turns into Done
   const [added, setAdded] = useState(false);
 
-  // Blank on every open
+  // Pre-filled when editing, blank when adding
   useEffect(() => {
     if (!visible) return;
-    setName("");
-    setDescription("");
-    setCategoryId(null);
-    setEquipmentIds([]);
-    setMuscleIds([]);
-    setSecondaryIds([]);
+    setName(workout?.name || "");
+    setDescription(workout?.description ? workout.description.replace(/<[^>]*>/g, "") : "");
+    setCategoryId(workout?.categoryId ?? null);
+    setEquipmentIds(workout?.equipmentIds ? [...workout.equipmentIds] : []);
+    setMuscleIds(workout?.muscleIds ? [...workout.muscleIds] : []);
+    setSecondaryIds(workout?.secondaryMuscleIds ? [...workout.secondaryMuscleIds] : []);
     setPhoto(null);
+    setExistingImage(workout?.hasRealImage ? workout.images?.[0] || workout.image || null : null);
+    setRemovePhoto(false);
     setAdded(false);
     setMatch(null);
     setConfirming(false);
     setError("");
-  }, [visible]);
+  }, [visible, workout]);
 
   async function pickPhoto() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -309,6 +313,7 @@ export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmen
     const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, aspect: [4, 3], quality: 0.8 });
     if (picked.canceled || !picked.assets?.length) return undefined;
     const asset = picked.assets[0];
+    setRemovePhoto(false);
     return setPhoto({ uri: asset.uri, name: asset.fileName || "workout.jpg", type: asset.mimeType || "image/jpeg" });
   }
 
@@ -316,13 +321,13 @@ export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmen
   // server checks again on save
   useEffect(() => {
     const query = name.trim();
-    if (!visible || !query) {
+    if (!visible || !query || (isEditing && query.toLowerCase() === (workout?.name || "").trim().toLowerCase())) {
       setMatch(null);
       return undefined;
     }
     const abort = new AbortController();
     const timer = setTimeout(() => {
-      findWorkoutByName(query, { signal: abort.signal })
+      findWorkoutByName(query, { excludeId: workout?.id, signal: abort.signal })
         .then((found) => !abort.signal.aborted && setMatch(found))
         .catch(() => !abort.signal.aborted && setMatch(null));
     }, NAME_CHECK_MS);
@@ -330,7 +335,7 @@ export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmen
       abort.abort();
       clearTimeout(timer);
     };
-  }, [name, visible]);
+  }, [name, visible, isEditing, workout?.id, workout?.name]);
 
   const own = match?.source === "user";
 
@@ -338,26 +343,40 @@ export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmen
     setSaving(true);
     setError("");
     try {
-      const result = await onSave({
-        name: name.trim(),
-        ...(description.trim() ? { description: description.trim() } : {}),
-        ...(categoryId ? { categoryId } : {}),
-        ...(equipmentIds.length ? { equipmentIds } : {}),
-        ...(muscleIds.length ? { muscleIds } : {}),
-        ...(secondaryIds.length ? { secondaryMuscleIds: secondaryIds } : {}),
-        ...(confirmDuplicate ? { confirmDuplicate: true } : {}),
-      }, photo);
+      const payload = isEditing
+        ? {
+          name: name.trim(),
+          description: description.trim() || null,
+          categoryId: categoryId || null,
+          equipmentIds,
+          muscleIds,
+          secondaryMuscleIds: secondaryIds,
+          ...(removePhoto && !photo ? { removePhoto: true } : {}),
+          ...(confirmDuplicate ? { confirmDuplicate: true } : {}),
+        }
+        : {
+          name: name.trim(),
+          ...(description.trim() ? { description: description.trim() } : {}),
+          ...(categoryId ? { categoryId } : {}),
+          ...(equipmentIds.length ? { equipmentIds } : {}),
+          ...(muscleIds.length ? { muscleIds } : {}),
+          ...(secondaryIds.length ? { secondaryMuscleIds: secondaryIds } : {}),
+          ...(confirmDuplicate ? { confirmDuplicate: true } : {}),
+        };
+      const result = await onSave(payload, photo);
       setConfirming(false);
       if (result?.photoFailed) {
         setAdded(true);
-        setError("Workout added, but its photo couldn't be uploaded.");
+        setError(isEditing
+          ? "Workout updated, but its photo couldn't be uploaded."
+          : "Workout added, but its photo couldn't be uploaded.");
         return;
       }
       onClose();
     } catch (err) {
-      // The check hadn't finished when they pressed Add: ask now
+      // The check hadn't finished when they pressed Save / Add: ask now
       if (err?.code === "DUPLICATE_WGER") setMatch({ name: name.trim(), source: "wger" });
-      else setError(err?.message || "Couldn't add the workout.");
+      else setError(err?.message || (isEditing ? "Couldn't save changes." : "Couldn't add the workout."));
       setConfirming(err?.code === "DUPLICATE_WGER");
     } finally {
       setSaving(false);
@@ -379,18 +398,24 @@ export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmen
   };
   const toggleEquipment = (id) => setEquipmentIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
   const inputStyle = [editorStyles.input, { borderColor: tone.border, color: tone.text }];
+  const previewUri = photo?.uri || (!removePhoto ? existingImage : null);
 
   return (
     <SheetModal
       visible={visible}
       onClose={onClose}
       darkMode={darkMode}
-      title="Add workout"
-      subtitle="Your own, shown with the rest of the catalog"
+      title={isEditing ? "Edit workout" : "Add workout"}
+      subtitle={isEditing ? "Update your personal workout details" : "Your own, shown with the rest of the catalog"}
       footer={(
         <>
           <ActionButton label="Cancel" variant="secondary" onPress={onClose} darkMode={darkMode} />
-          <ActionButton label={added ? "Done" : "Add workout"} onPress={submit} loading={saving && !confirming} darkMode={darkMode} />
+          <ActionButton
+            label={added ? "Done" : isEditing ? "Save changes" : "Add workout"}
+            onPress={submit}
+            loading={saving && !confirming}
+            darkMode={darkMode}
+          />
         </>
       )}
     >
@@ -471,10 +496,20 @@ export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmen
       )}
 
       <SectionLabel darkMode={darkMode}>Photo (optional)</SectionLabel>
-      {photo ? (
+      {previewUri ? (
         <View style={addStyles.photoRow}>
-          <Image source={{ uri: photo.uri }} style={addStyles.photo} />
-          <ActionButton compact variant="secondary" label="Remove" onPress={() => setPhoto(null)} darkMode={darkMode} />
+          <Image source={{ uri: previewUri }} style={addStyles.photo} />
+          <ActionButton compact variant="secondary" label="Change" onPress={pickPhoto} darkMode={darkMode} />
+          <ActionButton
+            compact
+            variant="secondary"
+            label="Remove"
+            onPress={() => {
+              setPhoto(null);
+              if (existingImage) setRemovePhoto(true);
+            }}
+            darkMode={darkMode}
+          />
         </View>
       ) : (
         <ActionButton compact variant="secondary" label="Choose a photo" onPress={pickPhoto} darkMode={darkMode} />
@@ -496,9 +531,9 @@ export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmen
       {/* Inside the dialog, so it opens over it rather than beside it */}
       <ConfirmModal
         visible={confirming}
-        title="Add this workout?"
-        message={`"${match?.name || name.trim()}" is already in the wger catalog. Do you still want to create your own?`}
-        confirmLabel="Create"
+        title={isEditing ? "Save with this name?" : "Add this workout?"}
+        message={`"${match?.name || name.trim()}" is already in the wger catalog. Do you still want to ${isEditing ? "use this name" : "create your own"}?`}
+        confirmLabel={isEditing ? "Save" : "Create"}
         loading={saving}
         onConfirm={() => save(true)}
         onCancel={() => setConfirming(false)}
@@ -543,6 +578,8 @@ export function RoutineEditorModal({ visible, routine, onClose, onSave, darkMode
   const [equipment, setEquipment] = useState(null);
   const [categories, setCategories] = useState([]);
   const [equipmentList, setEquipmentList] = useState([]);
+  // The exercise whose details are open: { exerciseRef, exerciseName, subtitle }
+  const [viewing, setViewing] = useState(null);
 
   // Filter options, once per open. A failed load just leaves no chips
   useEffect(() => {
@@ -562,6 +599,7 @@ export function RoutineEditorModal({ visible, routine, onClose, onSave, darkMode
     setError("");
     setCategory(null);
     setEquipment(null);
+    setViewing(null);
   }, [visible, routine]);
 
   // Debounced exercise search against the synced catalog. A filter on its
@@ -725,6 +763,10 @@ export function RoutineEditorModal({ visible, routine, onClose, onSave, darkMode
                 <Text numberOfLines={1} style={[editorStyles.resultName, { color: tone.text }]}>{item.exerciseName}</Text>
                 {!!item.category && <Text style={[editorStyles.resultMeta, { color: tone.muted }]}>{item.category}</Text>}
               </View>
+              {/* Details before adding, like Browse's */}
+              <Pressable onPress={() => setViewing({ ...item, subtitle: item.category })} hitSlop={8} accessibilityLabel={`Details for ${item.exerciseName}`}>
+                <Ionicons name="information-circle-outline" size={20} color={tone.muted} />
+              </Pressable>
               <Ionicons name="add-circle" size={20} color={shellColors.primary} />
             </Pressable>
           ))}
@@ -739,6 +781,13 @@ export function RoutineEditorModal({ visible, routine, onClose, onSave, darkMode
             <View style={editorStyles.itemTop}>
               <Text style={[editorStyles.itemIndex, { color: shellColors.primary }]}>{i + 1}</Text>
               <Text numberOfLines={1} style={[editorStyles.itemName, { color: tone.text }]}>{e.exerciseName}</Text>
+              <Pressable
+                onPress={() => setViewing({ ...e, subtitle: `${e.targetSets} sets · ${e.targetReps} reps` })}
+                hitSlop={6}
+                accessibilityLabel={`Details for ${e.exerciseName}`}
+              >
+                <Ionicons name="information-circle-outline" size={18} color={tone.muted} />
+              </Pressable>
               <Pressable onPress={() => move(i, -1)} hitSlop={6} disabled={i === 0} accessibilityLabel="Move up">
                 <Ionicons name="chevron-up" size={18} color={i === 0 ? tone.border : tone.muted} />
               </Pressable>
@@ -762,6 +811,15 @@ export function RoutineEditorModal({ visible, routine, onClose, onSave, darkMode
       )}
 
       <FormAlert message={error} onDismiss={() => setError("")} />
+
+      <ExerciseInfoSheet
+        visible={!!viewing}
+        exerciseRef={viewing?.exerciseRef}
+        name={viewing?.exerciseName}
+        subtitle={viewing?.subtitle}
+        onClose={() => setViewing(null)}
+        darkMode={darkMode}
+      />
     </SheetModal>
   );
 }
@@ -791,8 +849,7 @@ const editorStyles = StyleSheet.create({
 // Its "sets" are exercises: completedSets = exercises finished
 
 export function RoutinePlayerModal({ visible, routine: routineProp, plannedId, onClose, onFinish, darkMode }) {
-  // The page clears the routine as it closes the modal. Keep showing the last
-  // one while the close animation plays, instead of flashing "no exercises"
+  // Keep showing the last routine while the close animation plays
   const lastRoutineRef = useRef(routineProp);
   if (routineProp) lastRoutineRef.current = routineProp;
   const routine = routineProp || lastRoutineRef.current;

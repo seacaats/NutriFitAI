@@ -11,29 +11,9 @@ import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 /**
- * Full workout history — web.
- *
- * Four deliberate differences from the native screen:
- *
- *  1. A plain mapped list rather than FlatList. The page already scrolls inside
- *     DashboardLayout, and nesting a virtualised list inside a scrolling
- *     container on web gives you two scrollbars and an onEndReached that fires
- *     against the wrong element.
- *
- *  2. An explicit "Load more" button rather than infinite scroll. Infinite
- *     scroll is a touch pattern; with a mouse it makes the page footer
- *     unreachable and gives no sense of how much is left. A button is
- *     predictable and keyboard-reachable.
- *
- *  3. The page-header treatment the other web screens use (eyebrow, large
- *     title, subtitle) rather than a back chevron, since the sidebar already
- *     handles navigation here.
- *
- *  4. A day's sessions wrap into a row of cards instead of a single fixed-width
- *     column. A day with one exercise stretches that card across the full
- *     width (flexGrow on a lone child fills the row); a day with several wraps
- *     them two (or more) per line as the window allows, instead of leaving the
- *     right half of a wide screen blank under a 720px column.
+ * Web workout history screen.
+ * Uses a mapped list inside DashboardLayout's scroll container instead of a nested
+ * FlatList, and renders each day's sessions in a responsive multi-column TileGrid.
  */
 export default function WorkoutHistoryScreen() {
   const { shell: c, darkMode } = useTheme();
@@ -54,7 +34,7 @@ export default function WorkoutHistoryScreen() {
             <Text style={[styles.pageTitle, textColor]}>Workout history</Text>
             <Text style={styles.pageSubtitle}>
               {total > 0
-                ? `${total} session${total === 1 ? "" : "s"} in the last 30 days`
+                ? `${total} session{total === 1 ? "" : "s"} in the last 30 days`
                 : "Everything you have finished in the last 30 days"}
             </Text>
           </View>
@@ -93,11 +73,6 @@ export default function WorkoutHistoryScreen() {
           ))}
         </View>
       ) : sessions.length === 0 ? (
-        /*
-          Empty state, not an error. A user with no history has not done
-          anything wrong, so the copy points at the next action rather than
-          reporting an absence.
-        */
         <View style={styles.empty}>
           <Ionicons name="barbell-outline" size={34} color={screenTones.light.mutedAlt} />
           <Text style={[styles.emptyTitle, textColor]}>No workouts yet</Text>
@@ -133,7 +108,6 @@ export default function WorkoutHistoryScreen() {
                   </Pressable>
                 </Pressable>
 
-                {/* Same image cards as the Recent tab */}
                 {isOpen && (
                   <TileGrid>
                     {group.sessions.map((session) => (
@@ -177,8 +151,7 @@ const styles = StyleSheet.create({
 
   centered: { alignItems: "center", justifyContent: "center", paddingVertical: 60 },
 
-  // No max-width cap: a day with more than one exercise wraps cards to use the
-  // full page width instead of leaving the right side of a wide screen empty.
+  // Full width so multi-session days can wrap cards across the available row
   list: { width: "100%" },
   group: { marginBottom: 10 },
 
@@ -198,8 +171,7 @@ const styles = StyleSheet.create({
   },
   dayCount: { fontSize: 10, color: screenTones.light.mutedAlt, marginLeft: "auto" },
 
-  // Cards wrap: one session stretches the full row (flexGrow with no sibling
-  // to share with); two or more share it, each growing to fill its line.
+  // Cards wrap across the row and grow to fill each line
   dayRow: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
   cardSlot: { flexGrow: 1, flexBasis: 380, minWidth: 320 },
 

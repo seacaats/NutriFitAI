@@ -6,42 +6,20 @@ import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 /**
- * The table used by every admin screen.
+ * Shared responsive table used across admin screens (web and mobile).
  *
- * ONE FILE, NOT A .web.jsx / .jsx PAIR
- * ------------------------------------
- * This project splits a screen by platform when the two DESIGNS diverge
- * (profile, dashboard, steps) -- and screenStyles.js exists precisely because
- * keeping the byte-identical half of those pairs in sync by hand was painful.
- *
- * A table has no such divergence: there is no platform-specific data source
- * behind it (no HealthKit, no browser-only chart library), it is built from
- * plain React Native primitives that render identically on web, and the one
- * real difference between a 1440px monitor and a phone is how many columns
- * fit -- which is a width question, not a platform question, and is answered
- * by `priority` below. Splitting it would create exactly the duplicated pair
- * screenStyles was written to undo.
- *
- * COLUMN CONTRACT
+ * Column contract:
  *   { key, title, flex?, width?, priority?, align?, render?(row) }
  *
- *   priority  1 = always shown. 2 = hidden below 1100px. 3 = hidden below
- *             820px. Columns are DROPPED rather than squeezed or
- *             horizontally scrolled: a 60px-wide email column is worse than
- *             no email column, and a phone-width table that scrolls sideways
- *             hides the fact that there is more to see.
- *   render    returns a node; without it the raw value is rendered as text.
- *
- * Anything dropped at narrow widths must also be reachable another way --
- * each caller passes `renderExpanded` for that, shown in the row's expanded
- * drawer, so a column is never the ONLY route to a value.
+ *   priority  1 = always shown; 2 = hidden below 1100px; 3 = hidden below 820px.
+ *             Lower-priority columns are dropped at narrower widths rather than
+ *             horizontally scrolled, and remain accessible via `renderExpanded`.
+ *   render    returns a custom cell node; defaults to rendering row[column.key] as text.
  */
 
 const BREAKPOINT_PRIORITY_2 = 1100;
 const BREAKPOINT_PRIORITY_3 = 820;
-// Below this a row of fixed-width columns leaves the flexible one a sliver
-// (the message column was ~50px at phone width), so rows stack instead:
-// one line per column, its title on the left
+// Below this width, rows stack vertically with each column's label beside its value
 const BREAKPOINT_STACK = 640;
 
 function useVisibleColumns(columns) {
@@ -55,10 +33,8 @@ function useVisibleColumns(columns) {
 }
 
 /**
- * Empty and error are ONE component with two modes rather than
- * two call sites' worth of conditional JSX, because a table in any of those
- * states must keep its header row and its outer card -- otherwise the layout
- * jumps every time a filter changes, which reads as a broken page
+ * Shared empty and error state view rendered inside the table card so the
+ * header row and outer border remain stable when filters change.
  */
 function TableState({ tone, icon, title, body, action }) {
   return (
@@ -73,9 +49,7 @@ function TableState({ tone, icon, title, body, action }) {
   );
 }
 
-// Placeholder rows shown while a page loads
-// Placeholder rows: enough to fill the window, from about how tall a row
-// is (a stacked row holds several lines)
+// Estimate enough skeleton rows to fill the viewport height based on row layout
 const ROW_HEIGHT = 46;
 const STACK_ROW_HEIGHT = 110;
 const skeletonRows = (height, stacked) => Math.max(6, Math.ceil(height / (stacked ? STACK_ROW_HEIGHT : ROW_HEIGHT)));
@@ -107,10 +81,8 @@ export default function DataTable({
 
   return (
     <View style={[styles.card, { backgroundColor: tone.card, borderColor: tone.border }]}>
-      {/* The reason goes in the screen alert, under the page title */}
       <ScreenError message={error} />
-      {/* The header stays mounted in every state. Stacked rows carry their
-          own titles, so it goes there */}
+      {/* Keep header mounted in table mode; stacked rows render column labels inline */}
       {!stacked && (
         <View style={[styles.headerRow, { borderBottomColor: tone.border, backgroundColor: tone.soft }]}>
           {visible.map((column) => (
@@ -127,7 +99,7 @@ export default function DataTable({
       )}
 
       {loading ? (
-        // Placeholder rows in the table's own shape, so nothing jumps when it fills in
+        // Render placeholder rows matching the active table/stacked layout
         Array.from({ length: skeletonRows(height, stacked) }, (_, index) => (
           <View
             key={index}
@@ -222,9 +194,6 @@ export default function DataTable({
               {expandable ? (
                 <Pressable
                   onPress={() => onToggleRow && onToggleRow(expanded ? null : id)}
-                  // accessibilityRole/State so the drawer is operable and
-                  // announced by a screen reader -- a chevron that only means
-                  // something visually is not an affordance
                   accessibilityRole="button"
                   accessibilityState={{ expanded }}
                   accessibilityLabel={expanded ? "Collapse details" : "Expand details"}

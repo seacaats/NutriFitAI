@@ -16,23 +16,6 @@ const {
 // Audit log
 // ===========================================================================
 
-/**
- * GET /api/admin/audit-logs
- *
- * The query matches only registered actions. Filtering in the query rather
- * than after it is what keeps `total` and the page size honest --
- * post-filtering returns short pages and a count that includes rows the
- * viewer never saw. Each row carries its sentence, before/after values, IP
- * and user agent (formatAuditEntry).
- *
- * Note that the response carries no data today by design -- nothing writes
- * most of these actions yet. The endpoint returning a well-formed empty page
- * is the point: the table, its filters and its pagination are all exercised
- * against the real contract before the first producer lands.
- */
-// The filters a view or an export ran with, stored on its audit row.
-// subjectMode says which side of the user was looked at (actor, target,
-// self); it only applies with a subjectId. null = not filtered on that
 function auditFilters(query) {
   return {
     category: query.category ?? null,
@@ -46,9 +29,7 @@ function auditFilters(query) {
   };
 }
 
-// The "Held" filter: held copies, newest hold first, narrowed by the same
-// allow-list as the live log. heldCopies marks the ones whose original row
-// TTL has already removed
+// Paginate held audit entries, flagging entries whose original row has expired via TTL
 async function listHeld(actions, query) {
   const allowed = new Set(actions);
   const holds = (await AuditHold.listAll()).filter((h) => allowed.has(h.row.action));
@@ -68,8 +49,6 @@ async function listHeld(actions, query) {
   };
 }
 
-// Formats a page and adds what the drawer needs beyond the row itself:
-// whether it's held, whether it's a copy that outlived its row, its note count
 async function annotate(rows, heldCopies = new Set()) {
   const ids = rows.map((r) => String(r._id));
   const [held, notes] = await Promise.all([AuditHold.heldMap(ids), AuditNote.countsFor(ids)]);
@@ -78,7 +57,6 @@ async function annotate(rows, heldCopies = new Set()) {
     return {
       ...formatAuditEntry(entry),
       held: held.has(id),
-      // Why and by whom, so the drawer can show the reason it was held
       hold: held.has(id)
         ? { reason: held.get(id).reason, by: held.get(id).heldByLabel, at: held.get(id).createdAt }
         : null,
@@ -88,8 +66,7 @@ async function annotate(rows, heldCopies = new Set()) {
   });
 }
 
-// The row a note or hold is about: live, or its held copy once TTL took
-// the original. A row whose action is no longer registered is treated as missing
+// Load a live audit row or its held copy
 async function loadAuditRow(req) {
   const row = (await AuditLog.getById(req.params.id)) || (await AuditHold.getByAuditLogId(req.params.id))?.row;
   if (!row || !AUDIT_ACTIONS[row.action]) throw ApiError.notFound('Audit entry not found');
@@ -155,8 +132,7 @@ const holdAuditLog = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Entry held', data: { id: req.params.id, held: true } });
 });
 
-// DELETE /api/admin/audit-logs/:id/hold -- if TTL already
-// removed the original, releasing deletes the last copy for good
+// DELETE /api/admin/audit-logs/:id/hold
 const releaseAuditHold = asyncHandler(async (req, res) => {
   const released = await AuditHold.release(req.params.id);
   if (!released) throw ApiError.notFound("That entry isn't on hold.");
@@ -171,12 +147,7 @@ const releaseAuditHold = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Hold released', data: { id: req.params.id, held: false } });
 });
 
-// One "audit log viewed" row per admin per 5 minutes, the same in-memory cooldown
-// as the registration notice (authController). Browsing (switching tabs, categories,
-// dates, held, noted) shares that one cooldown, so clicking around isn't a row per
-// click; the row keeps the filters of the first view. Looking up one person
-// (subjectId) has its own cooldown per person and side: who looked someone up is
-// the read worth keeping. Resets on restart, which only means one extra row
+// Rate-limit audit-log view events per admin (separate cooldowns for general browsing vs. subject lookup)
 const AUDIT_VIEW_COOLDOWN_MS = 5 * 60 * 1000;
 const lastAuditViewAt = new Map();
 
@@ -191,10 +162,10 @@ function auditViewDue(userId, query) {
   return true;
 }
 
+// GET /api/admin/audit-logs
 const listAuditLogs = asyncHandler(async (req, res) => {
   const query = req.validatedQuery || {};
 
-  // The allow-list. Everything downstream narrows this; nothing widens it.
   let actions = Object.keys(AUDIT_ACTIONS);
 
   if (query.category) {
@@ -202,9 +173,6 @@ const listAuditLogs = asyncHandler(async (req, res) => {
   }
 
   if (query.action) {
-    // Intersected with the allow-list rather than used directly. An unknown
-    // action leaves `actions` empty, and an empty $in matches no documents --
-    // which is the correct, quiet answer.
     actions = actions.filter((action) => action === query.action);
   }
 
@@ -212,7 +180,6 @@ const listAuditLogs = asyncHandler(async (req, res) => {
     ? await listHeld(actions, query)
     : await AuditLog.list({
       actions,
-      // "Noted": only the rows that have a note
       ids: query.noted === 'true' ? await AuditNote.notedIds() : undefined,
       subjectId: query.subjectId,
       subjectMode: query.subjectMode,
@@ -222,8 +189,6 @@ const listAuditLogs = asyncHandler(async (req, res) => {
       limit: query.limit,
     });
 
-  // Page 1 only, and once per admin per AUDIT_VIEW_COOLDOWN_MS (auditViewDue),
-  // so reloading or switching tabs is one row, not twenty
   if (result.page === 1 && auditViewDue(req.userId, query)) {
     await logAction(req, {
       action: 'admin.audit_log.viewed',
@@ -248,23 +213,13 @@ const listAuditLogs = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * GET /api/admin/audit-logs/meta
- *
- * The filter menu's options, derived from the registry rather than from the
- * data. Deriving them from distinct values in the collection would mean an
- * empty collection renders an empty filter menu -- exactly the state the table
- * is in right now, and exactly when being able to see the catalogue is most
- * useful. It also lets the client render the severity legend and the action
- * labels without shipping a second copy of the registry.
- */
-// GET /api/admin/audit-logs/export -- CSV. Same filters as the table
+// GET /api/admin/audit-logs/export
 const CSV_COLUMNS = [
   'createdAt', 'action', 'label', 'category', 'severity', 'message', 'details', 'actor', 'actorId',
   'actorRole', 'target', 'targetId', 'targetType', 'ipAddress', 'userAgent',
 ];
 
-// Quotes every cell, and defuses spreadsheet formulas (=, +, -, @)
+// Quote CSV cell and neutralize spreadsheet formula prefixes (=, +, -, @)
 function csvCell(value) {
   if (value === null || value === undefined) return '""';
   let text = value instanceof Date ? value.toISOString() : String(value);
@@ -293,8 +248,6 @@ const exportAuditLogs = asyncHandler(async (req, res) => {
 
   const lines = [CSV_COLUMNS.join(',')];
   for (const row of formatted) {
-    // The drawer's fields as "Label: value; ...". Instants stay ISO, a
-    // spreadsheet reads those directly
     const cells = { ...row, details: row.fields.map((f) => `${f.label}: ${f.value}`).join('; ') };
     lines.push(CSV_COLUMNS.map((c) => csvCell(cells[c])).join(','));
   }
@@ -305,6 +258,7 @@ const exportAuditLogs = asyncHandler(async (req, res) => {
   return res.send(lines.join('\n'));
 });
 
+// GET /api/admin/audit-logs/meta
 const getAuditMeta = asyncHandler(async (req, res) => {
   const actions = Object.keys(AUDIT_ACTIONS).map((action) => {
     const def = AUDIT_ACTIONS[action];
@@ -320,8 +274,6 @@ const getAuditMeta = asyncHandler(async (req, res) => {
   return sendSuccess(res, {
     data: {
       severities: SEVERITIES,
-      // Only categories that have at least one action, so the filter menu
-      // is never offered one that can only ever return nothing.
       categories: CATEGORIES.filter((category) =>
         actions.some((entry) => entry.category === category),
       ),

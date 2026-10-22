@@ -10,29 +10,21 @@ const { INVALID_LOGIN_MESSAGE, accountHold } = require('../../services/auth/auth
 const { mfaMethodOf, needsAuthenticatorSetup } = require('../../services/auth/mfa');
 const { issueAndSendOtp, emailFailed } = require('../../services/auth/otpChallenge');
 
-// bcrypt hash of a throwaway value, compared against when the email is unknown
-// so a miss costs the same ~bcrypt time as a hit. Computed once, lazily
+// Lazy dummy hash for constant-time password verification when the email is unknown
 let dummyHashPromise = null;
 function dummyHash() {
   if (!dummyHashPromise) dummyHashPromise = hashPassword(crypto.randomUUID());
   return dummyHashPromise;
 }
 
-// api/auth/login
+// POST /api/auth/login
 const login = asyncHandler(async (req, res) => {
   const { email, password, rememberMe } = req.body;
 
   const user = await User.findByEmail(email);
-
-  // Always runs bcrypt (against a dummy hash for unknown emails) so response
-  // time doesn't reveal whether the account exists
   const passwordOk = await verifyPassword(password, user?.passwordHash || (await dummyHash()));
 
-  // Unknown email, unverified account and wrong password all look the same.
-  // An unverified user recovers by registering again, which resends a code
   if (!user || !passwordOk || !user.emailVerifiedAt) {
-    // No actor: the request isn't authenticated. The account, when there is
-    // one, is the target. The email itself is only ever stored hashed
     let reason = 'unverified';
     if (!user) reason = 'unknown_email';
     else if (!passwordOk) reason = 'wrong_password';
@@ -57,15 +49,11 @@ const login = asyncHandler(async (req, res) => {
     throw hold.error;
   }
 
-  // Two-factor on: no session yet, only a challenge for the second step
   if (user.mfa && user.mfa.enabled) return startMfaChallenge(res, user, rememberMe, 'password');
 
   return finishLogin(req, res, user, rememberMe, 'password');
 });
 
-// Shared with the Google and two-factor controllers, which finish the same sign-in
-// Audit entry for a sign-in refused because of an admin hold. The caller
-// throws hold.error afterwards
 function logHeldLogin(req, user, hold) {
   return logAction(
     req,
@@ -74,10 +62,8 @@ function logHeldLogin(req, user, hold) {
   );
 }
 
-// Tokens, cookie and audit entry for a completed sign-in. `extra` rides along in
-// the response data (the recovery codes, on an admin's first sign-in)
+// Open session, set refresh cookie, and return access token + user payload
 async function finishLogin(req, res, user, rememberMe, method, extra = {}) {
-  // One row per device, so an admin can see it and end it
   const session = await Session.open(user.id, {
     ip: req.ip,
     userAgent: req.get('user-agent'),
@@ -103,16 +89,12 @@ async function finishLogin(req, res, user, rememberMe, method, extra = {}) {
   });
 }
 
-// The second step for a sign-in whose first step went through. No session yet: a
-// challenge token, plus the emailed code for regular users. `via` ('password' or
-// 'google') rides in the token and ends up in the audit entry of the finished sign-in
+// Issue second-factor challenge token (and email OTP for regular users)
 async function startMfaChallenge(res, user, rememberMe, via) {
   const method = mfaMethodOf(user);
   if (method === 'email') {
     if (!(await issueAndSendOtp(user.id, user.email, 'login_mfa'))) throw emailFailed();
   }
-  // An admin who hasn't set up the authenticator yet gets the setup instead of a
-  // code prompt (first sign-in), on the same screen and with the same token
   const setupRequired = needsAuthenticatorSetup(user);
   return sendSuccess(res, {
     message: setupRequired

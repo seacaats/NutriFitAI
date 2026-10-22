@@ -3,9 +3,7 @@ const { CALENDAR_DAY } = require('../shared');
 
 const { Schema } = mongoose;
 
-// One row per calendar day with the platform's totals, counted in the rollup
-// time zone (env.analytics.rollupTimeZone). Written by services/analytics/dailyRollup.js,
-// read by admin Analytics so past days aren't counted again on every request
+// Daily platform totals in env.analytics.rollupTimeZone, written by dailyRollup.js
 const dailyRollupSchema = new Schema(
   {
     day: { ...CALENDAR_DAY, required: true },
@@ -16,7 +14,7 @@ const dailyRollupSchema = new Schema(
     workouts: { type: Number, default: 0 },
     waterLogs: { type: Number, default: 0 },
     coachMessages: { type: Number, default: 0 },
-    // Audit events by severity (the chain). Rows from before this was added have none
+    // Audit events by severity (chain). Absent on older rows
     audit: {
       info: { type: Number, default: 0 },
       notice: { type: Number, default: 0 },

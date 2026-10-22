@@ -1,39 +1,32 @@
-// Fixed response copy, response timing and the account-hold check shared by
-// the auth controllers. Messages are deliberately identical across several
-// failure causes (see the comments).
+// Shared auth response copy, timing normalization, and account-hold checks.
+// Messages are kept uniform across failure causes to prevent account enumeration.
 
 const { ApiError } = require('../../utils/httpResponse');
 
-// One message for every OTP failure (no active code, expired, wrong, too many
-// attempts, unknown or already-verified email). Distinct messages would tell a
-// caller which emails have pending challenges, i.e. which accounts exist
 const INVALID_CODE_MESSAGE = 'Invalid or expired code. Check your latest email or request a new code.';
-
-// Same reasoning for sign-in: unknown email, unverified account and wrong
-// password are indistinguishable from outside
 const INVALID_LOGIN_MESSAGE = 'Invalid email or password';
-
-// Identical body for every /register outcome (new, pending, already verified)
 const REGISTER_ACCEPTED_MESSAGE = 'Registration received. Check your email for a verification code.';
-
-// Shown only when the mail provider rejected the send, so the code never left.
 const EMAIL_FAILED_MESSAGE = "We couldn't send the email right now. Please try again in a moment.";
 
-// Register, resend and forgot-password all answer after at least this long,
-// so a fast path (unknown or verified email) can't be told apart by timing
+// Minimum response floor for register, resend, and forgot-password to prevent timing leaks
 const MIN_RESPONSE_MS = 3000;
 
-// Waits out whatever is left of MIN_RESPONSE_MS since `startedAt`
 function padResponse(startedAt) {
   const remaining = MIN_RESPONSE_MS - (Date.now() - startedAt);
   return remaining > 0 ? new Promise((resolve) => setTimeout(resolve, remaining)) : null;
 }
 
-// Admin holds on an account, checked only after the credentials are proven,
-// so neither one reveals that an email exists. null when sign-in may proceed
+// Evaluates admin holds after credentials are verified
 function accountHold(user) {
   if (user.suspendedAt) {
-    return { reason: 'suspended', error: ApiError.forbidden('This account has been suspended. Contact support.', { code: 'ACCOUNT_SUSPENDED' }) };
+    const parts = ['This account has been suspended.'];
+    if (user.deletionScheduledFor) {
+      const date = new Date(user.deletionScheduledFor).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+      parts.push(`It is scheduled to be deleted on ${date}.`);
+    }
+    if (user.suspendedUserMessage) parts.push(`Message from the administrator: "${user.suspendedUserMessage}"`);
+    parts.push('Contact support.');
+    return { reason: 'suspended', error: ApiError.forbidden(parts.join(' '), { code: 'ACCOUNT_SUSPENDED' }) };
   }
   if (user.passwordResetRequiredAt) {
     return {

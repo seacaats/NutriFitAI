@@ -19,7 +19,6 @@ export default function FoodScannerScreen() {
   const { meals, scanner, cameraOpen, setCameraOpen, takePhoto, pickImage, newScan, openRecent, first, scanning, imageUri } = useFoodScanner();
 
   const { card, textColor, mutedText } = getScreenPalette(darkMode);
-  // Side by side, both cards of a row fill its height so their edges line up
   const fill = narrow ? null : styles.fill;
 
   return (
@@ -29,7 +28,7 @@ export default function FoodScannerScreen() {
         <Text style={[styles.pageSubtitle, mutedText]}>Scan your food and get personalized nutrition insights.</Text>
       </View>
 
-      {/* Recent first: Recent Meals | Recent Scans */}
+      {/* Recent Meals | Recent Scans */}
       <View style={[styles.row, narrow && styles.stackRow]}>
         <View style={[styles.flex1, narrow && styles.stackItem]}>
           <RecentMealsCard meals={meals} darkMode={darkMode} onViewAll={() => router.push("/food-scanner/meal-history")} style={fill} loading={first} />
@@ -47,10 +46,9 @@ export default function FoodScannerScreen() {
         </View>
       </View>
 
-      {/* The day's targets, under what's been eaten against them */}
       <NutritionGoalsCard meals={meals} darkMode={darkMode} loading={first} style={styles.goalsCard} />
 
-      {/* Then Scan Food | Detected Food */}
+      {/* Scan Food | Detected Food */}
       <View style={[styles.row, styles.rowGap, narrow && styles.stackRow]}>
         {/* Scan Area */}
         <View style={[styles.card, styles.scanCard, card, styles.flex1, narrow && styles.stackItem]}>
@@ -58,7 +56,6 @@ export default function FoodScannerScreen() {
           <Text style={[styles.subheading, mutedText]}>Use your camera or upload an image of your food.</Text>
 
           {first ? (
-            // Scan area and its two buttons, at their real sizes
             <>
               <Skeleton width="100%" height={285} style={styles.cameraWrap} />
               <View style={styles.actions}>
@@ -105,7 +102,7 @@ export default function FoodScannerScreen() {
 
           <ScreenError message={scanner.scan ? "" : scanner.error} onDismiss={scanner.clearError} />
 
-          {/* Staged: nothing has been sent yet, so the photo can still be swapped */}
+          {/* Staged photo controls before analysis */}
           {!cameraOpen && scanner.staged && (
             <>
               <Pressable onPress={scanner.analyze} style={[styles.cameraBtn, styles.analyzeBtn, scanning && styles.disabled]}>
@@ -119,14 +116,14 @@ export default function FoodScannerScreen() {
             </>
           )}
 
-          {/* Saved scan on screen: start over */}
+          {/* Start a new scan when viewing a saved scan */}
           {!cameraOpen && !scanner.staged && scanner.scan && (
             <View style={styles.actions}>
               <SecondaryButton icon="add-circle-outline" label="New Scan" onPress={newScan} card={card} darkMode={darkMode} />
             </View>
           )}
 
-          {/* Nothing yet: choose a source */}
+          {/* Initial source selection */}
           {!cameraOpen && !imageUri && (
             <View style={styles.actions}>
               <Pressable onPress={() => setCameraOpen(true)} style={[styles.cameraBtn, styles.flex1]}>
@@ -140,8 +137,6 @@ export default function FoodScannerScreen() {
           )}
         </View>
 
-        {/* Always on the page, filled in once a scan is analyzed. "Ask AI
-            Coach" there opens the coach about this scan or the logged meal */}
         <View style={[styles.flex1, narrow && styles.stackItem]}>
           <ScanResultCard scanner={scanner} darkMode={darkMode} onScanAnother={newScan} style={fill} loading={first} />
         </View>
@@ -177,7 +172,6 @@ const styles = StyleSheet.create({
 
   row: { flexDirection: "row", gap: 16 },
   fill: { flex: 1 },
-  // Same floor as the Detected Food card next to it
   scanCard: { minHeight: RESULT_CARD_MIN_HEIGHT },
   rowGap: { marginTop: 16 },
   goalsCard: { marginTop: 16 },
@@ -186,7 +180,6 @@ const styles = StyleSheet.create({
 
   subheading: { fontSize: 14, marginTop: 4 },
 
-  // Scan area
   scanArea: {
     marginTop: 20,
     minHeight: 285,
@@ -227,7 +220,6 @@ const styles = StyleSheet.create({
   alert: { marginTop: 12 },
 
   actions: { flexDirection: "row", gap: 8, marginTop: 12 },
-  // uploadBtn carries its own marginTop for when it stands alone
   actionUpload: { marginTop: 0 },
   cameraBtn: {
     flexDirection: "row",
@@ -241,7 +233,6 @@ const styles = StyleSheet.create({
   analyzeBtn: { marginTop: 16 },
   cameraBtnText: { fontSize: 15, fontWeight: "700", color: colors.white },
 
-  // Stacked (narrow) children size to their content. With flex: n they get a
-  // zero basis in a column, collapse, and the next card draws over them
+  // Prevent flex children from collapsing to zero height when stacked vertically.
   stackItem: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
 });

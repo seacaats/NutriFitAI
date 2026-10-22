@@ -4,19 +4,11 @@ const { sendPush } = require('./pushSender');
 const { sendNoticeEmail } = require('../mailer');
 const { today } = require('../../utils/calendarDay');
 
-// Every notification the app sends, by type. Push text shows on the lock
-// screen, so it never carries health values or names: "Time for some water",
-// not "You're 800 ml short".
-//
-//   category  reminders / achievements follow the user's switches; coach
-//             only the master switch; account always goes out. Everything
-//             but account is for role "user" only: admins have no logs,
-//             goals or coach (it's their warning about changes
-//             they may not have made)
-//   inbox     shown under the bell. false = recorded only for the daily
-//             limit and dedupe
-//   push      sent to the user's devices
-//   email     account notices only: { subject, title, intro, note? }
+// Notification definitions by type. Push copy omits personal health metrics for lock-screen privacy.
+//   category: 'reminders' | 'achievements' | 'coach' | 'account'
+//   inbox:    whether to show in the in-app notification bell
+//   push:     whether to send device push notifications
+//   email:    account notice email template ({ subject, title, intro, note? })
 const NOTIFICATION_TYPES = {
   // ---- reminders (reminders.js) ----
   workout_reminder: {
@@ -24,8 +16,6 @@ const NOTIFICATION_TYPES = {
     inbox: true,
     push: true,
     title: 'Workout coming up',
-    // "soon", not a number: a session planned at short notice is reminded
-    // with less than 30 minutes to go (reminders.js)
     body: 'Your planned workout starts soon.',
     link: '/workouts?tab=upcoming',
   },
@@ -73,7 +63,6 @@ const NOTIFICATION_TYPES = {
   },
 
   // ---- streaks (reminders.js) ----
-  // A day counts when anything was logged: a meal, steps or a workout
   streak_3: {
     category: 'achievements',
     inbox: true,
@@ -100,8 +89,6 @@ const NOTIFICATION_TYPES = {
   },
 
   // ---- coach (coachController) ----
-  // Only when the user likely left before the reply arrived. Never the
-  // reply text: it can carry health details
   coach_reply: {
     category: 'coach',
     inbox: true,
@@ -186,12 +173,11 @@ const NOTIFICATION_TYPES = {
   },
   account_suspended: {
     category: 'account',
-    // No inbox: a suspended user can't sign in to read it
     inbox: false,
     email: {
       subject: 'Your NutriFitAI account has been suspended',
       title: 'Your account has been suspended',
-      intro: "Your NutriFitAI account has been suspended by an administrator. You won't be able to sign in until it's reinstated.",
+      intro: "Your NutriFitAI account has been suspended by an administrator. You won't be able to sign in until it's reinstated.{message}",
       note: 'If you think this is a mistake, contact support.',
     },
   },
@@ -220,7 +206,6 @@ const NOTIFICATION_TYPES = {
   },
   account_deleted: {
     category: 'account',
-    // Email only: the account and its inbox are gone
     inbox: false,
     email: {
       subject: 'Your NutriFitAI account was deleted',
@@ -229,7 +214,6 @@ const NOTIFICATION_TYPES = {
       note: "If you didn't expect this, contact support.",
     },
   },
-  // An admin added the account. Email only, there is no inbox to read yet
   account_invited: {
     category: 'account',
     inbox: false,
@@ -240,14 +224,13 @@ const NOTIFICATION_TYPES = {
       note: "If you weren't expecting this, you can ignore it. The account stays locked until someone sets a password.",
     },
   },
-  // Email only: the account is suspended while it waits. 14 = DELETION_GRACE_DAYS
   account_deletion_scheduled: {
     category: 'account',
     inbox: false,
     email: {
       subject: 'Your NutriFitAI account is scheduled for deletion',
       title: 'Your account is scheduled for deletion',
-      intro: 'An administrator scheduled your NutriFitAI account for deletion. It is suspended now and will be permanently deleted in 14 days.',
+      intro: 'An administrator scheduled your NutriFitAI account for deletion. It is suspended now and will be permanently deleted in 14 days.{message}',
       note: 'If you think this is a mistake, contact support before then.',
     },
   },
@@ -286,7 +269,6 @@ const NOTIFICATION_TYPES = {
       intro: 'An administrator signed your NutriFitAI account out of all devices. Sign in again to continue.',
     },
   },
-  // The codes themselves go in a separate email to this address (usersController)
   mfa_recovery_regenerated_by_admin: {
     category: 'account',
     inbox: true,
@@ -294,7 +276,6 @@ const NOTIFICATION_TYPES = {
     body: 'An administrator generated new recovery codes for you. They were sent to your email.',
     link: '/settings',
   },
-  // Inbox and email: their sessions are ended, so the email is the one they'll see first
   mfa_reset_by_admin: {
     category: 'account',
     inbox: true,
@@ -306,6 +287,26 @@ const NOTIFICATION_TYPES = {
       title: 'Your authenticator app was reset',
       intro: 'An administrator reset the authenticator app on your NutriFitAI account and signed you out. At your next sign-in you will set up a new one and get new recovery codes.',
       note: "If you didn't expect this, contact support right away.",
+    },
+  },
+  photo_removed_by_check: {
+    category: 'account',
+    inbox: true,
+    title: 'Your {photo} was removed',
+    body: "Your {photo} didn't meet our guidelines, so it was removed.{kept} Repeated violations can lead to your account being suspended.",
+    link: '{link}',
+  },
+  photo_removed_by_admin: {
+    category: 'account',
+    inbox: true,
+    title: 'Your {photo} was removed',
+    body: "An administrator removed your {photo} because it didn't meet our guidelines.{kept} Repeated violations can lead to your account being suspended.",
+    link: '{link}',
+    email: {
+      subject: 'Your {photo} was removed from your NutriFitAI account',
+      title: 'Your {photo} was removed',
+      intro: "An administrator removed your {photo} because it didn't meet our guidelines.{kept}",
+      note: 'You can upload a different one at any time. Repeated violations can lead to your account being suspended.',
     },
   },
   password_reset_cancelled: {
@@ -330,12 +331,10 @@ const NOTIFICATION_TYPES = {
   },
 };
 
-// Reminder pushes per user per day, across the automatic reminder types.
-// Workout reminders don't count: the user scheduled those themselves
 const DAILY_REMINDER_LIMIT = 4;
 const UNLIMITED_REMINDERS = ['workout_reminder'];
 
-// "HH:MM" in the user's zone, 24-hour
+// 24-hour "HH:MM" in the given timezone
 function localTime(timeZone, at = new Date()) {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: timeZone || 'UTC',
@@ -347,7 +346,7 @@ function localTime(timeZone, at = new Date()) {
   return `${get('hour')}:${get('minute')}`;
 }
 
-// True inside quiet hours. A window can cross midnight (22:00 to 07:00)
+// Supports quiet-hour windows that cross midnight (e.g., 22:00 to 07:00)
 function inQuietHours(prefs, timeZone, at = new Date()) {
   if (!prefs?.quietStart || !prefs?.quietEnd) return false;
   const now = localTime(timeZone, at);
@@ -356,58 +355,51 @@ function inQuietHours(prefs, timeZone, at = new Date()) {
 }
 
 /**
- * Sends one notification. The only way anything in the app notifies a user.
+ * Dispatches a notification (inbox, push, and/or email) according to user preferences.
+ * Never throws so notification failures cannot abort the triggering action.
  *
- * Never throws and is safe to call without awaiting, same contract as
- * logAction: a failed notification must not fail the action it's about.
- *
- * @param {string|null} userId  null only for account_deleted (pass options.email)
- * @param {string} type         a key of NOTIFICATION_TYPES
- * @param {{ user?: object, email?: string, dedupeKey?: string }} [options]
- *   user       the user document, when the caller already has it (the scheduler)
- *   email      where to send the email when there is no user any more
- *   dedupeKey  "water:2026-10-04:midday". The same key never sends twice
+ * @param {string|null} userId
+ * @param {string} type
+ * @param {{ user?: object, email?: string, dedupeKey?: string, vars?: object }} [options]
  */
 async function notify(userId, type, options = {}) {
   try {
     const def = NOTIFICATION_TYPES[type];
     if (!def) throw new Error(`Unknown notification type "${type}"`);
 
+    const fill = (text) => (options.vars && typeof text === 'string' ? text.replace(/\{(\w+)\}/g, (_, k) => options.vars[k] ?? '') : text);
+    const title = fill(def.title);
+    const body = fill(def.body);
+    const link = fill(def.link) || null;
+    const email = def.email && options.vars ? Object.fromEntries(Object.entries(def.email).map(([k, v]) => [k, fill(v)])) : def.email;
+
     const user = options.user || (userId ? await User.getById(userId) : null);
     const profile = user?.profile || {};
     const timeZone = profile.timezone || 'UTC';
 
-    // Quiet hours hold back the push only. The inbox row is still written,
-    // so an achievement at 11 PM is waiting under the bell in the morning
+    // Quiet hours suppress push delivery while still recording inbox rows
     let quiet = false;
 
-    // Account notices skip every check below
     if (def.category !== 'account') {
       if (!user || user.suspendedAt) return;
-      // Covers callers that don't filter by role, like workout reminders
-      // for a user since promoted
       if (user.role !== 'user') return;
       if (profile.notificationsEnabled === false) return;
       if (profile.notificationPrefs?.[def.category] === false) return;
-      // Every user-facing type keeps an inbox row, so quiet hours only hold
-      // back the push; a type without one would be dropped, not queued
       quiet = inQuietHours(profile.notificationPrefs, timeZone);
       if (quiet && !def.inbox) return;
       if (def.category === 'reminders' && !UNLIMITED_REMINDERS.includes(type)
         && await Notification.countToday(user.id, 'reminders', today(timeZone), UNLIMITED_REMINDERS) >= DAILY_REMINDER_LIMIT) return;
     }
 
-    // The row comes first: it's the dedupe. null = this key was already sent
-    // Its id rides along in the push so a tap can mark it read
     let rowId = null;
     if (user && (def.inbox || def.push)) {
       const row = await Notification.record({
         userId: user.id,
         type,
         category: def.category,
-        title: def.title,
-        body: def.body,
-        link: def.link || null,
+        title,
+        body,
+        link,
         inInbox: def.inbox,
         day: today(timeZone),
         dedupeKey: options.dedupeKey || null,
@@ -417,11 +409,11 @@ async function notify(userId, type, options = {}) {
     }
 
     if (def.push && user && !quiet) {
-      await sendPush({ userId: user.id, kind: type, title: def.title, body: def.body, link: def.link || null, id: rowId });
+      await sendPush({ userId: user.id, kind: type, title, body, link, id: rowId });
     }
 
     const to = options.email || user?.email;
-    if (def.email && to) await sendNoticeEmail(to, def.email);
+    if (email && to) await sendNoticeEmail(to, email);
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[notify] failed to send', type, err);

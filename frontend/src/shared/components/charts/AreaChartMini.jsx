@@ -4,16 +4,9 @@ import { useState } from "react";
 import { View } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 
-// draws charts with react-native-svg followning the same approach/props
-
 export default function AreaChartMini({
   data,
   height = 140,
-  // Defensive defaults: if a caller ever forgets to pass `stroke`/`fill` (or
-  // passes an accidentally-undefined value), SVG's own default paint is
-  // black, which reads as "the whole chart is solid black". Falling back to
-  // sane brand colors here means a missing prop degrades to "wrong color"
-  // instead of "unreadable chart", regardless of which call site is at fault
   stroke = shellColors.primary,
   fill = shellColors.light.activeNavBg,
   yMin,
@@ -64,12 +57,7 @@ export default function AreaChartMini({
             </SvgText>
           ))}
 
-          {/* Area + line. `fillOpacity` (not the bare `opacity` prop) is used
-              deliberately: `opacity` fades the whole element -- fill AND
-              stroke/children -- while this path only ever draws a fill, so
-              `fillOpacity` is the precise prop for what's intended and avoids
-              any ambiguity some react-native-svg/Fabric combinations have
-              had with a bare numeric `opacity` on <Path> */}
+          {/* Area + line */}
           <Path d={areaPath} fill={fill} fillOpacity={0.85} />
           <Path d={linePath} stroke={stroke} strokeWidth={2} fill="none" />
 
@@ -81,8 +69,6 @@ export default function AreaChartMini({
           {/* X labels */}
           {showXLabels &&
             data.map((d, i) => (
-              // First and last labels anchored inward, so "Sun"/"Thu" don't
-              // hang past the chart's edges
               <SvgText
                 key={`xlabel-${i}`}
                 x={xFor(i)}

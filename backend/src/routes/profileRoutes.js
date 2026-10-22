@@ -4,7 +4,7 @@ const controller = require('../controllers/profileController');
 const { validateBody } = require('../middleware/validateMiddleware');
 const { memoryUpload, IMAGE_MAX_BYTES } = require('../middleware/uploadMiddleware');
 const { requireRole } = require('../middleware/authMiddleware');
-const { passwordCheckLimiter } = require('../middleware/rateLimitMiddleware');
+const { passwordCheckLimiter, avatarUploadLimiter } = require('../middleware/rateLimitMiddleware');
 const {
   updateProfileSchema, onboardingSchema, currentPasswordSchema, changePasswordSchema, deleteAccountSchema,
 } = require('../validators/profileValidators');
@@ -13,7 +13,6 @@ const router = Router();
 
 const avatarUpload = memoryUpload(IMAGE_MAX_BYTES);
 
-// Ownership comes form req.userId (signed token) so no authorization to another user
 router.get(
   '/', 
   controller.getProfile
@@ -24,7 +23,7 @@ router.patch(
   controller.updateProfile
 );
 
-// Setup wizard. User-only like the goals it writes (/steps, /water, /food)
+// Onboarding is restricted to regular users
 router.put(
   '/onboarding',
   requireRole('user'),
@@ -34,6 +33,7 @@ router.put(
 
 router.post(
   '/avatar', 
+  avatarUploadLimiter,
   avatarUpload.single('avatar'),
   controller.uploadAvatar
 );
@@ -42,7 +42,6 @@ router.delete(
   controller.removeAvatar
 );
 
-// Settings > change password. Limited per user, both steps take a password guess
 router.post(
   '/password/verify',
   passwordCheckLimiter,
@@ -56,7 +55,6 @@ router.put(
   controller.changePassword
 );
 
-// Settings > delete account. Same limiter, it takes a password guess too
 router.delete(
   '/',
   passwordCheckLimiter,

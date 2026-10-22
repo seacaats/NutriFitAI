@@ -14,14 +14,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
-// The phone dashboard. Same data as the web one (useDashboard), fewer
-// panels: calories and macros, water, steps and streak, shortcuts, and
-// today's plan. Calories show the daily goal beside the amount eaten when one is set
-
+// Mobile dashboard screen: daily calories and macros, hydration, steps, streak, quick actions, and today's plan.
 export default function DashboardScreen() {
-  // Real weekly totals. summary is null while loading and on failure; the card
-  // shows an em dash rather than a spinner, because a dashboard tile flickering
-  // between states is noisier than one that simply fills in.
   const { summary: workoutSummary } = useWorkoutSessions();
   const dash = useDashboard();
   const recs = useRecommendations();
@@ -33,10 +27,8 @@ export default function DashboardScreen() {
   const { width } = useWindowDimensions();
   const compact = width < 380;
 
-  // Same AuthContext DashboardLayout reads from — no extra request needed.
   const { firstName, loading } = useAuth();
 
-  // One card look for every tile, like web (the water card uses the same tones)
   const { card, textColor, mutedText } = getScreenPalette(darkMode);
   const trackBg = { backgroundColor: card.borderColor };
   const shortcut = [styles.shortcutCard, card];
@@ -56,13 +48,11 @@ export default function DashboardScreen() {
         </Pressable>
       </View>
 
-      {/* Onboarding: first visit goes there, then a banner until it's filled in */}
       <OnboardingPrompt darkMode={darkMode} />
 
-      {/* Recommendations: only shown once there is a card */}
       <RecommendationsStrip recs={recs} darkMode={darkMode} onOpen={(item) => router.push(item.action.route)} style={styles.recs} />
 
-      {/* Today's calories and macros. Tap for the food scanner */}
+      {/* Today's calories and macros */}
       <Pressable onPress={() => router.push("/food-scanner")} style={[styles.card, card]}>
         <Text style={[styles.cardTitle, textColor]}>Today&apos;s Calories</Text>
 
@@ -74,21 +64,19 @@ export default function DashboardScreen() {
           <Text style={styles.pctGreen}>{v ? `${v.mealsLogged}/4 meals` : DASH}</Text>
         </View>
 
-        {/* Each bar is that macro's share of today's calories */}
         <MacroRow macros={v?.macros} darkMode={darkMode} />
       </Pressable>
 
-      {/* Hydration: real data, "+1 glass" right here */}
+      {/* Hydration */}
       <WaterCard darkMode={darkMode} style={styles.waterCard} />
 
-      {/* Steps and streak, side by side */}
+      {/* Steps and streak */}
       <View style={[styles.shortcutRow, compact && styles.stackRow]}>
         <Pressable onPress={() => router.push("/steps")} style={[styles.miniCard, card]}>
           <View style={styles.miniHead}>
             <Ionicons name="footsteps" size={18} color={colors.green600} />
             <Text style={[styles.miniTitle, textColor]}>Steps</Text>
           </View>
-          {/* Same wording as the web dashboard's card */}
           <Text style={[styles.miniValue, textColor]}>
             {v ? v.steps.toLocaleString() : DASH}
             <Text style={styles.miniSuffix}> / {stepGoal.toLocaleString()}</Text>
@@ -99,7 +87,6 @@ export default function DashboardScreen() {
           </View>
         </Pressable>
 
-        {/* The same count as Progress and the streak notifications */}
         <Pressable onPress={() => router.push("/progress")} style={[styles.miniCard, card]}>
           <View style={styles.miniHead}>
             <Ionicons name="trophy" size={18} color={chipTints.orange.icon} />
@@ -156,17 +143,14 @@ export default function DashboardScreen() {
       </View>
 
       <View style={styles.planRow}>
-        {/* Meal types logged today, out of breakfast, lunch, dinner, snack */}
         <Pressable onPress={() => router.push("/food-scanner")} style={[styles.planCard, card]}>
           <Ionicons name="restaurant" size={20} color={shellColors.primary} />
           <Text style={[styles.planTitle, textColor]}>Meals</Text>
           <Text style={styles.planMeta}>{v ? `${v.mealsLogged}/4 logged` : DASH}</Text>
           <Text style={styles.planMeta}>{v ? `${v.nutrition.caloriesKcal} kcal` : DASH}</Text>
         </Pressable>
-
       </View>
 
-      {/* The next few planned sessions, missed first, then the week's count */}
       <View style={[styles.card, card, styles.workoutsCard]}>
         <Text style={[styles.cardTitle, textColor]}>Workouts</Text>
         <PlannedWorkouts view={v} summary={workoutSummary} darkMode={darkMode} onOpen={() => router.push("/workouts?tab=upcoming")} />
@@ -183,7 +167,6 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },
   greeting: { fontSize: 20, fontWeight: "700" },
   greetingName: { fontSize: 26, fontWeight: "800", marginTop: 2 },
-  // Takes the row's free width, so a long name ends in "…" before the bell
   headerName: { flex: 1, minWidth: 0, paddingRight: 12 },
 
   card: { borderRadius: radii.sm, borderWidth: 1, padding: 14, marginBottom: 12 },
@@ -195,7 +178,6 @@ const styles = StyleSheet.create({
   pctGreen: { fontSize: 15, fontWeight: "700", color: shellColors.primary },
 
   progressTrack: { marginTop: 10, height: 8, borderRadius: 4, overflow: "hidden" },
-
 
   shortcutRow: { flexDirection: "row", gap: 12, marginBottom: 16 },
   shortcutCard: { flex: 1, borderRadius: radii.sm, borderWidth: 1, padding: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },

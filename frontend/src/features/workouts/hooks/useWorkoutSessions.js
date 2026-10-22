@@ -18,13 +18,15 @@ import { apiClient, ApiClientError } from "@/shared/api/apiClient";
 import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-// exerciseRef -> first image URL (or null), shared by every screen for the
-// app's lifetime so a routine's covers are only looked up once
+// exerciseRef -> first image URL cache shared across the session
 const imageCache = new Map();
-const IMAGE_BATCH = 60; // the catalog list's page cap
+const IMAGE_BATCH = 60; // catalog batch limit
 
-// Images for the given exercise ids, for routine and session tiles. Missing
-// ones are fetched in batches through the catalog's `ids` filter
+export function evictExerciseImage(ref) {
+  imageCache.delete(Number(ref));
+}
+
+// Fetches missing exercise images in batches
 export function useExerciseImages(refs) {
   const key = [...new Set((refs || []).filter(Boolean).map(Number))].sort((a, b) => a - b).join(",");
   const [, setVersion] = useState(0);
@@ -41,10 +43,8 @@ export function useExerciseImages(refs) {
           const page = await fetchExerciseInfoPage({ ids, limit: IMAGE_BATCH, includeImageless: true });
           for (const info of page.results || []) imageCache.set(Number(info.id), getExerciseImages(info)[0] || null);
         } catch {
-          // Tiles fall back to a stock image; worth retrying next time
           continue;
         }
-        // Asked for but not returned (removed from the catalog): don't ask again
         for (const id of ids) if (!imageCache.has(id)) imageCache.set(id, null);
       }
       if (!cancelled) setVersion((v) => v + 1);
@@ -55,18 +55,10 @@ export function useExerciseImages(refs) {
     };
   }, [key]);
 
-  // Read at render time; the version bump above re-renders once batches land
   return (ref) => imageCache.get(Number(ref)) || null;
 }
 
-/**
- * Workout session logging and weekly progress
- *
- * Sessions are written ONCE, when a workout ends — not on start, and not per
- * set. See the model for the full reasoning; the short version is that the
- * tracker has no resume affordance, so a session opened on Start would be an
- * orphan nothing can finish
- */
+/** Workout session logging and weekly progress hook. */
 export function useWorkoutSessions({ recentLimit = 5 } = {}) {
   const [summary, setSummary] = useState(null);
   const [recent, setRecent] = useState([]);
@@ -78,12 +70,6 @@ export function useWorkoutSessions({ recentLimit = 5 } = {}) {
   const loadSummary = useCallback(async () => {
     setLoading(true);
     try {
-      /**
-       * Both in parallel. They are independent reads and the screen shows them
-       * together, so serialising would add a round trip to first paint for no
-       * reason — and on a cluster capped at 100 ops/sec, needless round trips
-       * are worth avoiding as a habit
-       */
       const [summaryData, recentData] = await Promise.all([
         apiClient.get("/workouts/sessions/summary", { auth: true }),
         apiClient.get(`/workouts/sessions?limit=${recentLimit}`, { auth: true }),
@@ -106,26 +92,14 @@ export function useWorkoutSessions({ recentLimit = 5 } = {}) {
     loadSummary();
   }, [loadSummary]);
 
-  /**
-   * Logs a finished or abandoned session
-   *
-   * Never throws. A failed log must not cost the user their workout screen —
-   * they have already done the exercise, and an error dialog at that moment is
-   * the least useful possible response
-   */
+  /** Logs a finished or abandoned session; does not throw on error. */
   const logSession = useCallback(
     async (payload) => {
       try {
         const data = await apiClient.post("/workouts/sessions", payload, { auth: true });
-        // Refresh so the dashboard and goal progress reflect the new session
-        // without the user having to navigate away and back
         loadSummary();
         return data;
       } catch (err) {
-        /**
-         * Swallowed on purpose -- the user has already done the exercise, and
-         * an error dialog at that moment is the least useful possible response
-         */
         if (err?.status !== 0) console.warn(
           `[workouts] failed to log session (status ${err?.status ?? "network"}, ${err?.code ?? "?"}): ${err?.message}`,
           payload,
@@ -136,13 +110,7 @@ export function useWorkoutSessions({ recentLimit = 5 } = {}) {
     [loadSummary],
   );
 
-  /**
-   * This user's history for one exercise, for the "last performed" line
-   *
-   * Not folded into the main load: it is per-exercise and only wanted once a
-   * detail view opens, so fetching it up front would be one request per card
-   * on a screen showing twenty. Returns null rather than throwing
-   */
+  /** Fetches recent history for a single exercise. */
   const fetchExerciseHistory = useCallback(async (exerciseRef, limit = 5) => {
     if (!exerciseRef) return null;
     try {
@@ -194,7 +162,6 @@ export function useWorkoutPlan() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      // Independent reads, so fetched together
       const [fav, rout, sched] = await Promise.all([fetchFavorites(), fetchRoutines(), fetchSchedule()]);
       setFavorites(fav);
       setRoutines(rout);
@@ -290,7 +257,7 @@ export function useWorkoutPlan() {
     }
   }, [schedule]);
 
-  // Never throws: the workout is already done, a failed log shouldn't cost the screen
+  // Logs a routine run without throwing
   const logRoutine = useCallback(async (payload) => {
     try {
       const data = await logRoutineSession(payload);

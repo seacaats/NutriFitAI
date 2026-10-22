@@ -6,21 +6,14 @@ const Session = require('../models/auth/Session');
 const { today } = require('../utils/calendarDay');
 
 
-// Synced with the "role" enum in models/user/User.js
-/**
- * Every role the system knows about. Must stay in sync with the `role` enum
- * in src/models/user/User.js -- a value accepted here but rejected there
- * (or vice versa) fails open.
- */
+
+/** Supported roles (must match `role` enum in models/user/User.js). */
 const ROLES = ['user', 'admin'];
 const DEFAULT_ROLE = 'user';
 
 // ---- Timezone (X-Timezone header) -------------------------------------------
 
-// The client sends its IANA zone ("Asia/Manila") as X-Timezone on every
-// request, so a user who travels gets correct "today"/"this week" right away
-
-// Returns the zone if Intl recognises it, otherwise null
+// Validates an IANA time zone string, returning null if invalid
 function parseTimeZone(value) {
   const zone = typeof value === 'string' ? value.trim() : '';
   if (!zone || zone.length > 64) return null;
@@ -32,19 +25,17 @@ function parseTimeZone(value) {
   }
 }
 
-// Sets req.timeZone for every request, signed in or not
+// Populates req.timeZone from X-Timezone header
 function readTimeZone(req, res, next) {
   req.timeZone = parseTimeZone(req.headers['x-timezone']);
   next();
 }
 
-// Last zone written per user, so the profile is only updated when it changes
-// rather than on every request. Capped so it can't grow without limit
+// In-memory cache of last saved time zone per user to avoid redundant DB writes
 const lastSaved = new Map();
 const LAST_SAVED_MAX = 10000;
 
-// Keeps profile.timezone current for code that runs outside a request.
-// Fire-and-forget: a failed write is retried on the user's next request
+// Persists profile.timezone when it changes (fire-and-forget)
 function rememberTimeZone(userId, zone) {
   if (!userId || !zone || lastSaved.get(userId) === zone) return;
   if (lastSaved.size >= LAST_SAVED_MAX) lastSaved.clear();
@@ -56,13 +47,9 @@ function rememberTimeZone(userId, zone) {
   ).catch(() => lastSaved.delete(userId));
 }
 
-// Day last recorded per user, so the visit is written once a day rather than
-// on every request. Capped the same way as lastSaved
 const lastVisit = new Map();
 
-// Marks today (the user's own day) as one they used the app, for admin
-// Analytics' active users. Regular users only: admins aren't app users here.
-// Fire-and-forget like rememberTimeZone
+// Records one daily visit per regular user for analytics (fire-and-forget)
 function rememberVisit(userId, role, zone) {
   if (!userId || role !== 'user') return;
   const day = today(zone || 'UTC');
@@ -73,11 +60,8 @@ function rememberVisit(userId, role, zone) {
 }
 
 /**
- * Populates req.userId / req.userEmail / req.userRole from a valid
- * "Authorization: Bearer <token>" header. All authenticated routes across the
- * app should derive ownership from req.userId — never from a client-submitted
- * body/query user id — and authorization from req.userRole, which comes from
- * the signed token rather than anything the client can set
+ * Verifies Bearer access token and populates req.userId, req.userEmail,
+ * req.userRole, and req.sessionId.
  */
 function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
@@ -95,7 +79,6 @@ function requireAuth(req, res, next) {
     req.userId = payload.sub;
     req.userEmail = payload.email;
     req.userRole = ROLES.includes(payload.role) ? payload.role : DEFAULT_ROLE;
-    // The session this token came from (none on tokens from before sessions existed)
     req.sessionId = payload.sid || null;
     rememberTimeZone(req.userId, req.timeZone);
     rememberVisit(req.userId, req.userRole, req.timeZone);
@@ -106,14 +89,7 @@ function requireAuth(req, res, next) {
 }
 
 /**
- * Restricts a route to the listed roles. Must be mounted *after* requireAuth,
- * which is what establishes req.userRole from the signed token.
- *
- *   router.get('/admin/users', requireAuth, requireRole('admin'), handler);
- *
- * Deny is the default: an unknown or missing role never satisfies the check.
- * Returns 403 (authenticated but not permitted) rather than 401, so the client
- * can tell "log in" apart from "you may not do this".
+ * Restricts route access to the specified roles. Must be mounted after requireAuth.
  */
 function requireRole(...allowed) {
   const allowedRoles = allowed.flat();
@@ -134,25 +110,9 @@ function requireRole(...allowed) {
 }
 
 /**
- * Re-reads the caller's role from the database and overwrites req.userRole
- * with it, rejecting the request if the account is gone.
- *
- * WHY THIS EXISTS, given requireRole already works
- * ------------------------------------------------
- * requireRole trusts the role claim inside the signed access token, which is
- * the right default: it costs no query, and the token is unforgeable. But a
- * claim is a snapshot from when the token was issued, and access tokens live
- * 15 minutes (JWT_ACCESS_EXPIRES_IN). Revoking someone's admin therefore does
- * not take effect for up to 15 minutes, during which a demoted account can
- * still edit users and read the audit trail.
- *
- * Everywhere else in the app that window is harmless -- the worst case is a
- * user reading their own data slightly longer than intended. On the admin
- * surface it is the entire threat model, so these routes pay one indexed
- * primary-key lookup to close it.
- *
- * Mount order matters: requireAuth -> requireFreshRole -> requireRole,
- * so the role check reads the refreshed value rather than the token's.
+ * Reloads user role, session liveness, and suspension state from the database
+ * so role revocations and suspensions take effect immediately on admin routes.
+ * Mount order: requireAuth -> requireFreshRole -> requireRole.
  */
 async function requireFreshRole(req, res, next) {
   if (!req.userId) {
@@ -167,10 +127,6 @@ async function requireFreshRole(req, res, next) {
 
     const stored = ROLES.includes(user.role) ? user.role : DEFAULT_ROLE;
 
-    // Loud on purpose: a mismatch means either a role was just changed (the
-    // expected case, and the client's next /auth/me will pick it up) or a
-    // token is carrying a claim the database disagrees with, which is worth
-    // being able to find in a log afterwards.
     if (stored !== req.userRole) {
       // eslint-disable-next-line no-console
       console.warn(
@@ -179,13 +135,10 @@ async function requireFreshRole(req, res, next) {
       );
     }
 
-    // An ended session loses the admin surface at once too, not at the next refresh
     if (req.sessionId && !(await Session.isLive(req.sessionId, req.userId))) {
       return next(ApiError.unauthorized('Your session has ended. Please log in again.'));
     }
 
-    // A suspended admin loses the admin surface at once, not when their
-    // access token expires
     if (user.suspendedAt) {
       return next(ApiError.forbidden('This account has been suspended. Contact support.', { code: 'ACCOUNT_SUSPENDED' }));
     }

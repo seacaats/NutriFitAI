@@ -23,14 +23,9 @@ import {
 } from "react-native";
 
 /**
- * The mobile steps screen, and the only surface in the app where step data can
- * originate -- the web screen reads whatever this one has synced.
- *
- * Two hooks, deliberately separate:
- *   useDailySteps  reads /api/steps. Shared with the web screen.
- *   useStepSync    talks to the OS health store. Mobile only.
- *
- * Keeping them apart is what lets the web screen reuse the first one untouched.
+ * Mobile steps screen and primary source for synced step data.
+ * Uses two separate hooks so the web screen can reuse useDailySteps (/api/steps)
+ * while useStepSync handles the OS health store on mobile.
  */
 
 const BAR_HEIGHT = 120;
@@ -41,7 +36,7 @@ export default function StepsScreen() {
   const router = useRouter();
   // { date, current } while the edit dialog is open
   const [editing, setEditing] = useState(null);
-  // Re-reading after a sync is what turns "pushed 7 days" into visible bars.
+  // Refresh step data after a health store sync completes
   const sync = useStepSync({ onSynced: steps.refresh });
 
   const palette = {
@@ -49,14 +44,13 @@ export default function StepsScreen() {
     border: c.dropdownBorder,
     text: c.sidebarText,
     muted: c.headerDescText,
-    // soft/track aren't part of the shell theme -- same tones the web
-    // steps screen uses, shared via getScreenTones.
+    // Soft and track tones shared with the web steps screen via getScreenTones
     soft: getScreenTones(darkMode).soft,
     track: getScreenTones(darkMode).track,
   };
 
   const onRefresh = useCallback(async () => {
-    // Reload even when the phone sync fails, or the skeletons would stay
+    // Always reload step data even if device sync fails so skeletons clear
     try {
       await sync.refresh();
     } finally {
@@ -65,18 +59,16 @@ export default function StepsScreen() {
   }, [sync, steps]);
   usePullRefresh(onRefresh);
 
-  // The daily goal is the top of every bar. Month and Year bars use steps per
-  // day (`avg`) so they compare against that same daily goal
-  // First load only: numbers and lists are placeholders the size of what
-  // replaces them. Later range switches keep the old content until new data lands
+  // Daily goal sets the bar chart ceiling; Month and Year bars plot daily averages against it.
+  // Skeletons only show on initial load; subsequent range switches keep existing data visible.
   const first = !steps.loaded;
   const maxSteps = steps.dailyGoal;
 
   return (
-    // The layout scrolls; its pull syncs the phone, then reloads (onRefresh)
+    // Pull-to-refresh syncs device health data and reloads step history
     <DashboardLayout hideTabBar screenAlert={false}>
       <View style={styles.content}>
-        {/* Opened from the ☰ menu, so no bottom bar; the header has a back arrow */}
+        {/* Opened from the drawer menu: hide bottom bar and show back arrow */}
         <ScreenHeader title="Steps" subtitle="Your daily movement" />
         <ScreenAlert />
 
@@ -92,8 +84,7 @@ export default function StepsScreen() {
                 <Text style={[styles.kicker, { color: palette.muted }]}>TODAY</Text>
                 {first ? <Skeleton width={120} height={32} /> : (
                   <Text style={[styles.heroValue, { color: palette.text }]}>
-                    {/* null means "not recorded", which is a different claim from
-                        zero steps -- show a dash rather than inventing a 0. */}
+                    {/* null indicates unrecorded rather than zero steps */}
                     {steps.todaySteps === null ? "--" : formatNumber(steps.todaySteps)}
                   </Text>
                 )}
@@ -146,7 +137,7 @@ export default function StepsScreen() {
           ) : (
             <View style={styles.chart}>
               {steps.series.map((day) => {
-                // A day with no row renders as an empty slot, never a zero bar.
+                // Unrecorded days render as empty slots rather than zero-height bars
                 const hasData = day.avg !== null;
                 const height = hasData ? Math.max(4, Math.min(day.avg / maxSteps, 1) * BAR_HEIGHT) : 0;
                 return (
@@ -211,13 +202,11 @@ export default function StepsScreen() {
 }
 
 /**
- * The permission surface. Four distinct states, because collapsing them into a
- * single "something went wrong" is how a fixable problem -- Health Connect
- * simply needs installing -- becomes a dead end for the user.
+ * Renders the health store connection and permission status across four states:
+ * probing, unavailable/needs update, disconnected, and connected.
  */
 function ConnectionCard({ palette, sync }) {
-  // Still probing the device: render nothing rather than flashing
-  // "not supported" before we know.
+  // Render nothing while probing device support to avoid flashing an unsupported state
   if (sync.available === null) return null;
 
   if (!sync.available) {

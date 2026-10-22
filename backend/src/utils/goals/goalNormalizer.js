@@ -1,4 +1,4 @@
-// Normalize incoming goal inputs before bein stored
+// Normalizes fitness goal inputs to canonical slugs or trimmed custom strings.
 const GOALS = [
   { value: 'lose-weight', label: 'Lose Weight' },
   { value: 'gain-weight', label: 'Gain Weight' },
@@ -11,9 +11,8 @@ const byValue = new Map(GOALS.map((g) => [g.value, g.value]));
 const byLabel = new Map(GOALS.map((g) => [g.label.toLowerCase(), g.value]));
 
 /**
- * @param {string} input machine value, display label, or custom text ("Other")
- * @returns {string|null} canonical slug for a known goal, the trimmed custom
- *   text otherwise, or null when blank. Length is capped by the validators
+ * @param {string} input
+ * @returns {string|null}
  */
 function normalizeGoal(input) {
   if (!input) return null;

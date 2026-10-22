@@ -1,5 +1,4 @@
-// Every error on a screen funnels into one alert under the screen's title
-// (ScreenAlert). Each source is an entry; the newest one shows
+// Central error alert state for ScreenAlert. Displays the most recent error source.
 
 let entries = new Map(); // id -> { message, onDismiss, at }
 const listeners = new Set();
@@ -23,7 +22,7 @@ export function currentScreenError() {
   return top;
 }
 
-// X: closes this message everywhere it's showing, so a twin doesn't pop up
+// Dismisses an error by message content across all registered ids
 export function dismissScreenError(message) {
   const next = new Map(entries);
   entries.forEach((e, id) => {
@@ -40,13 +39,12 @@ export function subscribeScreenErrors(fn) {
   return () => listeners.delete(fn);
 }
 
-// apiClient's own source: can't reach the server / offline
+// Network error identifier
 const NETWORK_ID = "network";
 export const reportNetworkError = (message) => setScreenError(NETWORK_ID, message);
 export const clearNetworkError = () => clearScreenError(NETWORK_ID);
 
-// Rewords the connection message if one is showing (Wi-Fi came back but the
-// server is still down, say)
+// Updates the network error message if currently active
 export function rewordNetworkError(message) {
   if (entries.has(NETWORK_ID)) setScreenError(NETWORK_ID, message);
 }

@@ -55,7 +55,7 @@ router.post(
   controller.resendLoginMfa
 );
 
-// First sign-in of an admin: authenticator setup, from the challenge token
+// Admin first-login TOTP setup using the MFA challenge token
 router.post(
   '/login/mfa/setup',
   mfaLoginLimiter,
@@ -71,8 +71,6 @@ router.post(
 );
 
 // ----- Two-factor (Settings and onboarding), signed in -----
-// Regular users: a code by email. Admins: recovery codes only, their
-// authenticator is set up at sign-in (above) and can't be turned off
 router.post('/mfa/email/request', requireAuth, mfaManageLimiter, validateBody(mfaSetupSchema), controller.mfaEmailRequest);
 router.post('/mfa/email/confirm', requireAuth, mfaManageLimiter, validateBody(mfaEmailConfirmSchema), controller.mfaEmailConfirm);
 router.post('/mfa/recovery-codes', requireAuth, mfaManageLimiter, validateBody(mfaChangeSchema), controller.mfaRecoveryCodes);
@@ -97,8 +95,6 @@ router.get(
 );
 
 // ----- Google OAuth -----
-// allowOauthPopup pins Cross-Origin-Opener-Policy: unsafe-none
-// to explicitly avoid the pop-up window closing when leaving the main window
 router.get(
   '/google', 
   allowOauthPopup, 

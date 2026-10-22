@@ -66,6 +66,8 @@ export default function WorkoutsScreen() {
     closeDetail,
     detailLoading,
     detailPlan,
+    editingWorkout,
+    editWorkout,
     editor,
     equipment,
     equipmentList,
@@ -94,6 +96,7 @@ export default function WorkoutsScreen() {
     sessionsLoading,
     setActiveCategory,
     setAddOpen,
+    setEditingWorkout,
     setEditor,
     setEquipment,
     setMuscles,
@@ -111,7 +114,7 @@ export default function WorkoutsScreen() {
     workoutSource,
     removeWorkout,
   } = useWorkouts();
-  // The own workout asked about in the delete dialog, and what it says
+  // Custom workout pending deletion and its error state
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -150,7 +153,7 @@ export default function WorkoutsScreen() {
             placeholder="Search exercises, muscles…"
             placeholderTextColor={colors.textMuted}
             value={searchQuery}
-            // Same cap as the server search limit
+            // Matches server search query limit
             maxLength={100}
             onChangeText={setSearchQuery}
           />
@@ -279,7 +282,7 @@ export default function WorkoutsScreen() {
           <PanelHeading icon="barbell" title="Exercises" darkMode={darkMode} />
         </View>
       )}
-      {/* Category, equipment and muscles, behind one "Filters" button */}
+      {/* Category, equipment, and muscle filters */}
       <WorkoutFilters
         categories={categories}
         category={activeCategory}
@@ -315,7 +318,7 @@ export default function WorkoutsScreen() {
       </View>
 
       {/* Exercise Grid / List */}
-      {/* First load: one placeholder per exercise in a batch (PAGE_SIZE) */}
+      {/* Initial load renders one placeholder card per exercise in PAGE_SIZE */}
       {loading ? (
         <View style={styles.exerciseGrid}>
           {Array.from({ length: PAGE_SIZE }, (_, i) => i).map((i) => (
@@ -409,7 +412,8 @@ export default function WorkoutsScreen() {
         onSchedule={() =>
           selectedExercise &&
           setScheduleTarget({ kind: "exercise", refId: selectedExercise.id, name: selectedExercise.name })}
-        // Only the user's own workouts can be deleted
+        // Only custom workouts created by the user can be edited or deleted
+        onEdit={selectedExercise?.source === "user" ? () => setEditingWorkout(selectedExercise) : undefined}
         onDelete={selectedExercise?.source === "user" ? () => setDeleteTarget({ id: selectedExercise.id, name: selectedExercise.name }) : undefined}
       />
 
@@ -428,7 +432,7 @@ export default function WorkoutsScreen() {
         visible={scheduleTarget !== null}
         target={scheduleTarget}
         onClose={() => setScheduleTarget(null)}
-        // A missed plan moves its own row instead of adding a new one
+        // Rescheduling a missed plan updates its existing row rather than inserting a new one
         onSubmit={(body) => (scheduleTarget?.rescheduleId
           ? plan.reschedule(scheduleTarget.rescheduleId, body.scheduledFor)
           : plan.scheduleWorkout(body))}
@@ -453,9 +457,10 @@ export default function WorkoutsScreen() {
       />
 
       <AddWorkoutModal
-        visible={addOpen}
-        onClose={() => setAddOpen(false)}
-        onSave={addWorkout}
+        visible={addOpen || editingWorkout !== null}
+        workout={editingWorkout}
+        onClose={() => { setAddOpen(false); setEditingWorkout(null); }}
+        onSave={editingWorkout ? (body, photo) => editWorkout(editingWorkout.id, body, photo) : addWorkout}
         categories={categories}
         equipmentList={equipmentList}
         muscleList={muscleList}
@@ -577,10 +582,10 @@ function ExerciseDetailModal({
   favorite: favoriteProp,
   onToggleFavorite,
   onSchedule,
+  onEdit,
   onDelete,
 }) {
-  // Kept while the modal fades out: the parent clears the exercise as it
-  // closes, which used to blank the card for a moment first
+  // Retain exercise state during the close fade animation so the modal content does not blank out early
   const { exercise, loading, lastSession, planned, favorite } = useHeldWhileClosing(visible, {
     exercise: exerciseProp,
     loading: loadingProp,
@@ -595,7 +600,6 @@ function ExerciseDetailModal({
 
   return (
     <Modal
-      // Never over another screen: hidden once you've navigated away
       visible={visible}
       animationType="fade"
       transparent
@@ -714,7 +718,7 @@ function ExerciseDetailModal({
                 </View>
               )}
 
-              {/* Plan actions. Hidden when this run is a scheduled session */}
+              {/* Plan actions (hidden during a scheduled session run) */}
               {!planned && (
                 <View style={styles.detailActions}>
                   <ActionButton
@@ -725,6 +729,7 @@ function ExerciseDetailModal({
                     darkMode={darkMode}
                   />
                   <ActionButton variant="secondary" label="Schedule" onPress={onSchedule} darkMode={darkMode} />
+                  {onEdit && <ActionButton variant="secondary" label="Edit" onPress={onEdit} darkMode={darkMode} />}
                   {onDelete && <ActionButton variant="danger" label="Delete" onPress={onDelete} darkMode={darkMode} />}
                 </View>
               )}
@@ -808,7 +813,7 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 15, padding: 0, outlineStyle: "none" },
   statsRow: { flexDirection: "row", gap: 10 },
-  // Small screens: the cards sit centred under the search bar
+  // Center stat cards below the search bar on narrow screens
   statsRowNarrow: { justifyContent: "center", flexWrap: "wrap" },
 
   lastPerformed: { marginTop: 16, borderWidth: 1, borderColor: colors.infoBorder, backgroundColor: colors.infoBg, borderRadius: radii.sm, padding: 11 },
@@ -819,7 +824,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: "center",
     gap: 2,
-    // Fixed, so the value inside never changes a card's width
+    // Fixed width prevents value changes from resizing the card
     width: 104,
   },
   statValue: { fontSize: 16, fontWeight: "800" },
@@ -841,8 +846,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 14,
   },
-  // Narrower cards and a taller image, so the photo carries the card:
-  // four per row on wide screens, three narrow, two on phones
+  // Responsive grid: 4 per row on wide screens, 3 on narrow, 2 on phone
   exerciseCard: {
     width: "calc(25% - 11px)",
     borderRadius: radii.sm,

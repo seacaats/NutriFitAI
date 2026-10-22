@@ -15,18 +15,11 @@ const { requireAuth, requireRole } = require('../middleware/authMiddleware');
 const router = Router();
 
 /**
- * Role boundaries, enforced at the mount point so no route inside a group can
- * forget them:
- *  - /auth      public + session endpoints (any role)
- *  - /profile   any signed-in role (admins have a profile page too)
- *  - /notifications   any signed-in role (account notices reach admins too)
- *  - /steps, /coach, /workouts, /water, /food, /progress, /recommendations   USERS ONLY. Admin accounts get 403
- *  - /admin     admin only (adminRoutes re-reads the role from the database)
- *
- * The user-only check trusts the token's role claim rather than re-reading it:
- * a stale claim here can at most keep a just-promoted admin on user endpoints
- * until their 15-minute access token expires, which costs nothing, whereas a
- * lookup on every step/workout/coach call would cost a query each
+ * Route role boundaries:
+ *  - /auth: public + session endpoints
+ *  - /profile, /notifications: any authenticated role
+ *  - /steps, /coach, /workouts, /water, /food, /progress, /recommendations: 'user' role only
+ *  - /admin: 'admin' role only (re-verified against DB in adminRoutes)
  */
 const userOnly = [requireAuth, requireRole('user')];
 

@@ -20,15 +20,12 @@ import { fs } from "@/shared/theme/fontScale";
 export const RESULT_CARD_MIN_HEIGHT = 470;
 
 /**
- * Saved scan photos come from our own API host, so they load through
- * ServerImage for the same ngrok header reason avatars do (see that file).
- * The server sends a root-relative "/uploads/..." path. Only that prefix
- * counts as ours: a bare local Android path also starts with "/"
+ * Saved scan photos come from the API host ("/uploads/..."), so they load
+ * through ServerImage for the ngrok header. Only the "/uploads/" prefix is
+ * treated as a server path since bare local Android paths also start with "/".
  *
  * Local previews (file:, content:, ph:, blob:, data:) go straight to
- * expo-image instead: ServerImage always attaches a request header, and on
- * Android a header on a local file uri makes the load fail, which is why the
- * just-taken photo showed blank on mobile
+ * expo-image because attaching request headers to local file URIs fails on Android.
  */
 export function ScanImage({ uri, style, contentFit = "cover", onError }) {
   if (!uri) return null;
@@ -340,8 +337,7 @@ function scanTitle(scan) {
   return names.length > 2 ? `${names[0]} +${names.length - 1} more` : names.join(", ");
 }
 
-// Also the row of the scanner page's "Recent Scans" card
-// of the scanner page's "Recent Scans" card, where `showDay` adds the day
+// Used in both scan history and the scanner page's "Recent Scans" card (`showDay` adds the day)
 export function ScanHistoryRow({ scan, tone, onPress, onDelete, showDay = false }) {
   const title = scanTitle(scan);
   const kcal = scan.items.reduce((sum, i) => sum + (i.caloriesKcal || 0), 0);

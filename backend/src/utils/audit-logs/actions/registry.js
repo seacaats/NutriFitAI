@@ -1,40 +1,11 @@
 /**
- * WHY A REGISTRY RATHER THAN FREE STRINGS
- * ---------------------------------------
- * audit_logs.action is already documented in models/AuditLog.js as
- * "machine-readable and namespaced by convention ... never a free sentence".
- * That convention only holds if something enforces it. Without this file the
- * first admin table built over the collection has to parse prose, and two call
- * sites inevitably spell the same event two ways ("profile.updated" vs
- * "profile.update") -- at which point grouping and filtering are dead.
+ * Audit action registry defining machine-readable action keys (<domain>.<entity>.<verb_past>),
+ * categories, severities, retention periods, and display templates.
  *
- * So: the action string stays the stored value, and everything human about it
- * (the label, the sentence, the colour) is derived here at READ
- * time. Nothing human is ever written into the collection. That matters
- * because copy changes -- "Admin John edited User Ivan's Profile" becoming
- * "John (admin) edited Ivan's profile" is a one-line edit here and requires no
- * migration of historical rows.
- *
- * NAMING FORMAT: <domain>.<entity>.<verb_past>
- *   auth.login.succeeded      admin.user.suspended        nutrition.scan.failed
- * Lowercase, snake_case within a segment, verb always past tense. Two or three segments.
- *
- * THE `details` CONTRACT
- * ----------------------
- * details is Mixed, but a field edit -- by far the most common audited event
- * -- always uses the same shape:
- *
+ * Field-edit actions store changes as:
  *   details.changes = [{ field: 'email', from: 'a@x.com', to: 'b@x.com' }, ...]
- *
- * One shape means one renderer: formatAuditEntry turns any edit of any entity
- * into a labelled before/after list without the registry needing an entry
- * per field. Anything else an action wants to record goes alongside it as
- * plain keys, shown through the action's `fields`.
  */
 
-// Days a row is kept, by severity. Stamped onto the row as expiresAt at write
-// time and removed by the audit_logs_expiry TTL index (migration 004).
-// Changing a value only affects rows written after the change
 const RETENTION_DAYS = {
   info: 365,
   notice: 365,
@@ -42,14 +13,9 @@ const RETENTION_DAYS = {
   critical: 1095,
 };
 
-// Only these categories store the IP address and user agent. Everywhere else
-// the network detail adds nothing to the trail, so it isn't collected
 const NETWORK_CATEGORIES = ['auth', 'administration'];
 
-// Health measurements (sensitive personal information under the Data Privacy Act).
-// A change to one records the field name only, never the from/to values --
-// the values already live on the user's own record. Dropdown choices (sex,
-// diet, health conditions) are recorded with their values
+// Sensitive health fields: record only the field name on change, never before/after values
 const HEALTH_FIELDS = [
   'age',
   'heightCm',
@@ -58,15 +24,8 @@ const HEALTH_FIELDS = [
   'weeklyPaceKg',
 ];
 
-/**  
- *   info     routine, expected, high volume
- *   notice   worth noticing in a list, not worth acting on
- *   warning  a failure, a rejection, or a manual override of automation`
- *   critical privileged action, or one that destroys/exposes data
- */
 const SEVERITIES = ['info', 'notice', 'warning', 'critical'];
 
-// Filters for the audit logs
 const CATEGORIES = [
   'auth',
   'account',
@@ -81,20 +40,13 @@ const CATEGORIES = [
 
 /**
  * @typedef {object} AuditActionDef
- * @property {boolean} [network]  store IP/user agent even outside NETWORK_CATEGORIES
- * @property {string} label       short noun phrase for the table's Action column
- * @property {string} category    one of CATEGORIES
- * @property {string} severity    one of SEVERITIES
- * @property {string|null} targetType  what the action acts on, when not the actor
- * @property {string} message     one plain sentence, the same for every viewer
+ * @property {boolean} [network]
+ * @property {string} label
+ * @property {string} category
+ * @property {string} severity
+ * @property {string|null} targetType
+ * @property {string} message
  * @property {Array<{label: string, key?: string, value?: string, format?: string}>} fields
- *                                labelled values for the expanded row. `format`
- *                                is one of yesno, label, counts, day, datetime,
- *                                filters, action (see formatField)
- *
- * The message interpolates {actor}, {target} and any key of `details`, codes
- * turned into words (LABELS). IPs, IDs and values never go in the sentence:
- * they are fields, or the row's own IP / user agent / changes columns.
  */
 
 /** @type {Record<string, AuditActionDef>} */
@@ -112,8 +64,6 @@ const AUDIT_ACTIONS = {
     fields: [],
   },
 
-  // Already written by authController. Records that consent happened and what
-  // categories were supplied -- never the health/diet content itself.
   'auth.register.consent_accepted': {
     label: 'Terms accepted',
     category: 'auth',
@@ -150,15 +100,7 @@ const AUDIT_ACTIONS = {
     ],
   },
 
-  /**
-   * The one action that regularly has a null actor: a failed login against
-   * an address matching no account has nobody to attribute it to. The
-   * schema's nullable userId exists for exactly this.
-   *
-   * The attempted email is never stored, only details.emailHash (HMAC, see
-   * auditLogger.hashIdentifier) -- users sometimes type their password into
-   * the email field. Repeated attempts on one address share a hash
-   */
+  // Stores only details.emailHash (HMAC), never raw attempted email
   'auth.login.failed': {
     label: 'Sign-in failed',
     category: 'auth',
@@ -306,11 +248,6 @@ const AUDIT_ACTIONS = {
     fields: [],
   },
 
-  /**
-   * Fires when apiClient's silent refresh is refused -- a refresh cookie that
-   * is expired, revoked or forged. Individually unremarkable; a burst of them
-   * against one account is not, which is the whole reason it is recorded.
-   */
   'auth.token.refresh_rejected': {
     label: 'Session refresh rejected',
     category: 'auth',
@@ -343,8 +280,7 @@ const AUDIT_ACTIONS = {
     fields: [],
   },
 
-  // Written once per key per window (the first blocked request), never per
-  // blocked request -- a flood must not be able to flood the trail too
+  // Recorded once per key per rate-limit window
   'auth.login.rate_limited': {
     label: 'Rate limit hit',
     category: 'auth',
@@ -357,8 +293,6 @@ const AUDIT_ACTIONS = {
     ],
   },
 
-  // Wrong current password in Settings. The account is signed in, so a run of
-  // these is someone guessing at an unlocked device
   'auth.password.verify_failed': {
     label: 'Password check failed',
     category: 'auth',
@@ -382,8 +316,6 @@ const AUDIT_ACTIONS = {
     fields: [],
   },
 
-  // The setup wizard, finished or skipped. Goal targets aren't recorded, the
-  // same as when they're saved from their own cards
   'account.setup.completed': {
     label: 'Setup completed',
     category: 'account',
@@ -416,11 +348,6 @@ const AUDIT_ACTIONS = {
     fields: [],
   },
 
-  /**
-   * goals is append-only history, so this is a new entry rather than an edit
-   * -- which is why it reads "set" and not "changed", and why the detail names
-   * the effective date the new entry carries.
-   */
   'account.goal.changed': {
     label: 'Goal changed',
     category: 'account',
@@ -434,12 +361,6 @@ const AUDIT_ACTIONS = {
     ],
   },
 
-  /**
-   * Critical and self-directed. accountDeletion.js clears every collection the user owns, and
-   * this entry is the only thing that survives it -- audit_logs is deliberately
-   * not one of the nine. The detail records what was removed, since after the
-   * fact there is nothing left to inspect.
-   */
   'account.deleted': {
     network: true,
     label: 'Account deleted',
@@ -481,13 +402,6 @@ const AUDIT_ACTIONS = {
   // =========================================================================
   // food scanner and meals
   // =========================================================================
-  /**
-   * The recognition pipeline is not integrated yet (food_scans documents are
-   * written with status 'processing' and nothing completes them). This entry
-   * is what makes the failure rate visible the day it does land -- a scanner
-   * that silently fails for one user looks identical to a user who stopped
-   * scanning, and only this distinguishes them.
-   */
   'nutrition.scan.failed': {
     label: 'Food scan failed',
     category: 'nutrition',
@@ -504,11 +418,6 @@ const AUDIT_ACTIONS = {
   // =========================================================================
   // workout
   // =========================================================================
-  /**
-   * System actor: written by scripts/sync-workouts.js via logSystemAction,
-   * which has no req to read an IP from. The detail therefore names counts
-   * rather than a network origin.
-   */
   'workout.catalog.synced': {
     label: 'Exercise catalog synced',
     category: 'workout',
@@ -527,11 +436,6 @@ const AUDIT_ACTIONS = {
   // =========================================================================
   // coach -- AI chat
   // =========================================================================
-  /**
-   * The failover chain's own observability. quotaStore/router already
-   * distinguish burst from daily limits; this is where that distinction
-   * becomes visible outside the server log.
-   */
   'coach.provider.failover': {
     label: 'AI provider failover',
     category: 'coach',
@@ -557,7 +461,6 @@ const AUDIT_ACTIONS = {
     ],
   },
 
-  // Chat keeps working on keyword search while embeddings are paused
   'coach.embeddings.paused': {
     label: 'Semantic search paused',
     category: 'coach',
@@ -572,10 +475,6 @@ const AUDIT_ACTIONS = {
 
   // =========================================================================
   // notification -- push preferences and delivery
-  //
-  // Push tokens are never stored, only details.tokenHash (auditLogger.
-  // hashIdentifier), which pairs a registered row with its revoked row.
-  // Notification content and successful sends are never recorded
   // =========================================================================
   'account.notifications.toggled': {
     label: 'Notification settings changed',
@@ -627,7 +526,6 @@ const AUDIT_ACTIONS = {
     ],
   },
 
-  // Expo answered DeviceNotRegistered, so the token was dropped
   'notification.push_token.invalidated': {
     label: 'Device token invalidated',
     category: 'notification',
@@ -641,17 +539,8 @@ const AUDIT_ACTIONS = {
   },
 
   // =========================================================================
-  // administration -- one privileged account acting on another account
-  //
-  // Every action in this group is `critical` without exception. These are the
-  // entries the whole audit surface exists for: an admin acting on somebody
-  // else's record is the only category where the actor and the subject differ
-  // and the subject cannot see it happen.
+  // administration -- privileged actions on user accounts and audit logs
   // =========================================================================
-  /**
-   * Recording a READ looks paranoid until you consider that the users
-   * management page exposes every user's email and profile.
-   */
   'admin.user.viewed': {
     label: 'User record viewed',
     category: 'administration',
@@ -666,8 +555,6 @@ const AUDIT_ACTIONS = {
     category: 'administration',
     severity: 'critical',
     targetType: 'user',
-    // The example from the brief, generalised: the row names the fields and
-    // the values.
     message: '{actor} renamed {target}',
 
     fields: [
@@ -684,6 +571,7 @@ const AUDIT_ACTIONS = {
 
     fields: [
       { label: 'Reason', key: 'reason' },
+      { label: 'Message to user', key: 'userMessage' },
     ],
   },
 
@@ -720,6 +608,7 @@ const AUDIT_ACTIONS = {
     fields: [
       { label: 'Deleted on', key: 'purgeAt' },
       { label: 'Reason', key: 'reason' },
+      { label: 'Message to user', key: 'userMessage' },
     ],
   },
 
@@ -819,6 +708,44 @@ const AUDIT_ACTIONS = {
     ],
   },
 
+  'admin.image.viewed': {
+    label: 'Flagged photo viewed',
+    category: 'administration',
+    severity: 'notice',
+    targetType: 'user',
+    message: "{actor} viewed a flagged photo from {target}",
+
+    fields: [
+      { label: 'Photo', key: 'kind', format: 'label' },
+    ],
+  },
+
+  'admin.image.approved': {
+    label: 'Flagged photo approved',
+    category: 'administration',
+    severity: 'critical',
+    targetType: 'user',
+    message: "{actor} approved a flagged photo from {target}",
+
+    fields: [
+      { label: 'Photo', key: 'kind', format: 'label' },
+      { label: 'Reason', key: 'reason' },
+    ],
+  },
+
+  'admin.image.removed': {
+    label: 'Photo removed',
+    category: 'administration',
+    severity: 'critical',
+    targetType: 'user',
+    message: "{actor} removed a photo from {target}",
+
+    fields: [
+      { label: 'Photo', key: 'kind', format: 'label' },
+      { label: 'Reason', key: 'reason' },
+    ],
+  },
+
   'admin.admin.created': {
     label: 'Admin granted',
     category: 'administration',
@@ -831,12 +758,6 @@ const AUDIT_ACTIONS = {
     ],
   },
 
-  /**
-   * Auditing the audit trail. An export lifts the entire trail out of the
-   * system, which is the single most consequential thing an admin can do here.
-   */
-  // Holds keep a row past its expiry (models/AuditHold.js). The row itself
-  // is never touched, so both directions are their own critical entries
   'admin.audit_log.held': {
     label: 'Audit entry held',
     category: 'administration',
@@ -863,8 +784,6 @@ const AUDIT_ACTIONS = {
     ],
   },
 
-  // The note's text lives in audit_notes, shown under the row it's about.
-  // This entry only records that one was added
   'admin.audit_log.note_added': {
     label: 'Audit note added',
     category: 'administration',
@@ -877,7 +796,6 @@ const AUDIT_ACTIONS = {
     ],
   },
 
-  // Page 1 only, once per admin per cooldown, per person for a lookup (auditController)
   'admin.audit_log.viewed': {
     label: 'Audit log viewed',
     category: 'administration',
@@ -904,7 +822,7 @@ const AUDIT_ACTIONS = {
   },
 
   // =========================================================================
-  // system -- no human actor
+  // system -- automated jobs and integrity checks
   // =========================================================================
   'system.retention.scan_images_purged': {
     label: 'Retention job ran',
@@ -916,8 +834,6 @@ const AUDIT_ACTIONS = {
     fields: [],
   },
 
-  // Written by the chain check in server.js when a row was edited or removed
-  // outside the TTL. brokenAt is the first row whose prevHash doesn't match
   'system.audit_chain.broken': {
     label: 'Audit chain broken',
     category: 'system',
@@ -931,15 +847,52 @@ const AUDIT_ACTIONS = {
       { label: 'Row ID', key: 'brokenAt' },
     ],
   },
+
+  // =========================================================================
+  // moderation -- automated image moderation
+  // =========================================================================
+  'moderation.image.flagged': {
+    label: 'Photo flagged',
+    category: 'system',
+    severity: 'notice',
+    targetType: 'user',
+    message: "{actor}'s photo was flagged for review",
+
+    fields: [
+      { label: 'Photo', key: 'kind', format: 'label' },
+      { label: 'Flagged for', key: 'categories' },
+      { label: 'Top score', key: 'topScore' },
+    ],
+  },
+
+  'moderation.image.blocked': {
+    label: 'Photo blocked',
+    category: 'system',
+    severity: 'warning',
+    targetType: 'user',
+    message: "{actor}'s photo was blocked",
+
+    fields: [
+      { label: 'Photo', key: 'kind', format: 'label' },
+      { label: 'Flagged for', key: 'categories' },
+      { label: 'Top score', key: 'topScore' },
+    ],
+  },
+
+  'moderation.user.repeat_blocks': {
+    label: 'Repeated photo blocks',
+    category: 'system',
+    severity: 'warning',
+    targetType: 'user',
+    message: '{actor} had several photos blocked in a short time',
+
+    fields: [
+      { label: 'Blocked photos', key: 'count' },
+      { label: 'Within (hours)', key: 'hours' },
+    ],
+  },
 };
 
-// ===========================================================================
-// Lookups
-// ===========================================================================
-
-// Only registered actions exist. An unregistered one throws, so a typo at a
-// call site is refused at write time (logAction logs and drops it) rather
-// than stored
 function getActionDef(action) {
   const def = AUDIT_ACTIONS[action];
   if (!def) throw new Error(`Unregistered audit action "${action}"`);

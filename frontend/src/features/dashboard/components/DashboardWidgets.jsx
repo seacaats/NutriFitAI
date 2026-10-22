@@ -141,11 +141,10 @@ export function RecommendationsStrip({ recs, darkMode, onOpen, style }) {
     <View style={[recStyles.wrap, { backgroundColor: tone.card, borderColor: tone.border }, style]}>
       <View style={recStyles.header}>
         <Text style={[recStyles.title, { color: tone.text }]}>For You</Text>
-        {recs.canRefresh && (
-          <Pressable onPress={recs.refresh} disabled={recs.busy} hitSlop={8} accessibilityRole="button" accessibilityLabel="Refresh recommendations">
-            {recs.busy ? <ActivityIndicator size="small" color={shellColors.primary} /> : <Ionicons name="refresh" size={18} color={tone.muted} />}
-          </Pressable>
-        )}
+        {/* Always there; dimmed while the server paces refreshes. Pressing it then shows why */}
+        <Pressable onPress={recs.refresh} disabled={recs.busy} hitSlop={8} accessibilityRole="button" accessibilityLabel="Refresh recommendations" style={!recs.canRefresh && !recs.busy ? { opacity: 0.45 } : null}>
+          {recs.busy ? <ActivityIndicator size="small" color={shellColors.primary} /> : <Ionicons name="refresh" size={18} color={tone.muted} />}
+        </Pressable>
       </View>
       {!!recs.error && <Text style={[recStyles.meta, { color: tone.muted }]}>{recs.error}</Text>}
 

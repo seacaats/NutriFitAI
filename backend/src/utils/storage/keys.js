@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-// Stores abstract keys for uploaded files instead of resolved URLs
+// Storage key builders and image magic-byte validators.
 
 const EXT_BY_TYPE = {
   'image/jpeg': 'jpg',
@@ -8,7 +8,6 @@ const EXT_BY_TYPE = {
   'image/webp': 'webp',
 };
 
-// Reject non-properly formatted keys 
 function assertSafeKey(key) {
   if (typeof key !== 'string' || key.length === 0) throw new Error('storage key must be a string');
   if (key.startsWith('/') || key.includes('..') || key.includes('\\')) {
@@ -23,31 +22,24 @@ function extensionFor(contentType) {
   return ext;
 }
 
-// Builds filename string based on Google URL 
 function avatarKey(userId, sourceUrl, contentType) {
   const digest = `g${crypto.createHash('sha256').update(sourceUrl).digest('hex').slice(0, 12)}`;
   return assertSafeKey(`avatars/${userId}-${digest}.${extensionFor(contentType)}`);
 }
 
-// Builds filename randomly since no stable source like above
 function uploadedAvatarKey(userId, contentType) {
   const rand = crypto.randomBytes(6).toString('hex');
   return assertSafeKey(`avatars/${userId}-u${rand}.${extensionFor(contentType)}`);
 }
 
-// Namespaced per user so retention/account-deletion sweeps and cascade
-// can operate without issue, uuid appended because these are personal data
 function scanKey(userId, contentType) {
   return assertSafeKey(`scans/${userId}/${crypto.randomUUID()}.${extensionFor(contentType)}`);
 }
 
-/** Prefix matching "everything belonging to this user", used by the cascade. */
 function userScanPrefix(userId) {
   return `scans/${userId}/`;
 }
 
-// A photo on one of the user's own workouts. Per-user prefix, like scans, so
-// account deletion can sweep them
 function workoutImageKey(userId, contentType) {
   return assertSafeKey(`workouts/${userId}/${crypto.randomUUID()}.${extensionFor(contentType)}`);
 }
@@ -56,9 +48,7 @@ function userWorkoutPrefix(userId) {
   return `workouts/${userId}/`;
 }
 
-// Magic-number check for accepted formats (.jpg, .png, .webp). Here beside
-// EXT_BY_TYPE since it's about file types, not avatars: the avatar upload
-// and the food scanner both use it
+// Validates magic bytes for .jpg, .png, and .webp
 function looksLikeImage(buffer, ext) {
   if (buffer.length < 12) return false;
   if (ext === 'jpg') return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;

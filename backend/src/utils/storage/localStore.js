@@ -4,9 +4,7 @@ const path = require('path');
 const env = require('../../../config/env');
 const { assertSafeKey } = require('./keys');
 
-
-//Objects are written under env.uploadsDir, which app.js already serves at
-//uploads with a 30-day immutable cache, nosniff and dotfiles denied 
+// Local filesystem storage driver under env.uploadsDir (mounted at /uploads).
 
 const PUBLIC_PREFIX = '/uploads';
 
@@ -14,7 +12,6 @@ function absolutePathFor(key) {
   assertSafeKey(key);
   const full = path.join(env.uploadsDir, key);
 
-  // Second layer traversal check atop assertSafeKey() to check for unsanitized keys
   const root = path.resolve(env.uploadsDir);
   if (!path.resolve(full).startsWith(root + path.sep)) {
     throw new Error(`storage key escapes uploads root: ${key}`);
@@ -29,27 +26,23 @@ async function save(buffer, { key }) {
   return { key, bytes: buffer.length };
 }
 
-// Deletes an uploaded file (reserved for avatars). No error 
-// throws, in case done with account deletion
 async function remove(key) {
   try {
     await fs.unlink(absolutePathFor(key));
   } catch {
-    // Gone, or unreadable
+    // Ignore missing or unreadable files
   }
 }
 
-// Every object under a prefix or directory (reserved for food scans)
 async function removePrefix(prefix) {
   try {
     const dir = absolutePathFor(prefix.replace(/\/$/, ''));
     await fs.rm(dir, { recursive: true, force: true });
   } catch {
-    // Same reasoning as remove()
+    // Ignore missing directories
   }
 }
 
-// Keys under a prefix, for the files in one folder (avatars/<userId>-)
 async function list(prefix) {
   const dir = prefix.includes('/') ? prefix.slice(0, prefix.lastIndexOf('/')) : '';
   const start = prefix.slice(dir ? dir.length + 1 : 0);
@@ -58,6 +51,14 @@ async function list(prefix) {
     return files.filter((f) => f.startsWith(start) && !f.endsWith('.tmp')).map((f) => (dir ? `${dir}/${f}` : f));
   } catch {
     return [];
+  }
+}
+
+async function read(key) {
+  try {
+    return await fs.readFile(absolutePathFor(key));
+  } catch {
+    return null;
   }
 }
 
@@ -70,12 +71,9 @@ async function exists(key) {
   }
 }
 
-// Stabilized uniform interface across future storage drivers
-// The returned relative path is also prefixed in the frontend's 
-// resolveMediaUrl with the API origin, passing absolute URLs
 async function urlFor(key) {
   if (!key) return null;
   return `${PUBLIC_PREFIX}/${key}`;
 }
 
-module.exports = { save, remove, removePrefix, list, exists, urlFor, driver: 'local', isPrivate: false };
+module.exports = { save, remove, removePrefix, list, exists, read, urlFor, driver: 'local', isPrivate: false };

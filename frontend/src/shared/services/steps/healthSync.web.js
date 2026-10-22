@@ -1,7 +1,6 @@
 /**
- * The step screen on web is a READER: it renders whatever the phone has already
- * synced to the server, and shows a "connect your phone" empty state when
- * tracking.connectedAt is null
+ * Web stub for step tracking. Web reads synced step data from the API
+ * without direct hardware sensor access.
  */
 
 export const MAX_BACKFILL_DAYS = 0;

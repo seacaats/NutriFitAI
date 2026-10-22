@@ -8,8 +8,6 @@ const { MAX_DAY_ML } = require('../validators/waterValidators');
 const { userTimeZone } = require('../services/user/userTimeZone');
 const { GLASS_ML, MIN_WATER_GOAL_ML, MAX_WATER_GOAL_ML } = require('../utils/goals/goalLimits');
 
-// Today's entries and total, the goal, and a total per day for the
-// `days` days ending on `to` (today by default; oldest first, zero-filled)
 async function buildWaterPayload(req, days = 7, to = null) {
   const timeZone = await userTimeZone(req);
   const day = today(timeZone);
@@ -28,7 +26,6 @@ async function buildWaterPayload(req, days = 7, to = null) {
   return {
     date: day,
     glassMl: GLASS_ML,
-    // Clamped both ways: goals saved before the 4 L ceiling still read as valid
     goalMl: Math.min(Math.max(goal?.dailyWaterMl ?? MIN_WATER_GOAL_ML, MIN_WATER_GOAL_ML), MAX_WATER_GOAL_ML),
     maxDayMl: MAX_DAY_ML,
     totalMl: totals[day] || 0,
@@ -46,10 +43,9 @@ const getWater = asyncHandler(async (req, res) => {
   return sendSuccess(res, { data });
 });
 
-// POST /api/water -- defaults to one glass
+// POST /api/water
 const logWater = asyncHandler(async (req, res) => {
   const amountMl = req.body.amountMl ?? GLASS_ML;
-  // A day's total stays under the ceiling, however many drinks it took
   const timeZone = await userTimeZone(req);
   const day = today(timeZone);
   const { start, end } = dayRangeToInstants(day, day, timeZone);
@@ -63,8 +59,6 @@ const logWater = asyncHandler(async (req, res) => {
   }
   await WaterLog.add(req.userId, amountMl);
   const data = await buildWaterPayload(req);
-  // Once per day: the dedupe key makes later glasses that day a no-op.
-  // Not awaited, notify never throws
   if (data.totalMl >= data.goalMl) {
     notify(req.userId, 'water_goal_reached', { dedupeKey: `water-goal:${data.date}` });
   }
@@ -79,7 +73,7 @@ const removeWater = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Entry removed', data });
 });
 
-// PUT /api/water/goal -- validator already enforces the 8-glass minimum
+// PUT /api/water/goal
 const setWaterGoal = asyncHandler(async (req, res) => {
   const goal = await User.setGoalTarget(req.userId, 'dailyWaterMl', req.body.goalMl);
   if (!goal) throw ApiError.notFound('We couldn\'t find your account. Please sign in again.');
@@ -87,12 +81,12 @@ const setWaterGoal = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Water goal saved', data });
 });
 
-// GET /api/water/day/:date -- one day's drinks, for the day editor
+// GET /api/water/day/:date
 const getWaterDay = asyncHandler(async (req, res) => {
   const { date } = req.params;
   const timeZone = await userTimeZone(req);
   const { start, end } = dayRangeToInstants(date, date, timeZone);
-  const entries = (await WaterLog.listBetween(req.userId, start, end)).reverse(); // oldest first
+  const entries = (await WaterLog.listBetween(req.userId, start, end)).reverse();
 
   return sendSuccess(res, {
     data: {
@@ -103,8 +97,7 @@ const getWaterDay = asyncHandler(async (req, res) => {
   });
 });
 
-// PUT /api/water/day/:date -- the day's drinks become exactly `amounts`.
-// An empty list clears the day. Any past day, not a future one
+// PUT /api/water/day/:date
 const setWaterDay = asyncHandler(async (req, res) => {
   const { date } = req.params;
   const timeZone = await userTimeZone(req);
@@ -114,7 +107,6 @@ const setWaterDay = asyncHandler(async (req, res) => {
   }
 
   const { start, end } = dayRangeToInstants(date, date, timeZone);
-  // New drinks on a past day go at its local noon; today, at the current time
   const fallbackAt = date === day ? new Date() : new Date((start.getTime() + end.getTime()) / 2);
 
   await withTransaction((client) =>

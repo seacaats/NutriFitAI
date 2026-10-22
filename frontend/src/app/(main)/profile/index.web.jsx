@@ -41,8 +41,7 @@ export default function ProfileScreen() {
   const { width } = useWindowDimensions();
   const narrow = width < 900;
   const { darkMode } = useTheme();
-  // Admins keep a name and an email; the body, goal and
-  // workout fields belong to ordinary users
+  // Admins edit identity fields only; health, goal, and workout fields apply to regular users.
   const isUser = useAuth().role === "user";
   const {
     form: profile,
@@ -67,23 +66,18 @@ export default function ProfileScreen() {
     cancelEditing,
   } = useProfileForm({ identityOnly: !isUser });
 
-  // Workout preferences are user-only, like the Workouts screen they shape
   const workoutOptions = useWorkoutOptions(isUser);
 
-  // Remembered per URL, so a new photo after a failed load gets shown
+  // Track failed avatar URLs so newly staged local photos still render.
   const [failedUrl, setFailedUrl] = useState(null);
-  // A staged pick is a local file, so it always renders; only a stored URL can
-  // 404 and fall back to the placeholder.
   const avatarUrl = avatarDirty || avatarPreviewUri !== failedUrl ? avatarPreviewUri : null;
 
   const { card, textColor } = getScreenPalette(darkMode);
   const inputBg = { backgroundColor: darkMode ? shellColors.dark.cardBg : colors.white };
-  // Dropdown colors for the current theme
   const palette = { surface: inputBg.backgroundColor, border: card.borderColor, text: textColor.color };
   const disabledBg = { backgroundColor: getScreenTones(darkMode).surfaceMuted };
   const joined = joinedLabel(serverData?.createdAt);
 
-  // Same card wherever it sits; `extra` places it
   const personalCard = (extra) => (
     <View style={[styles.card, card, extra]}>
       <Text style={[styles.sectionTitle, textColor]}>Personal Information</Text>
@@ -92,8 +86,7 @@ export default function ProfileScreen() {
       <View style={styles.fieldsGrid}>
         <ProfileInput maxLength={NAME_MAX} label="First Name" required value={profile.firstName} onChangeText={(v) => handleChange("firstName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
         <ProfileInput maxLength={NAME_MAX} label="Last Name" value={profile.lastName} onChangeText={(v) => handleChange("lastName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
-        {/* Read-only: an email change invalidates email_verified_at and the OTP
-            challenges tied to the address, so it needs its own re-verification flow. */}
+        {/* Email is read-only here; email changes use the verification flow in Settings */}
         <ProfileInput label="Email" value={profile.email} editing={false} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} keyboardType="email-address" loading={loading} />
         {isUser && <ProfileInput maxLength={3} label="Age" required value={String(profile.age ?? "")} onChangeText={(v) => handleChange("age", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} keyboardType="numeric" loading={loading} />}
         {isUser && <ProfileInput maxLength={6} label="Height (cm)" required value={String(profile.height ?? "")} onChangeText={(v) => handleChange("height", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} keyboardType="numeric" loading={loading} />}
@@ -115,8 +108,6 @@ export default function ProfileScreen() {
     </View>
   );
 
-  // First load renders the real page with placeholders where the values go,
-  // so nothing shifts once the profile arrives. Titles and labels render as is
   return (
     <DashboardLayout>
       {/* Page Header */}
@@ -154,7 +145,6 @@ export default function ProfileScreen() {
 
       <ScreenError message={error} />
 
-      {/* Save Message */}
       {saved && (
         <View style={[styles.savedBanner, { backgroundColor: darkMode ? "#263322" : colors.mintTint, borderColor: darkMode ? "#14532d" : "#bbf7d0" }]}>
           <Text style={styles.savedText}>Profile updated successfully!</Text>
@@ -183,7 +173,7 @@ export default function ProfileScreen() {
               )}
             </View>
 
-            {/* Staged: nothing has been sent yet, so the choice is reversible. */}
+            {/* Staged avatar actions before uploading */}
             {loading ? (
               <View style={styles.avatarActions}>
                 <Skeleton width={80} height={14} />
@@ -219,14 +209,12 @@ export default function ProfileScreen() {
             )}
           </View>
 
-          {/* Who this is; the numbers live in Overview and the fields below */}
           <View style={styles.metaList}>
             <MetaLine icon="mail-outline" text={profile.email} loading={loading} />
             {(loading || !!joined) && <MetaLine icon="calendar-outline" text={`Joined ${joined}`} loading={loading} />}
           </View>
         </View>
 
-        {/* Overview: the body numbers at a glance, BMI worked out from them */}
         {isUser ? (
           <View style={[styles.card, card, styles.flex2, narrow && styles.stackItem]}>
             <Text style={[styles.sectionTitle, textColor]}>Overview</Text>
@@ -238,10 +226,9 @@ export default function ProfileScreen() {
         )}
       </View>
 
-      {/* Users get it as its own section; others beside the avatar card */}
       {isUser && personalCard(styles.sectionSpacing)}
 
-      {/* Fitness Goals: users only */}
+      {/* Fitness Goals (regular users only) */}
       {isUser && (
         <View style={[styles.card, card, styles.sectionSpacing]}>
           <View style={styles.rowGap}>
@@ -253,7 +240,6 @@ export default function ProfileScreen() {
           </View>
 
           <View style={styles.fieldsGrid}>
-            {/* Same dropdowns as registration; "Other" allows custom text */}
             <ProfilePlanField label="Primary Goal" required value={profile.goal} options={GOAL_OPTIONS} icon="flag-outline" placeholder="Select your goal" otherPlaceholder="Your goal (e.g. Run a 10K)" onChange={(v) => handleChange("goal", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
             <ProfilePlanField label="Activity Level" required value={profile.activity} options={ACTIVITY_OPTIONS} icon="pulse-outline" placeholder="Select your activity level" otherPlaceholder="Your activity (e.g. Shift work, on my feet)" onChange={(v) => handleChange("activity", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
             <ProfilePlanField label="Diet Preference" required value={profile.dietPreference} options={DIET_PREFERENCES} multiple exclusive={NO_DIET_PREFERENCE} icon="nutrition-outline" placeholder="Select any that apply" otherPlaceholder="Your diet (e.g. Intermittent Fasting)" onChange={(v) => handleChange("dietPreference", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
@@ -283,23 +269,18 @@ function MetaLine({ icon, text, loading }) {
 const styles = StyleSheet.create({
   ...profileStyles,
 
-  card: { borderRadius: radii.sm, borderWidth: 1, padding: 16 }, // p-5 approx
+  card: { borderRadius: radii.sm, borderWidth: 1, padding: 16 },
   flex2: { flex: 2 },
   stackRow: { flexDirection: "column" },
-  // Stacked (narrow) children size to their content. With flex: n they get a
-  // zero basis in a column, collapse, and the next card draws over them
+  // Prevent flex children from collapsing to zero height when stacked vertically.
   stackItem: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
 
-  // Header
-  // gap: the buttons keep a space under the title once the row wraps
-  pageHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 20 }, // mb-5
-  // Narrow: the same single row as the phone app (title left, buttons right),
-  // with the short labels, instead of the buttons dropping under the title
+  pageHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 20 },
   pageHeaderNarrow: { alignItems: "flex-start", marginBottom: 12 },
   headerActionsNarrow: { gap: 14 },
   actionBtnNarrow: { minWidth: 76, justifyContent: "center", paddingVertical: 8 },
   headerText: { flexShrink: 1, minWidth: 0, flex: 1 },
-  pageTitle: { fontSize: 24, fontWeight: "700" }, // text-2xl font-bold
+  pageTitle: { fontSize: 24, fontWeight: "700" },
   pageSubtitle: { marginTop: 4, fontSize: 14, color: colors.textMuted },
 
   actionBtn: {
@@ -313,14 +294,12 @@ const styles = StyleSheet.create({
   },
   actionBtnText: { fontSize: 14, fontWeight: "600", color: colors.white },
 
-  // Saved banner
   savedBanner: { marginBottom: 16, borderRadius: radii.sm, borderWidth: 1, padding: 12, alignItems: "center" },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
   cancelBtn: { paddingHorizontal: 14, paddingVertical: 9 },
   cancelBtnText: { fontSize: 14, fontWeight: "700", color: colors.textMuted },
   savedText: { fontSize: 14, fontWeight: "600", color: shellColors.primary },
 
-  // Profile content
   contentRow: { flexDirection: "row", gap: 12 },
 
   avatarWrap: { alignItems: "center" },
@@ -336,19 +315,17 @@ const styles = StyleSheet.create({
   avatarActions: { flexDirection: "row", gap: 12, marginTop: 8 },
   avatarAction: { fontSize: 14, fontWeight: "700", color: shellColors.primary },
   avatarActionMuted: { fontSize: 14, fontWeight: "700", color: colors.textMuted },
-  profileName: { marginTop: 16, fontSize: 18, fontWeight: "700" }, // mt-4 text-lg font-bold
+  profileName: { marginTop: 16, fontSize: 18, fontWeight: "700" },
 
   metaList: { marginTop: 16, gap: 8, alignSelf: "stretch", alignItems: "center" },
   metaLine: { flexDirection: "row", alignItems: "center", gap: 6, maxWidth: "100%" },
   metaText: { fontSize: 14, color: colors.textMuted, flexShrink: 1 },
 
-  // Sections
-  sectionTitle: { fontSize: 18, fontWeight: "700" }, // text-lg font-bold
+  sectionTitle: { fontSize: 18, fontWeight: "700" },
   sectionSubtitle: { marginTop: 4, fontSize: 14, color: colors.textMuted },
-  sectionSpacing: { marginTop: 12 }, // mt-3
+  sectionSpacing: { marginTop: 12 },
 
-  // Fields
-  fieldsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16, marginTop: 20 }, 
+  fieldsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16, marginTop: 20 },
 
   profileNameSkeleton: { marginTop: 16 },
 });

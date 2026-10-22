@@ -10,17 +10,15 @@ import {
 
 import { addDays, eachDay, todayISO } from "@/shared/utils/dates";
 
-// Most steps one day can hold. Mirrors MAX_STEPS in StepCards.jsx and the server's limit
+// Maximum steps allowed per day
 const MAX_STEPS_PER_DAY = 20000;
 
 /**
- * Android step source, backed by Health Connect
- * Same four-function contract as the iOS file so the screens never branch.
- * Note that Health Connect is a STORE. So other applications that use it
- * to actually record is important to sync besides this application
+ * Android step tracking implementation using Health Connect.
+ * Health Connect acts as a centralized datastore aggregating step records from tracking apps.
  */
 
-// Health Connect keeps far more history than iOS; 30 days covers the UI
+// Health Connect backfill window
 export const MAX_BACKFILL_DAYS = 30;
 
 // Matches the daily_steps_source_check constraint
@@ -28,7 +26,7 @@ const SOURCE = "health_connect";
 
 const STEP_PERMISSION = { accessType: "read", recordType: "Steps" };
 
-// initialize() is idempotent but not free; memoised so every call isn't a bridge hop
+// Memoized initialization to prevent redundant bridge calls
 let initialized = false;
 async function ensureInitialized() {
   if (initialized) return true;
@@ -36,10 +34,7 @@ async function ensureInitialized() {
   return initialized;
 }
 
-/**
- * Health Connect wants ISO datetimes. Local-midnight bounds, so a day means the
- * user's day.
- */
+// Converts local calendar date bounds to ISO datetimes
 function localDayBounds(isoDate, endISODate) {
   const [fy, fm, fd] = isoDate.split("-").map(Number);
   const [ty, tm, td] = endISODate.split("-").map(Number);
@@ -54,13 +49,7 @@ const healthSync = {
   label: "Health Connect",
 
   /**
-   * Three outcomes, not two.
-   *
-   * "Needs an update" is a distinct status from "unavailable", and it is
-   * actionable: on Android below 14 Health Connect is a Play Store app the user
-   * can install. Collapsing it into a generic failure is the same mistake as
-   * showing "something went wrong" for a Huawei device with no Play Services.
-   *
+   * Checks whether Health Connect is available on the device.
    * @returns {Promise<boolean>}
    */
   async isAvailable() {
@@ -92,8 +81,6 @@ const healthSync = {
     try {
       if (!(await ensureInitialized())) return false;
       const granted = await requestPermission([STEP_PERMISSION]);
-      // Returns the permissions actually granted, which may be an empty array
-      // if the user declined — a resolved promise is not consent.
       return Array.isArray(granted)
         && granted.some((p) => p.recordType === "Steps" && p.accessType === "read");
     } catch {
@@ -112,22 +99,17 @@ const healthSync = {
     }
   },
 
-  /** Health Connect permissions are revoked from its own settings screen, not ours. */
+  /** Opens device Health Connect permission settings */
   async openSettings() {
     try {
       await openHealthConnectSettings();
     } catch {
-      // Non-fatal: the button just does nothing if the provider is missing.
+      // Ignore if provider is missing
     }
   },
 
   /**
-   * Daily totals for an inclusive range, in ONE call.
-   *
-   * `period: "DAYS"` rather than a fixed 24-hour Duration is deliberate: a
-   * Period is date-based, so it respects calendar boundaries and daylight
-   * saving instead of drifting an hour twice a year.
-   *
+   * Reads daily totals for an inclusive range using date-based period grouping.
    * @returns {Promise<Array<{ activityDate: string, stepCount: number }>>}
    */
   async readDailyTotals(fromISO, toISO) {
@@ -150,24 +132,7 @@ const healthSync = {
       return [];
     }
 
-    // BUG FIX (steps not appearing on Android): this used to derive
-    // `activityDate` by slicing `bucket.startTime` from the response, e.g.
-    // `String(bucket.startTime).slice(0, 10)`. `aggregateGroupByPeriod`
-    // returns each bucket's startTime as a full ISO instant, and for a user
-    // west of UTC (any negative offset) a bucket whose LOCAL day is, say,
-    // "2026-09-19" can have a UTC instant that still reads "2026-09-19T0X:.."
-    // only near UTC; for the many users whose offset pushes local midnight to
-    // a different UTC calendar day, slicing gave a date one day off from the
-    // one requested. Because the request window was itself built from local
-    // calendar dates (`eachDay(start, end)`) with exactly one bucket per day
-    // in order (`timeRangeSlicer: { period: "DAYS", length: 1 }`), the
-    // reliable source of truth for which day a bucket belongs to is its
-    // position in the request, not a re-parse of the response's timestamp.
-    // Since `useDailySteps` buckets rows by exact activityDate string match
-    // against the days it expects to see, a shifted date meant the row never
-    // matched any expected day and silently vanished from every chart/stat on
-    // the mobile Steps screen -- this is the most likely root cause of "no
-    // step data shows on mobile" for users not on UTC.
+    // Maps buckets by index against requestedDays to preserve local calendar alignment across timezones
     const requestedDays = eachDay(start, end);
 
     return (buckets || [])
@@ -180,8 +145,7 @@ const healthSync = {
 
         return { activityDate, stepCount: Math.min(MAX_STEPS_PER_DAY, Math.max(0, Math.round(Number(total)))) };
       })
-      // Buckets with no samples are dropped rather than zeroed: same reasoning
-      // as iOS, a gap is not a claim of zero movement.
+      // Omit zero/empty buckets to preserve data gaps rather than recording zero steps
       .filter((day) => day && day.stepCount > 0);
   },
 };

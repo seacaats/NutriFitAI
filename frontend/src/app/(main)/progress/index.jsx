@@ -8,19 +8,15 @@ import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { StyleSheet, useWindowDimensions, View } from "react-native";
 
-// Meals, steps, workouts and weight over a week, month, 3 months or year,
-// all from one GET /api/progress. The cards live in ProgressWidgets, shared
-// with the web screen
+// Mobile progress screen displaying nutrition, steps, workouts, and weight trends over the selected period.
 export default function ProgressScreen() {
   const { darkMode } = useTheme();
   const progress = useProgress();
   const { width } = useWindowDimensions();
-  // Macros and weight are stacked on the phone: weight goes below macros
   const compact = true;
 
   return (
     <DashboardLayout hideTabBar>
-      {/* Opened from the ☰ menu, so no bottom bar; the header has a back arrow */}
       <ScreenHeader title="My Progress" subtitle="Your trends over time" />
 
       <PeriodBar progress={progress} darkMode={darkMode} style={styles.section} />

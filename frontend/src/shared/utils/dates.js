@@ -1,15 +1,8 @@
 /**
- * Calendar-date helpers (steps, water, food, workouts, progress).
+ * Local calendar date helpers (steps, water, food, workouts, progress).
  *
- * Every date in the app is a plain "YYYY-MM-DD" string in the USER'S local
- * timezone, and it stays a string from the phone all the way into the
- * database.
- *
- * The tempting shortcut -- `new Date().toISOString().slice(0, 10)` -- is wrong
- * here, because toISOString converts to UTC first. At UTC+8 that files
- * everything after 4pm under the previous day, so an evening walk lands on
- * yesterday. Every function below therefore uses the local getFullYear /
- * getMonth / getDate triple instead.
+ * Dates are represented as "YYYY-MM-DD" strings in the user's local timezone.
+ * Uses local getFullYear/getMonth/getDate components to prevent UTC date boundary shifts.
  */
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -21,17 +14,13 @@ export function toLocalISODate(date = new Date()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-/** Today, in the user's own timezone. */
+/** Today's date in local timezone as YYYY-MM-DD. */
 export function todayISO() {
   return toLocalISODate(new Date());
 }
 
 /**
- * Shifts an ISO date string by whole days.
- *
- * Constructed via the local Date constructor (not Date.parse of the string,
- * which treats a bare date as UTC), and `setDate` handles month, year and
- * leap-day rollover for us.
+ * Shifts an ISO date string by a number of days using local Date constructor.
  */
 export function addDays(isoDate, days) {
   const [y, m, d] = isoDate.split("-").map(Number);
@@ -60,11 +49,7 @@ export function eachDay(fromISO, toISO) {
 }
 
 /**
- * The ranges the step screens offer.
- *
- * `syncDays` is separate from the display range on purpose: the chart may show
- * a year, but a sync only ever needs to re-read the recent window, and iOS only
- * retains seven days of pedometer history anyway.
+ * Display and aggregation ranges for step history screens.
  */
 export const RANGES = {
   Week: { days: 7, bucket: "day" },
@@ -99,8 +84,4 @@ export function friendlyDate(isoDate) {
   if (isoDate === addDays(today, -1)) return "Yesterday";
   const [, m, d] = isoDate.split("-").map(Number);
   return `${MONTHS[m - 1]} ${d}`;
-}
-
-export function formatNumber(value) {
-  return new Intl.NumberFormat("en-US").format(Math.round(value || 0));
 }

@@ -1,10 +1,6 @@
 const { ApiError } = require('../utils/httpResponse');
 
-/**
- * Validates req.body against a zod schema, replacing 
- * req.body with the coerced result on success
- * @param {import('zod').ZodSchema} schema
- */
+/** Validates req.body against `schema` and replaces it with the parsed result. */
 function validateBody(schema) {
   return function validate(req, res, next) {
     const result = schema.safeParse(req.body);
@@ -20,11 +16,7 @@ function validateBody(schema) {
   };
 }
 
-/**
- * Same contract as validateBody, for req.query. But since req.query
- * can't be overwritten, coerced results are stored in req.validatedQuery
- * @param {import('zod').ZodSchema} schema
- */
+/** Validates req.query against `schema` and stores the parsed result on `req.validatedQuery`. */
 function validateQuery(schema) {
   return function validate(req, res, next) {
     const result = schema.safeParse(req.query);
@@ -40,11 +32,7 @@ function validateQuery(schema) {
   };
 }
 
-/**
- * Same contract as validateBody, for req.params. Worth for validating UUIDs,
- * which would otherwise return a "not found", instead of returning an actual error
- * @param {import('zod').ZodSchema} schema
- */
+/** Validates req.params against `schema` and replaces it with the parsed result. */
 function validateParams(schema) {
   return function validate(req, res, next) {
     const result = schema.safeParse(req.params);

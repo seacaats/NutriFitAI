@@ -6,18 +6,14 @@ const {
 
 const registerSchema = z.object({
   firstName: personName('First name', { required: true }),
-  // Consider mononyms
   lastName: personName('Last name').optional(),
   email: z.string().trim().email('Please enter a valid email address.').max(EMAIL_MAX, 'Email is too long.'),
   password: passwordSchema,
-  // Required at sign-up (contextBuilder's under-18 rules depend on it)
   age: ageSchema,
   heightCm: heightSchema,
   weightKg: weightSchema,
-  // The only optional detail besides last name, same as the form
   sex: sexSchema.optional(),
-  // Step 2: all required, same as the form ("None"/"No Preference" are options)
-  goal: customOption('Fitness goal'), // slug, label or custom; see goalNormalizer.js
+  goal: customOption('Fitness goal'),
   activityLevel: customOption('Activity level'),
   dietPreference: dietPreferences,
   healthConditions,
@@ -34,39 +30,30 @@ const verifyRegistrationSchema = z.object({
   code: otpCode,
 });
 
-// Second step of sign-in. The code is the emailed code (OTP_LENGTH digits, 4 by default),
-// a 6-digit app code, or a recovery code. They are told apart server side, so only the
-// length is bounded here, from the shortest of them
+// Accepts email OTP, 6-digit TOTP code, or recovery code
 const mfaLoginSchema = z.object({
   mfaToken: z.string().min(20).max(2000),
   code: z.string().trim().min(4, 'Enter the code we sent you.').max(24),
 });
 
-// Settings > two-factor. Changes need the password too
 const mfaSetupSchema = z.object({
   password: z.string().min(1, 'Please enter your password.').max(200),
 });
 
-// Sign-in step: just the challenge token. Resending the emailed code (regular
-// users) and starting the authenticator setup (admins, first sign-in)
 const mfaResendSchema = z.object({
   mfaToken: z.string().min(20).max(2000),
 });
 
-// First sign-in of an admin: the first code from the app finishes the setup
 const mfaEnableSchema = z.object({
   mfaToken: z.string().min(20).max(2000),
   code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code from your app.'),
 });
-
-// Confirm turning the emailed code (regular users) on or off
 
 const mfaEmailConfirmSchema = z.object({
   code: z.string().trim().regex(/^\d{4,8}$/, 'Enter the code from your email.'),
   enable: z.boolean(),
 });
 
-// Changing the email: the new address and the password, then the code sent to the new address
 const emailChangeRequestSchema = z.object({
   newEmail: z.string().trim().toLowerCase().email('Please enter a valid email address.').max(EMAIL_MAX, 'Email is too long.'),
   password: z.string().min(1, 'Please enter your password.').max(200),
@@ -85,8 +72,7 @@ const resendRegistrationOtpSchema = z.object({
   email: z.string().trim().email().max(EMAIL_MAX),
 });
 
-// Deliberately loose on password: accounts created before the no-spaces /
-// 64-char rules must still be able to sign in
+// Permissive password rules on login so legacy accounts remain accessible
 const loginSchema = z.object({
   email: z.string().trim().email('Please enter a valid email address.').max(EMAIL_MAX),
   password: z.string().min(1, 'Please enter your password.').max(200),

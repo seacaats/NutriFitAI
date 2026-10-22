@@ -59,28 +59,21 @@ export default function ProfileScreen() {
     cancelEditing,
   } = useProfileForm();
 
-  // Workout preferences are user-only, like the Workouts screen they shape
   const isUser = useAuth().role === "user";
   const workoutOptions = useWorkoutOptions(isUser);
 
-  // Remembered per URL, so a new photo after a failed load gets shown
+  // Track failed avatar URLs so newly staged local photos still render.
   const [failedUrl, setFailedUrl] = useState(null);
-  // A staged pick is a local file, so it always renders; only a stored URL can
-  // 404 and fall back to the placeholder.
   const avatarUrl = avatarDirty || avatarPreviewUri !== failedUrl ? avatarPreviewUri : null;
 
-  // Same card tones as web and the dashboard
   const { card, textColor } = getScreenPalette(darkMode);
   const inputBg = { backgroundColor: darkMode ? shellColors.dark.cardBg : colors.white };
   const disabledBg = { backgroundColor: getScreenTones(darkMode).surfaceMuted };
-  // Dropdown colors for the current theme
   const palette = { surface: inputBg.backgroundColor, border: card.borderColor, text: textColor.color };
 
   const displayName = [form.firstName, form.lastName].filter(Boolean).join(" ") || "Your profile";
   const joined = joinedLabel(serverData?.createdAt);
 
-  // First load renders the real page with placeholders where the values go,
-  // so nothing shifts once the profile arrives. The title renders as is
   return (
     <DashboardLayout>
       {/* Header */}
@@ -124,7 +117,6 @@ export default function ProfileScreen() {
       {/* Info Banner */}
       <View style={styles.banner}>
         <View style={[styles.bannerRow, compact && styles.bannerRowCompact]}>
-          {/* Photo, with Remove under it like web; the camera badge changes it */}
           <View style={styles.avatarCol}>
             <View style={[styles.avatarCircle, { backgroundColor: c.avatarBg }]}>
               {loading ? null : avatarUrl ? (
@@ -170,7 +162,7 @@ export default function ProfileScreen() {
               )}
             </View>
 
-            {/* Staged: nothing has been sent yet, so the choice is reversible. */}
+            {/* Staged avatar actions before uploading */}
             {avatarDirty && (
               <View style={styles.avatarStagedRow}>
                 <Pressable onPress={saveAvatar} disabled={avatarUploading} style={styles.avatarStagedBtn}>
@@ -207,7 +199,7 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* Overview: the body numbers at a glance, BMI worked out from them */}
+      {/* Overview */}
       <View style={[styles.card, card, styles.overviewCard]}>
         <Text style={[styles.cardTitle, textColor]}>Overview</Text>
 
@@ -220,8 +212,7 @@ export default function ProfileScreen() {
 
         <ProfileInput maxLength={NAME_MAX} label="First Name" required value={form.firstName} onChangeText={(v) => handleChange("firstName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
         <ProfileInput maxLength={NAME_MAX} label="Last Name" value={form.lastName} onChangeText={(v) => handleChange("lastName", v)} editing={editing} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
-        {/* Email is read-only: changing it would invalidate email verification,
-            so it needs its own re-verification flow rather than a silent edit. */}
+        {/* Email is read-only here; email changes use the verification flow in Settings */}
         <ProfileInput label="Email" value={form.email} editing={false} card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
 
         <ProfileInput maxLength={3} label="Age" required value={String(form.age ?? "")} onChangeText={(v) => handleChange("age", v)} editing={editing} keyboardType="numeric" card={card} textColor={textColor} inputBg={inputBg} disabledBg={disabledBg} loading={loading} />
@@ -235,7 +226,6 @@ export default function ProfileScreen() {
       <View style={[styles.card, card]}>
         <Text style={[styles.cardTitle, textColor]}>Fitness Goals</Text>
 
-        {/* Same dropdowns as registration; "Other" allows custom text */}
         <ProfilePlanField label="Primary Goal" required value={form.goal} options={GOAL_OPTIONS} icon="flag-outline" placeholder="Select your goal" otherPlaceholder="Your goal (e.g. Run a 10K)" onChange={(v) => handleChange("goal", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
         <ProfilePlanField label="Activity Level" required value={form.activity} options={ACTIVITY_OPTIONS} icon="pulse-outline" placeholder="Select your activity level" otherPlaceholder="Your activity (e.g. Shift work)" onChange={(v) => handleChange("activity", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
         <ProfilePlanField label="Diet Preference" required value={form.dietPreference} options={DIET_PREFERENCES} multiple exclusive={NO_DIET_PREFERENCE} icon="nutrition-outline" placeholder="Select any that apply" otherPlaceholder="Your diet (e.g. Intermittent Fasting)" onChange={(v) => handleChange("dietPreference", v)} editing={editing} card={card} textColor={textColor} disabledBg={disabledBg} palette={palette} loading={loading} />
@@ -257,7 +247,6 @@ const styles = StyleSheet.create({
 
   onBanner: { backgroundColor: "rgba(255,255,255,0.25)" },
 
-  // One row at every width: the title shrinks, the buttons keep their size, gap between them
   topBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 },
   pageTitle: { fontSize: 22, fontWeight: "800", flexShrink: 1 },
   topActions: { flexDirection: "row", alignItems: "center", flexShrink: 0, gap: 14 },
@@ -286,13 +275,11 @@ const styles = StyleSheet.create({
   },
   savedText: { fontSize: 12, color: "#2f8f17", fontWeight: "700" },
 
-  // Info Banner
   banner: { borderRadius: radii.sm, padding: 20, paddingTop: 24, backgroundColor: "#2f8f17" },
   bannerRow: { flexDirection: "row", alignItems: "center", gap: 14 },
   bannerRowCompact: { flexDirection: "column", alignItems: "flex-start" },
   avatarCircle: { width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center" },
-  // Rounded on the image rather than by clipping the circle, so the camera
-  // badge can sit outside the circle's bounds without being cut off.
+  // Round the image directly so the camera badge can overhang the circle edge.
   avatarImg: { width: "100%", height: "100%", borderRadius: 36 },
   avatarBusy: {
     ...StyleSheet.absoluteFillObject,
@@ -333,7 +320,6 @@ const styles = StyleSheet.create({
   removePhotoText: { fontSize: 11, fontWeight: "700", color: colors.white, textDecorationLine: "underline" },
   metaTextUnderline: { fontSize: 12, color: colors.white, textDecorationLine: "underline", flexShrink: 1 },
 
-  // Cards
   card: { borderRadius: radii.sm, borderWidth: 1, padding: 16, marginTop: 12 },
   overviewCard: { marginTop: -10 },
   cardTitle: { fontSize: 17, fontWeight: "700", marginBottom: 12 },

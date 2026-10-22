@@ -12,9 +12,7 @@ const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const env = require('../../../config/env');
 const { assertSafeKey } = require('./keys');
 
-// Cloudflare R2 through its S3-compatible API. The bucket stays private:
-// every read is a short-lived signed link (urlFor), since avatars and scan
-// photos are personal. Region is always "auto" on R2
+// Private Cloudflare R2 storage driver accessed via S3-compatible API and short-lived presigned URLs.
 const { accountId, bucket, accessKeyId, secretAccessKey, urlTtlSeconds } = env.storage.r2;
 
 const client = new S3Client({
@@ -30,22 +28,19 @@ async function save(buffer, { key, contentType }) {
     Key: key,
     Body: buffer,
     ContentType: contentType,
-    // Keys are content- or random-named, so an object never changes
     CacheControl: 'private, max-age=2592000, immutable',
   }));
   return { key, bytes: buffer.length };
 }
 
-// Never throws, same as localStore: deletes run inside account deletion
 async function remove(key) {
   try {
     await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: assertSafeKey(key) }));
   } catch {
-    // Gone, or R2 unreachable
+    // Ignore missing objects or R2 errors
   }
 }
 
-// Keys under a prefix, up to 1,000 per page
 async function list(prefix) {
   const keys = [];
   let token;
@@ -57,7 +52,6 @@ async function list(prefix) {
   return keys;
 }
 
-// R2 has no folders: list the prefix, delete in batches of 1,000
 async function removePrefix(prefix) {
   try {
     const keys = await list(prefix);
@@ -68,7 +62,16 @@ async function removePrefix(prefix) {
       }));
     }
   } catch {
-    // Same reasoning as remove()
+    // Ignore R2 errors during prefix deletion
+  }
+}
+
+async function read(key) {
+  try {
+    const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: assertSafeKey(key) }));
+    return Buffer.from(await response.Body.transformToByteArray());
+  } catch {
+    return null;
   }
 }
 
@@ -81,10 +84,9 @@ async function exists(key) {
   }
 }
 
-// An absolute https link, so the frontend's resolveMediaUrl passes it through
 async function urlFor(key) {
   if (!key) return null;
   return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: assertSafeKey(key) }), { expiresIn: urlTtlSeconds });
 }
 
-module.exports = { save, remove, removePrefix, list, exists, urlFor, driver: 'r2', isPrivate: true };
+module.exports = { save, remove, removePrefix, list, exists, read, urlFor, driver: 'r2', isPrivate: true };

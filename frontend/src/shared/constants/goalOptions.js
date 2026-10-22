@@ -104,12 +104,11 @@ export function calorieEstimate({ age, sex, heightCm, weightKg, activityLevel, f
   // A custom activity level is treated as lightly active
   const maintenance = bmr * (ACTIVITY_FACTORS[activityLevel] || 1.375);
   const bmi = weightKg / (heightCm / 100) ** 2;
-  // Someone already underweight is never told to eat less (the reference
-  // calculator says the same: "you probably do not need to lose weight")
+  // Underweight BMI holds at maintenance calories rather than caloric deficit
   const wantedAdjust = GOAL_ADJUST[fitnessGoal] || 0;
   const heldAtMaintenance = wantedAdjust < 0 && bmi < UNDERWEIGHT_BMI;
   const adjust = heldAtMaintenance ? 0 : wantedAdjust;
-  // Never below 1,200, same floor the coach keeps to
+  // Floor of 1,200 kcal for safe minimum intake
   const kcal = Math.round(Math.max(1200, Math.min(5000, maintenance + adjust)) / 50) * 50;
   return { bmr: Math.round(bmr), maintenance: Math.round(maintenance), adjust, kcal, bmi, heldAtMaintenance };
 }

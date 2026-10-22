@@ -1,4 +1,4 @@
-// Consolidated HTTP helpers
+// HTTP error and response helpers
 
 class ApiError extends Error {
   /**
@@ -43,7 +43,6 @@ class ApiError extends Error {
   }
 }
 
-// Success envelope
 function sendSuccess(res, { statusCode = 200, data = null, message } = {}) {
   return res.status(statusCode).json({
     success: true,

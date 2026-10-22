@@ -3,13 +3,11 @@ import { colors, getChipTint, getScreenTones, radii } from "@/shared/theme/nutri
 import { StyleSheet, Text, View } from "react-native";
 
 /**
- * Severity maps onto the EXISTING four-tint palette rather than a new one
- *
+ * Maps audit log severity onto the four-tint palette:
  *   info     green   routine, expected
- *   notice   blue    worth seeing in a list
- *   warning  orange  a failure or a manual override
- *   critical purple  privileged, or destroys/exposes data
- *
+ *   notice   blue    notable event
+ *   warning  orange  failure or manual override
+ *   critical purple  privileged action or sensitive data access
  */
 const SEVERITY_TINT = {
   info: "green",
@@ -33,10 +31,7 @@ export function SeverityBadge({ severity }) {
 }
 
 /**
- * Role badge. An ordinary user gets a plain outline rather than a tint --
- * nearly every row in the users table is one, and tinting all of them would
- * turn the column into wallpaper with nothing standing out. Only elevated
- * roles are coloured 
+ * Role badge. Standard user accounts use a plain outline so elevated roles stand out visually.
  */
 const ROLE_TINT = {
   admin: "blue",

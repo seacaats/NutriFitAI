@@ -7,12 +7,7 @@ const { sendSuccess, ApiError, asyncHandler } = require('../../utils/httpRespons
 const { logAction, diffFields } = require('../../utils/audit-logs/auditLogger');
 const { notify } = require('../../services/notifications/notify');
 
-/** The shape the users table renders. Never includes passwordHash -- the model
- *  strips it at its own boundary -- and deliberately not the profile subdocument
- *  either: a directory listing has no business carrying everyone's health
- *  conditions, and the detail endpoint is where a single user's profile lives. */
-
-//
+// Directory listing projection (excludes profile and health data, which are only returned on detail view)
 function toUserRow(user) {
   return {
     id: user.id,
@@ -28,6 +23,7 @@ function toUserRow(user) {
     suspendedAt: user.suspendedAt || null,
     suspendedReason: user.suspendedReason || null,
     suspendedBy: user.suspendedBy || null,
+    suspendedUserMessage: user.suspendedUserMessage || null,
     deletionScheduledFor: user.deletionScheduledFor || null,
     passwordResetRequired: Boolean(user.passwordResetRequiredAt),
     passwordResetRequiredAt: user.passwordResetRequiredAt || null,
@@ -36,8 +32,6 @@ function toUserRow(user) {
   };
 }
 
-// The account an admin action is aimed at, or the reason it can't be.
-// Nobody acts on themselves
 async function loadManageableTarget(req) {
   if (req.params.id === req.userId) {
     throw ApiError.forbidden("You can't do this to your own account.", { code: 'SELF_ACTION' });
@@ -55,9 +49,6 @@ function targetEntry(target) {
     targetRole: target.role || 'user',
   };
 }
-
-
-// USERS
 
 // GET /api/admin/users
 const listUsers = asyncHandler(async (req, res) => {
@@ -91,15 +82,6 @@ const getUser = asyncHandler(async (req, res) => {
   const user = await User.getByIdSafe(req.params.id);
   if (!user) throw ApiError.notFound('User not found');
 
-  /**
-   * Reading a user's record is itself audited (`admin.user.viewed`). Not paranoia: this endpoint returns another
-   * person's email, profile and goal history, and an audit trail that records
-   * every write but no read cannot answer "who looked at this account".
-   *
-   * Awaited rather than fired and forgotten because logAction already swallows
-   * its own failures -- an unawaited promise here would only add an
-   * unhandled-rejection path for no latency win worth having.
-   */
   await logAction(req, {
     action: 'admin.user.viewed',
     targetType: 'user',
@@ -110,18 +92,13 @@ const getUser = asyncHandler(async (req, res) => {
   return sendSuccess(res, {
     data: {
       ...toUserRow(user),
-      // The detail view is the one place the profile is exposed, to a caller
-      // already established as admin on a route that records the read.
       profile: user.profile || null,
       goals: user.goals || [],
     },
   });
 });
 
-// POST /api/admin/users -- adds a regular or admin account. No password is set or shown:
-// the account is created locked (passwordResetRequiredAt) with a throwaway hash, and
-// the person chooses their own through Forgot password, whose emailed code proves
-// the address is theirs. An admin sets up 2FA at their first sign-in
+// POST /api/admin/users -- create account with passwordResetRequiredAt so the user sets their own password via email OTP
 const createUser = asyncHandler(async (req, res) => {
   const { reason, email, firstName, lastName, role = 'user' } = req.body;
 
@@ -142,11 +119,11 @@ const createUser = asyncHandler(async (req, res) => {
       lastName: lastName || null,
       emailVerifiedAt: new Date(),
       passwordResetRequiredAt: new Date(),
+      passwordResetRequiredReason: 'Account created by an administrator. An email tells them how to set a password.',
+      passwordResetRequiredBy: User.displayName(req.user),
     });
-    // Role is written after the insert; updateRole also turns 2FA on
     if (role === 'admin') created = await User.updateRole(created.id, role);
   } catch (err) {
-    // Someone registered the same address a moment ago
     if (err?.code === 11000) throw ApiError.conflict('An account with that email already exists.', { code: 'EMAIL_TAKEN' });
     throw err;
   }
@@ -163,7 +140,7 @@ const createUser = asyncHandler(async (req, res) => {
   return sendSuccess(res, { statusCode: 201, message: 'Account created. An email tells them how to set a password.', data: toUserRow(created) });
 });
 
-// GET /api/admin/users/:id/sessions -- the devices signed in right now
+// GET /api/admin/users/:id/sessions
 const listUserSessions = asyncHandler(async (req, res) => {
   const target = await User.getByIdSafe(req.params.id);
   if (!target) throw ApiError.notFound('User not found');
@@ -181,7 +158,6 @@ const listUserSessions = asyncHandler(async (req, res) => {
 });
 
 // DELETE /api/admin/users/:id/sessions/:sid
-// Admins are cut off at once (requireFreshRole), regular users at their next refresh
 const revokeUserSession = asyncHandler(async (req, res) => {
   const target = await loadManageableTarget(req);
 
@@ -197,7 +173,7 @@ const revokeUserSession = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Session ended' });
 });
 
-// DELETE /api/admin/users/:id/sessions -- every device
+// DELETE /api/admin/users/:id/sessions
 const revokeAllUserSessions = asyncHandler(async (req, res) => {
   const target = await loadManageableTarget(req);
 
@@ -212,16 +188,13 @@ const revokeAllUserSessions = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: count ? `Signed out of ${count} ${count === 1 ? 'device' : 'devices'}` : 'No active sessions', data: { count } });
 });
 
-// POST /api/admin/users/:id/authenticator-reset -- for an admin who lost their device. The
-// authenticator and recovery codes are cleared and every session ended: at their next
-// sign-in they scan a new app and get fresh codes
+// POST /api/admin/users/:id/authenticator-reset
 const resetUserAuthenticator = asyncHandler(async (req, res) => {
   const target = await loadManageableTarget(req);
   if (target.role !== 'admin') {
     throw ApiError.badRequest('Only admin accounts have an authenticator app.', { code: 'NOT_ADMIN' });
   }
 
-  // The secret is left out of the safe read, so this asks for the full record
   const full = await User.getById(target.id);
   if (!full.mfa || !full.mfa.secretEnc) {
     throw ApiError.badRequest("That admin hasn't set up an authenticator app yet.", { code: 'MFA_NOT_SET_UP' });
@@ -239,7 +212,7 @@ const resetUserAuthenticator = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Authenticator reset. They set up a new one at their next sign-in.', data: toUserRow(updated) });
 });
 
-// PATCH /api/admin/users/:id/profile -- names only (adminProfileSchema)
+// PATCH /api/admin/users/:id/profile
 const updateUserProfile = asyncHandler(async (req, res) => {
   const target = await loadManageableTarget(req);
   const { reason, ...body } = req.body;
@@ -265,6 +238,8 @@ const updateUserProfile = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Profile updated', data: toUserRow(updated) });
 });
 
+const noticeVars = (userMessage) => ({ message: userMessage ? ` Message from the administrator: "${userMessage}"` : '' });
+
 // POST /api/admin/users/:id/suspend
 const suspendUser = asyncHandler(async (req, res) => {
   const target = await loadManageableTarget(req);
@@ -272,13 +247,14 @@ const suspendUser = asyncHandler(async (req, res) => {
     throw ApiError.badRequest('That account is already suspended.', { code: 'ALREADY_SUSPENDED' });
   }
 
-  const updated = await User.setSuspension(target.id, req.body.reason, User.displayName(req.user));
+  const { reason, userMessage } = req.body;
+  const updated = await User.setSuspension(target.id, reason, User.displayName(req.user), userMessage);
   await logAction(req, {
     action: 'admin.user.suspended',
     ...targetEntry(target),
-    details: { reason: req.body.reason },
+    details: { reason, ...(userMessage && { userMessage }) },
   });
-  notify(target.id, 'account_suspended');
+  notify(target.id, 'account_suspended', { vars: noticeVars(userMessage) });
 
   return sendSuccess(res, { message: 'Account suspended', data: toUserRow(updated) });
 });
@@ -304,8 +280,7 @@ const reinstateUser = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Account reinstated', data: toUserRow(updated) });
 });
 
-// POST /api/admin/users/:id/password-reset -- sign-in is refused until the
-// user sets a new password through Forgot password
+// POST /api/admin/users/:id/password-reset
 const forcePasswordReset = asyncHandler(async (req, res) => {
   const target = await loadManageableTarget(req);
 
@@ -320,8 +295,7 @@ const forcePasswordReset = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Password reset required on next sign-in', data: toUserRow(updated) });
 });
 
-// POST /api/admin/users/:id/password-reset/cancel -- takes back a forced
-// reset, e.g. one sent to the wrong account. The current password works again
+// POST /api/admin/users/:id/password-reset/cancel
 const cancelPasswordReset = asyncHandler(async (req, res) => {
   const target = await loadManageableTarget(req);
   if (!target.passwordResetRequiredAt) {
@@ -339,8 +313,7 @@ const cancelPasswordReset = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Password reset cancelled', data: toUserRow(updated) });
 });
 
-// DELETE /api/admin/users/:id -- doesn't delete yet: the account is suspended and signed
-// out, then purged after DELETION_GRACE_DAYS unless an admin cancels (purgeDueDeletions)
+// DELETE /api/admin/users/:id -- suspend account, revoke sessions, and schedule purge after DELETION_GRACE_DAYS
 const deleteUser = asyncHandler(async (req, res) => {
   const target = await loadManageableTarget(req);
   if (target.deletionScheduledFor) {
@@ -348,20 +321,21 @@ const deleteUser = asyncHandler(async (req, res) => {
   }
 
   const purgeAt = new Date(Date.now() + DELETION_GRACE_DAYS * 24 * 60 * 60 * 1000);
-  const updated = await User.setDeletion(target.id, purgeAt, { reason: req.body.reason, by: User.displayName(req.user) });
+  const { reason, userMessage } = req.body;
+  const updated = await User.setDeletion(target.id, purgeAt, { reason, by: User.displayName(req.user), userMessage });
   await Session.revokeAll(target.id, req.userId);
 
   await logAction(req, {
     action: 'admin.user.deletion_scheduled',
     ...targetEntry(target),
-    details: { purgeAt: purgeAt.toISOString(), reason: req.body.reason },
+    details: { purgeAt: purgeAt.toISOString(), reason, ...(userMessage && { userMessage }) },
   });
-  notify(target.id, 'account_deletion_scheduled');
+  notify(target.id, 'account_deletion_scheduled', { vars: noticeVars(userMessage) });
 
   return sendSuccess(res, { message: `Account suspended. It will be deleted in ${DELETION_GRACE_DAYS} days unless you cancel.`, data: toUserRow(updated) });
 });
 
-// POST /api/admin/users/:id/deletion/cancel -- takes the deletion back and reinstates the account
+// POST /api/admin/users/:id/deletion/cancel
 const cancelUserDeletion = asyncHandler(async (req, res) => {
   const target = await loadManageableTarget(req);
   if (!target.deletionScheduledFor) {

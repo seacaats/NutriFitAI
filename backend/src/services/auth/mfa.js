@@ -7,24 +7,14 @@ const { notify } = require('../notifications/notify');
 const { accountHold } = require('./authResponses');
 const env = require('../../../config/env');
 
-// ---- Two-factor sign-in --------------------------------------------------------
-// Regular users get a code by email, the same OTP process as registration and
-// password reset, and choose whether to have it. Admins always
-// have it, with an authenticator app (TOTP) and recovery codes: their accounts are
-// created with it on, and the app is scanned in at their first sign-in. Every
-// sign-in goes through it, whether the first step was the password or Google:
-// Google only stands in for typing the password, never for the second step
+// Two-factor sign-in: regular users use optional email OTP; admins require TOTP + recovery codes.
 
 const mfaMethodOf = (user) => (user.role === 'user' ? 'email' : 'totp');
 
-// On, but nothing scanned in yet: a new or just-promoted admin, or an existing one
-// the migration switched on
 const needsAuthenticatorSetup = (user) => mfaMethodOf(user) === 'totp' && !(user.mfa && user.mfa.secretEnc);
 
 const MFA_SESSION_MESSAGE = 'Your sign-in session expired. Please log in again.';
 
-// The user behind a challenge token, or a 401 for anything off: bad or expired
-// token, password changed since, two-factor switched off, account on hold
 async function userFromMfaToken(mfaToken) {
   const expired = () => ApiError.unauthorized(MFA_SESSION_MESSAGE, { code: 'MFA_SESSION_EXPIRED' });
   let payload;
@@ -51,8 +41,6 @@ function assertNotMfaLocked(user) {
   }
 }
 
-// Counts a wrong authenticator code. The account locks after
-// MFA_MAX_FAILED_ATTEMPTS in a row, however many IPs they come from
 async function rejectAuthenticatorCode(req, user, step) {
   const lockedUntil = await User.recordMfaFailure(user.id, {
     max: env.mfa.maxFailedAttempts,
@@ -72,8 +60,7 @@ async function rejectAuthenticatorCode(req, user, step) {
   throw ApiError.unauthorized('That code is incorrect.', { code: 'INVALID_MFA_CODE' });
 }
 
-// 'totp' for an app code, 'recovery' for a one-time recovery code, else null.
-// Both are single use: a step is claimed atomically, a recovery code removed
+// Atomically validates and consumes a single-use TOTP step or recovery code
 async function checkAuthenticatorCode(user, code) {
   const clean = String(code).replace(/\s/g, '');
   if (/^\d{6}$/.test(clean)) {
@@ -86,7 +73,6 @@ async function checkAuthenticatorCode(user, code) {
   return null;
 }
 
-// Not awaited by callers: a failed email mustn't undo a sign-in
 function noteRecoveryUsed(req, user) {
   logAction(req, { action: 'auth.mfa.recovery_used', targetType: 'user', targetId: user.id }, { userId: user.id, role: user.role }).catch(() => {});
   notify(user.id, 'mfa_recovery_used');

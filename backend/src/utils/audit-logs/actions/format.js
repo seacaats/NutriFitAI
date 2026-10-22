@@ -1,15 +1,7 @@
-// Turns a stored audit_logs row into the sentence and fields the audit table
-// renders, redacted for the viewer. The action definitions live in registry.js
+// Formats stored audit_logs documents into display sentences and fields for the admin table.
 
 const { AUDIT_ACTIONS, getActionDef } = require('./registry');
 
-// ===========================================================================
-// Values
-// ===========================================================================
-
-// Stored codes as people read them. One map for every field: a code means
-// the same thing wherever it appears. Anything not listed is humanised
-// (snake_case -> "Snake case"), which is right for free text and goal names
 const LABELS = {
   // sign-in methods and providers
   password: 'Password',
@@ -36,7 +28,7 @@ const LABELS = {
   provider_error: 'Provider error',
   daily: 'Daily',
   burst: 'Per-minute',
-  // audit chain (one per severity) and its problems
+  // audit chain and integrity issues
   info: 'Routine',
   notice: 'Notable',
   warning: 'Warnings',
@@ -61,14 +53,11 @@ function label(value) {
   return LABELS[value] ?? humanize(value);
 }
 
-// In a sentence, a proper noun keeps its capitals ("Apple Health") and
-// anything else reads lowercase ("changed their goal to lose weight")
 function inSentence(value) {
   if (typeof value !== 'string') return value;
   return LABELS[value] ?? value.replace(/_/g, ' ');
 }
 
-// Rows deleted with an account, by accountDeletion's collection keys
 const COUNT_NOUNS = {
   users: ['account', 'accounts'],
   meals: ['meal', 'meals'],
@@ -99,8 +88,6 @@ function counts(value) {
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// A calendar day ("2026-10-04") as "4 Oct 2026". Instants are sent as
-// `type: 'datetime'` instead, the client formats them in the reader's zone
 function day(value) {
   const [y, m, d] = String(value).slice(0, 10).split('-').map(Number);
   return `${d} ${MONTHS[m - 1]} ${y}`;
@@ -113,7 +100,6 @@ function range(from, to) {
   return `${day(new Date(from).toISOString())} – ${day(new Date(to).toISOString())}`;
 }
 
-// The By User tab's sides, as its buttons name them
 const SUBJECT_MODES = { actor: 'as actor', target: 'as target', self: 'self' };
 
 function filters(value) {
@@ -122,7 +108,6 @@ function filters(value) {
   if (value.noted) parts.push('Noted entries');
   if (value.category) parts.push(`Category: ${humanize(value.category)}`);
   if (value.action) parts.push(`Action: ${AUDIT_ACTIONS[value.action]?.label ?? value.action}`);
-  // "all" is the default side, so only the narrower ones are named
   if (value.subjectId) {
     const side = value.subjectMode && value.subjectMode !== 'all' ? ` (${SUBJECT_MODES[value.subjectMode]})` : '';
     parts.push(`User ID: ${value.subjectId}${side}`);
@@ -131,8 +116,6 @@ function filters(value) {
   return parts.length ? parts.join(' · ') : 'All entries';
 }
 
-// The export's filters, scope first: "Auth (All)", "Auth (Account Created)".
-// The rest (held, user, dates) reads the same as on a view
 function exportFilters(value) {
   const action = value.action ? AUDIT_ACTIONS[value.action] : null;
   const category = value.category || action?.category;
@@ -144,7 +127,6 @@ function exportFilters(value) {
   return rest === 'All entries' ? scope : `${scope} · ${rest}`;
 }
 
-// One field of the expanded row, or null when there's nothing to show
 function formatField(field, details, entry) {
   if (field.value !== undefined) return { label: field.label, value: field.value };
 
@@ -164,30 +146,19 @@ function formatField(field, details, entry) {
   }
 }
 
-/**
- * Unit suffixes this codebase appends to field names.
- *
- * The convention (heightCm, weightKg, dailyCaloriesKcal, amountMl,
- * actualDurationSeconds) is good for code and terrible read aloud -- "height
- * cm from 170 to 172". Stripping the suffix is preferred to a hand-maintained
- * label map for every audited field, which would silently drift out of sync
- * with the validators the moment a field is added.
- */
+// Strips trailing unit suffixes (e.g., heightCm -> height) before formatting camelCase/snake_case names
 const UNIT_SUFFIXES = ['Cm', 'Kg', 'Kcal', 'Ml', 'Seconds', 'Minutes', 'Meters', 'G'];
 
 function humanField(field) {
   let name = String(field);
 
   for (const suffix of UNIT_SUFFIXES) {
-    // Only strip a suffix that leaves something behind, so a field genuinely
-    // called "g" or "cm" survives intact.
     if (name.length > suffix.length && name.endsWith(suffix)) {
       name = name.slice(0, -suffix.length);
       break;
     }
   }
 
-  // camelCase / snake_case / dotted path -> spaced words.
   return name
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/[_.]/g, ' ')
@@ -195,31 +166,14 @@ function humanField(field) {
     .toLowerCase();
 }
 
-// ===========================================================================
-// Names
-// ===========================================================================
-
-/**
- * What to call a party whose NAME is not on the entry.
- *
- * A MISSING LABEL IS NOT EVIDENCE OF DELETION. It happens when a name
- * lookup failed at write time: resolveActor swallows that error and records
- * null rather than losing the entry, so a live user can have no label. The
- * wording falls back to the role, which IS recorded, and says only that the
- * name is not on the entry.
- */
 function unnamed(role) {
   return role && LABELS[role] ? `an unidentified ${role}` : 'an unidentified user';
 }
 
-// Actor and target read from the SNAPSHOT labels on the document, never a
-// live join: a user who later renames, or is deleted, must not rewrite every
-// past entry about them. Roles are shown in the drawer, not in the sentence
+// Resolves actor and target display strings from snapshotted document labels
 function names(entry) {
   const selfDirected = entry.targetId && entry.userId && entry.targetId === entry.userId;
 
-  // No userId is a cron job, a script or the retention purge. A system row
-  // that names itself (create-admins.js) reads as that name
   const actor = entry.userId
     ? (entry.actorLabel || unnamed(entry.role))
     : (entry.actorLabel || 'The system');
@@ -231,10 +185,6 @@ function names(entry) {
   return { actor, target };
 }
 
-// ===========================================================================
-// The row
-// ===========================================================================
-
 function sentence(template, details, actor, target) {
   const tokens = {
     ...Object.fromEntries(Object.entries(details).map(([k, v]) => [k, inSentence(v)])),
@@ -242,23 +192,14 @@ function sentence(template, details, actor, target) {
     target: target || 'an account',
   };
   if (details.toRole) tokens.toRole = details.toRole;
-  // A goal cleared to null reads "none" rather than "null"
   const text = template.replace(/\{(\w+)\}/g, (match, key) => String(tokens[key] ?? 'none'));
-  // Only the unnamed fallback starts lowercase. A label never gets lifted,
-  // that would misspell a file path ("scripts/create-admins.js")
   return text.startsWith('an unidentified') ? `A${text.slice(1)}` : text;
 }
 
 /**
- * The single function every read path calls.
+ * Formats a lean `audit_logs` document into the row shape expected by the admin audit table.
  *
- * Returns the row shape the audit table renders, already redacted for the
- * viewer. This function formats, it does not authorise.
- *
- * IDs, IP, user agent and before/after values ride in their own fields,
- * never in the sentence.
- *
- * @param {object} entry   a lean audit_logs document
+ * @param {object} entry
  */
 function formatAuditEntry(entry) {
   const def = getActionDef(entry.action);
@@ -282,7 +223,6 @@ function formatAuditEntry(entry) {
     actor,
     actorId: entry.userId || null,
     actorRole: entry.role || null,
-    // false only when the actor was unverified at the time ("User (Unverified)")
     actorVerified: entry.actorVerified ?? null,
     target,
     targetRole: entry.targetRole || null,
@@ -290,8 +230,6 @@ function formatAuditEntry(entry) {
     targetId: entry.targetId || null,
     ipAddress: entry.ipAddress || null,
     userAgent: entry.userAgent || null,
-    // Health fields carry no before/after values (see HEALTH_FIELDS), so
-    // they come through as hidden
     changes: changes.length
       ? changes.map((c) => ({
         field: c.field,
@@ -302,7 +240,6 @@ function formatAuditEntry(entry) {
       }))
       : null,
     createdAt: entry.createdAt,
-    // When TTL deletes the row. The table flags rows close to it
     expiresAt: entry.expiresAt || null,
   };
 }

@@ -4,36 +4,19 @@ const quotaStore = require('./quotaStore');
 const { logSystemAction } = require('../../utils/audit-logs/auditLogger');
 const { createOpenAICompatibleProvider, ProviderError } = require('./openaiCompatible');
 
-/**
- * Ordered failover across the configured providers:
- *   1. Classify 429s. Per-minute and per-day limits look identical on the wire
- *      (both are HTTP 429), but the right response differs by four orders of
- *      magnitude. Retry-After decides; a heuristic covers providers that omit it.
- *   2. Skip proactively. Consult the budget before spending a request to learn
- *      the budget is gone.
- *   3. Never fail over on 4xx that aren't 429. A 401 is a wrong key and a 400 is
- *      a malformed payload; quietly downgrading to the next model turns a
- *      five-minute fix into a mystery.
- *   4. Report who answered. Stored on the message row.
- */
+// Ordered failover across configured AI providers with proactive quota and rate-limit cooldowns.
 
-// Quota ceilings
 const LIMITS = {
-  ollama: {}, // self-hosted, no ceiling
-  // Free-tier limits change; Groq's 429s set the cooldown
-  // (classifyRateLimit) instead of a guessed ceiling here
+  ollama: {},
   groq: {},
-  cerebras: {}, // same reasoning as groq
-  cloudflare: {}, // recommendations only, 429s set the cooldown as well
+  cerebras: {},
+  cloudflare: {},
 };
 
-// Fallback for 429 status codes with no Retry-After header
 const BURST_COOLDOWN_MS = 20 * 1000;
 const DAILY_COOLDOWN_MS = 60 * 60 * 1000;
 const SERVER_ERROR_COOLDOWN_MS = 60 * 1000;
 
-// Cooldown duration for 429s, fetching it once more
-// depending on whether it has a Retry-After header or not
 function classifyRateLimit(err) {
   if (err.retryAfterMs !== null && err.retryAfterMs !== undefined) {
     return Math.min(err.retryAfterMs, DAILY_COOLDOWN_MS);
@@ -41,8 +24,6 @@ function classifyRateLimit(err) {
   return BURST_COOLDOWN_MS;
 }
 
-// Every provider that can be configured, by name. Which ones run, and in
-// what order, is decided by the chains below
 function buildRegistry() {
   return {
     ollama: createOpenAICompatibleProvider({
@@ -50,10 +31,8 @@ function buildRegistry() {
       baseUrl: env.ai.ollama.baseUrl,
       apiKey: null,
       model: env.ai.ollama.model,
-      // Local models don't run as fast as hosted ones
       timeoutMs: env.ai.ollama.timeoutMs,
       maxTokens: env.ai.maxOutputTokens,
-      // Through a tunnel: the basic-auth policy's credentials
       headers: env.ai.ollama.basicAuth
         ? { Authorization: `Basic ${Buffer.from(env.ai.ollama.basicAuth).toString('base64')}` }
         : {},
@@ -74,7 +53,6 @@ function buildRegistry() {
       timeoutMs: env.ai.cerebras.timeoutMs,
       maxTokens: Math.min(env.ai.cerebras.maxOutputTokens, env.ai.maxOutputTokens),
     }),
-    // Not capped by AI_MAX_OUTPUT_TOKENS: gpt-oss reasons before it answers
     cloudflare: createOpenAICompatibleProvider({
       name: 'cloudflare',
       baseUrl: env.ai.cloudflare.baseUrl,
@@ -86,9 +64,7 @@ function buildRegistry() {
   };
 }
 
-// An ordered chain from provider names
 function buildChain(registry, names, label) {
-  // Drop unconfigured providers
   const chain = names
     .map((name) => registry[name])
     .filter((provider) => {
@@ -109,8 +85,7 @@ function buildChain(registry, names, label) {
 
 const registry = buildRegistry();
 const providers = buildChain(registry, env.ai.chain, '/api/coach (503)');
-// Recommendations have their own chain (AI_REC_CHAIN), so they never spend
-// the chatbot's quota. Empty = the chat chain
+// Separate chain for recommendations so they do not consume chat quota
 const recProviders = env.ai.recChain.length
   ? buildChain(registry, env.ai.recChain, 'recommendations')
   : providers;
@@ -135,8 +110,6 @@ async function run(chain, request) {
 
       if (attempts.length > 0) {
         console.warn(`[ai] answered by "${provider.name}" after ${attempts.length} skipped/failed`, attempts);
-        // Only when a provider actually failed on this call. Skips during a
-        // cooldown would otherwise write one row per message
         const failed = attempts.filter((a) => a.status);
         if (failed.length > 0) {
           logSystemAction({
@@ -161,7 +134,7 @@ async function run(chain, request) {
     } catch (err) {
       if (!(err instanceof ProviderError)) throw err;
 
-      // Surface non-transient failures immediately
+      // Do not fail over on non-transient errors (e.g., 400/401)
       if (!err.transient) throw err;
 
       const cooldownMs = err.status === 429
@@ -170,8 +143,6 @@ async function run(chain, request) {
 
       quotaStore.cooldown(provider.name, cooldownMs, err.message);
 
-      // Once per cooldown: the gate above skips this provider until it ends.
-      // Not awaited, logSystemAction never throws
       if (err.status === 429) {
         logSystemAction({
           action: 'coach.quota.exhausted',
@@ -187,7 +158,6 @@ async function run(chain, request) {
     }
   }
 
-  // Message returns to users, details stay on the server
   throw new ApiError(503, 'The AI coach is unavailable right now. Please try again shortly.', {
     code: 'AI_UNAVAILABLE',
     details: attempts,
@@ -197,7 +167,6 @@ async function run(chain, request) {
 const chat = (request) => run(providers, request);
 const chatRec = (request) => run(recProviders, request);
 
-// Check live providers
 function health() {
   return {
     chain: providers.map((p) => ({ name: p.name, model: p.model })),

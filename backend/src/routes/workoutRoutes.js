@@ -6,21 +6,14 @@ const { memoryUpload, IMAGE_MAX_BYTES } = require('../middleware/uploadMiddlewar
 const {
   sessionRangeSchema, logSessionSchema, listQuerySchema, createRoutineSchema, updateRoutineSchema,
   logRoutineSessionSchema, favoriteSchema, favoriteParamsSchema, scheduleSchema, idParamSchema,
-  rescheduleSchema, dayParamSchema, matchQuerySchema, createWorkoutSchema,
+  rescheduleSchema, dayParamSchema, matchQuerySchema, createWorkoutSchema, updateWorkoutSchema,
 } = require('../validators/workoutValidators');
 
 const router = Router();
 
 const photoUpload = memoryUpload(IMAGE_MAX_BYTES);
 
-/**
- * Catalog reads are behind requireAuth (mounted in routes/index.js) even though nothing in them is
- * user-specific: an open list endpoint is free bandwidth for anyone who finds
- * it, and the 10 GB/7-day egress allowance is shared with everything else.
- */
-
-// Declared BEFORE /:id, or "categories" and "sessions" parse as exercise ids
-// and 400 on requests that should have worked.
+// Static sub-routes declared before /:id so they are not parsed as exercise ids
 router.get(
   '/categories', 
   controller.listCategories
@@ -34,7 +27,7 @@ router.post(
   validateBody(logSessionSchema), 
   controller.logSession
 );
-// Declared before /sessions/:id so "day" isn't read as an id
+// Declared before /sessions/:id so "day" is not parsed as an id
 router.delete(
   '/sessions/day/:date', 
   validateParams(dayParamSchema), 
@@ -57,7 +50,6 @@ router.get(
   );
 
 // ---- Routines ----
-// Also before /:id. "sessions" is declared before "/:id" below for the same reason
 router.get(
   '/routines', 
   controller.listRoutines
@@ -145,6 +137,11 @@ router.post(
 router.get(
   '/:id', 
   controller.getWorkout
+);
+router.patch(
+  '/:id',
+  validateBody(updateWorkoutSchema),
+  controller.updateWorkout,
 );
 router.delete(
   '/:id',

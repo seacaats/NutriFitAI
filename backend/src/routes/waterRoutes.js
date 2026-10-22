@@ -8,7 +8,7 @@ const {
 
 const router = Router();
 
-// /goal is declared before /:id so it never parses as an entry id
+// Static routes declared before /:id so they are not parsed as an entry id
 router.get(
   '/', 
   validateQuery(waterRangeSchema), 
@@ -24,7 +24,6 @@ router.put(
   validateBody(waterGoalSchema), 
   controller.setWaterGoal
 );
-// One day's drinks, read and replaced as a whole by the day editor
 router.get(
   '/day/:date', 
   validateParams(waterDayParamSchema), 

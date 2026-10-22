@@ -45,7 +45,7 @@ function getFocusStyle(ringColor, alsoChangeBorder) {
   if (Platform.OS === "web") {
     return {
       boxShadow: `0 0 0 2px ${ringColor}`,
-      // The gray 1px border would otherwise show as a dark line inside the ring
+      // Hide the 1px border when not matching ringColor so it doesn't show inside the focus ring
       borderColor: alsoChangeBorder ? ringColor : "transparent",
     };
   }
@@ -66,17 +66,15 @@ function createStyles(colors, radii) {
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.sm,
-      // The browser's own focus outline drew a black ring inside the green
-      // one; the ring from getFocusStyle is the only focus mark
+      // Disable native browser focus outline in favor of getFocusStyle
       ...(Platform.OS === "web" ? { outlineStyle: "none" } : null),
     },
   });
 }
 
 /**
- * "Didn't get the code? Resend it or update your email address."
- * Both actions are inline links. Shared by the registration, password-reset
- * and sign-in OTP screens (web + native)
+ * Shared inline resend and email-update prompt for registration, password-reset,
+ * and sign-in OTP screens.
  */
 export function OtpHelpLine({ onResend, onUpdateEmail, resending = false, cooldown = 0, style }) {
   const helpLineStyles = useHelpLineStyles();
@@ -93,7 +91,6 @@ export function OtpHelpLine({ onResend, onUpdateEmail, resending = false, cooldo
       >
         {resendLabel}
       </Text>
-      {/* No email to change on the sign-in screen, so that part is optional */}
       {onUpdateEmail ? (
         <>
           {" "}or{" "}

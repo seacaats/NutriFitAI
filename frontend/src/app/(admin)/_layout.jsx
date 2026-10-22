@@ -10,6 +10,7 @@ export default function AdminLayout() {
       <Stack screenOptions={{ headerShown: false, animation: "ios_from_right", contentStyle: { backgroundColor: shell.shellBg } }}>
         <Stack.Screen name="analytics" options={{ title: "Analytics" }} />
         <Stack.Screen name="users" options={{ title: "Users" }} />
+        <Stack.Screen name="image-reviews" options={{ title: "Image Review" }} />
         <Stack.Screen name="audit-logs" options={{ title: "Audit Logs" }} />
       </Stack>
     </RoleGuard>

@@ -9,10 +9,8 @@ import { useMemo } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 /**
- * Second sign-in step, after the password was right. Regular users enter the
- * code emailed to them; admins the code from their authenticator app, or one
- * of their recovery codes. `form` is useLoginForm's return, `styles` the
- * login screen's own (link, alert and spacing)
+ * Second sign-in step after password verification. Regular users enter an emailed
+ * OTP code; admins enter an authenticator app code or a recovery code.
  */
 export function MfaChallenge({ form, styles }) {
   const mfaStyles = useMfaStyles();
@@ -22,7 +20,6 @@ export function MfaChallenge({ form, styles }) {
   const email = form.mfa.method === "email";
   return (
     <View>
-      {/* Darker and bolder, like the setup step, so the instructions are easy to read */}
       <Text style={[mfaStyles.lead, mfaStyles.leadStrong]}>
         {email
           ? "Enter the code we sent to your email to finish signing in."
@@ -30,12 +27,11 @@ export function MfaChallenge({ form, styles }) {
       </Text>
 
       {email ? (
-        // The same code boxes as verifying an email or resetting a password
         <View style={mfaStyles.otp}>
           <OtpInputRow otp={form.otp} variant="primaryBorder" onSubmit={form.handleMfaSubmit} />
         </View>
       ) : (
-        // Authenticator and recovery codes are letters and digits, so a text field
+        // Authenticator and recovery codes may contain alphanumeric characters and hyphens
         <FormInput
           label="Authenticator or recovery code"
           icon="shield-checkmark-outline"
@@ -52,13 +48,11 @@ export function MfaChallenge({ form, styles }) {
         />
       )}
 
-      {/* Space below too, so they don't sit on the Verify button */}
       <FormAlert message={form.mfaNotice} tone="success" onDismiss={form.dismissMfaNotice} style={[styles.alert, mfaStyles.alertAbove]} />
       <FormAlert message={form.error} onDismiss={form.dismissError} style={[styles.alert, mfaStyles.alertAbove]} />
 
       <PrimaryButton title="Verify" onPress={form.handleMfaSubmit} loading={form.loading} />
 
-      {/* Same help line as the register and reset screens, with the countdown */}
       {email && (
         <OtpHelpLine onResend={form.handleMfaResend} resending={form.resending} cooldown={form.cooldown} style={mfaStyles.leadStrong} />
       )}
@@ -73,9 +67,8 @@ export function MfaChallenge({ form, styles }) {
 }
 
 /**
- * First sign-in of an admin: 2FA is already on, so the
- * authenticator app is scanned in here, on the login screen, before any session
- * exists. The first code from the app finishes the setup and the sign-in
+ * First-time admin sign-in step: requires enrolling an authenticator app via QR code
+ * or setup key and verifying the initial 6-digit code before opening a session.
  */
 function AuthenticatorSetupStep({ form, styles }) {
   const mfaStyles = useMfaStyles();
@@ -110,7 +103,6 @@ function AuthenticatorSetupStep({ form, styles }) {
           />
         </>
       ) : (
-        // While the QR code loads (a failed load shows the alert instead)
         !form.error && <SetupSkeleton />
       )}
 
@@ -127,8 +119,7 @@ function AuthenticatorSetupStep({ form, styles }) {
   );
 }
 
-// Same layout as the loaded setup: QR box, key hint and key, code field, button.
-// Drawn in the auth border color, since the default gray vanishes on the mint background
+// Placeholder matching the authenticator setup layout using the auth border color for contrast
 function SetupSkeleton() {
   const mfaStyles = useMfaStyles();
   const fill = { backgroundColor: useAuthColors().border };
@@ -143,7 +134,7 @@ function SetupSkeleton() {
   );
 }
 
-/** Shown once, right after the setup, before the session is opened */
+/** Displays one-time recovery codes immediately after authenticator enrollment. */
 function RecoveryCodesStep({ form }) {
   const mfaStyles = useMfaStyles();
   return (
@@ -163,7 +154,6 @@ function RecoveryCodesStep({ form }) {
 
 const createMfaStyles = (colors) => StyleSheet.create({
   lead: { ...typography.caption, color: colors.textMuted, marginBottom: spacing.md, textAlign: "center" },
-  // The setup and recovery steps carry instructions people must not miss, so darker and bolder than the muted caption
   leadStrong: { color: colors.textPrimary, fontWeight: "600" },
   alertAbove: { marginBottom: spacing.md },
   otp: { marginBottom: spacing.md },
@@ -179,7 +169,6 @@ const createMfaStyles = (colors) => StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1,
     textAlign: "center",
-    // The light gray border disappeared on the green card, so a darker, thicker one
     borderWidth: 2,
     borderColor: colors.green700,
     borderRadius: staticRadii.sm,
@@ -196,7 +185,6 @@ const createMfaStyles = (colors) => StyleSheet.create({
   },
 });
 
-// Auth palette, so the sign-in steps follow the light/dark theme
 const useMfaStyles = () => {
   const colors = useAuthColors();
   return useMemo(() => createMfaStyles(colors), [colors]);

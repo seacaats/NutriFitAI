@@ -1,27 +1,12 @@
 import { addDays, daysBetween, eachDay, todayISO } from "@/shared/utils/dates";
 import { Pedometer } from "expo-sensors";
 
-// Most steps one day can hold. Mirrors MAX_STEPS in StepCards.jsx and the server's limit
+// Maximum steps allowed per day
 const MAX_STEPS_PER_DAY = 20000;
 
 /**
- * iOS step source, and the default this file resolves to on any platform
- * without a more specific implementation.
- *
- * Metro picks the right file by extension -- healthSync.android.js and
- * healthSync.web.js sit alongside this one, exactly like the .web.jsx screens
- * already in this project. Callers write a single import and never branch on
- * Platform.OS, which is what keeps the platform difference in one place instead
- * of scattered through the screens.
- *
- * Backed by CoreMotion's CMPedometer, which records continuously whether or not
- * NutriFitAI is running. So the app being closed affects how FRESH the data is,
- * never how COMPLETE it is: opening the app on Thursday correctly backfills
- * Monday through Thursday.
- *
- * One hard limit: Apple stores only the past seven days of pedometer history.
- * A start date further back silently returns only what exists, so MAX_BACKFILL_DAYS
- * is set to match rather than pretending otherwise.
+ * iOS step tracking implementation using CoreMotion CMPedometer.
+ * Apple stores up to 7 days of historical pedometer data.
  */
 
 export const MAX_BACKFILL_DAYS = 7;
@@ -29,10 +14,7 @@ export const MAX_BACKFILL_DAYS = 7;
 /** Matches the daily_steps_source_check constraint in migration 002. */
 const SOURCE = "healthkit";
 
-/**
- * CMPedometer wants Date objects spanning the local day. Built from the local
- * constructor so midnight means midnight where the user is standing.
- */
+// Converts local calendar date to local start and end of day Date objects
 function localDayBounds(isoDate) {
   const [y, m, d] = isoDate.split("-").map(Number);
   return {
@@ -48,9 +30,7 @@ const healthSync = {
   label: "Apple Health",
 
   /**
-   * True when the device has a pedometer at all. Returns false on the iOS
-   * Simulator, which has no CoreMotion sensor -- testing this feature requires
-   * a physical iPhone.
+   * Checks whether the device hardware includes a pedometer sensor.
    */
   async isAvailable() {
     try {
@@ -61,11 +41,7 @@ const healthSync = {
   },
 
   /**
-   * Triggers the Motion & Fitness prompt.
-   *
-   * iOS shows this once per install; a later call on a denied permission
-   * resolves without re-prompting, which is why the UI must offer a path to
-   * Settings rather than just re-asking.
+   * Triggers the iOS Motion & Fitness permission prompt.
    */
   async requestPermission() {
     try {
@@ -86,16 +62,8 @@ const healthSync = {
   },
 
   /**
-   * Daily totals for an inclusive range.
-   *
-   * There is no grouped query in CoreMotion, so this is one call per day --
-   * cheap at seven days, and clamped to Apple's retention window so we never
-   * issue calls that can only return partial data.
-   *
-   * Days that error are omitted rather than reported as zero. The distinction
-   * survives all the way to the chart: a missing day is a gap, a zero is a
-   * claim that the user didn't move.
-   *
+   * Reads daily step totals for an inclusive range via CoreMotion.
+   * Days with errors are omitted to represent data gaps.
    * @returns {Promise<Array<{ activityDate: string, stepCount: number }>>}
    */
   async readDailyTotals(fromISO, toISO) {

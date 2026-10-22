@@ -3,9 +3,7 @@ const PushToken = require('../models/notifications/PushToken');
 const { sendSuccess, asyncHandler } = require('../utils/httpResponse');
 const { logAction } = require('../utils/audit-logs/auditLogger');
 
-// POST /api/notifications/tokens -- this device, after sign-in and on each
-// launch. Only a token that's new to this user is audited, so a launch
-// refreshing lastSeenAt doesn't write a row every time
+// POST /api/notifications/tokens -- register device push token (audit only newly assigned tokens)
 const registerToken = asyncHandler(async (req, res) => {
   const { token, platform } = req.body;
   const isNew = await PushToken.register({ userId: req.userId, token, platform });
@@ -20,7 +18,7 @@ const registerToken = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Device registered' });
 });
 
-// DELETE /api/notifications/tokens -- on sign-out, before the session ends
+// DELETE /api/notifications/tokens
 const revokeToken = asyncHandler(async (req, res) => {
   const removed = await PushToken.revoke(req.userId, req.body.token);
   if (removed) {
@@ -33,7 +31,7 @@ const revokeToken = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Device unregistered' });
 });
 
-// GET /api/notifications -- the bell. nextBefore is null on the last page
+// GET /api/notifications
 const listNotifications = asyncHandler(async (req, res) => {
   const limit = req.validatedQuery?.limit || 30;
   const { rows, unread } = await Notification.inbox(req.userId, { before: req.validatedQuery?.before, limit });
@@ -46,7 +44,7 @@ const listNotifications = asyncHandler(async (req, res) => {
   });
 });
 
-// POST /api/notifications/read -- { ids } marks those, no ids marks all
+// POST /api/notifications/read
 const markRead = asyncHandler(async (req, res) => {
   const updated = await Notification.markRead(req.userId, req.body.ids || []);
   return sendSuccess(res, { data: { updated } });

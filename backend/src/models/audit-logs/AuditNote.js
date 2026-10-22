@@ -2,15 +2,11 @@ const { mongoose, opts } = require('../../../config/mongo');
 
 const { Schema } = mongoose;
 
-// Context an admin adds to an audit row after the fact ("checked with the
-// user, this was them on a new phone"). Never changes the row itself.
-// Notes are not edited or deleted either: a note that could be rewritten
-// would be a second, weaker trail. A correction is a new note
+// Append-only admin notes attached to audit rows
 const auditNoteSchema = new Schema(
   {
     auditLogId: { type: String, required: true },
     authorId: { type: String, required: true },
-    // Snapshots, same reasoning as audit_logs' actorLabel/role
     authorLabel: { type: String, maxlength: 150, default: null },
     authorRole: { type: String, maxlength: 30, default: null },
     body: { type: String, required: true, maxlength: 1000 },

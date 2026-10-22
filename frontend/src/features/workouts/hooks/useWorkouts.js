@@ -13,9 +13,10 @@ import {
   getWorkoutFallbackImage,
   hasEnglishTranslation,
   isBlockedLocalizedExercise,
+  updateWorkout,
   uploadWorkoutPhoto,
 } from "@/features/workouts/hooks/useWorkoutApi";
-import { useWorkoutPlan, useWorkoutSessions } from "@/features/workouts/hooks/useWorkoutSessions";
+import { evictExerciseImage, useWorkoutPlan, useWorkoutSessions } from "@/features/workouts/hooks/useWorkoutSessions";
 import { useWorkoutTab } from "@/features/workouts/hooks/useWorkoutTab";
 import { apiClient, requireOnline } from "@/shared/api/apiClient";
 import { usePullRefresh } from "@/shared/context/PullRefreshContext";
@@ -65,8 +66,9 @@ export function useWorkouts() {
   const [suggested, setSuggested] = useState(false);
   // The "Preferences" dialog (WorkoutPrefsModal)
   const [prefsOpen, setPrefsOpen] = useState(false);
-  // The "Add workout" dialog (AddWorkoutModal)
+  // The "Add workout" / "Edit workout" dialog (AddWorkoutModal)
   const [addOpen, setAddOpen] = useState(false);
+  const [editingWorkout, setEditingWorkout] = useState(null);
 
   // logSession never throws: the user has already done the exercise, so a
   // failed write must not surface as an error on their screen.
@@ -291,17 +293,23 @@ export function useWorkouts() {
       const { name, description } = getEnglishTranslation(info);
       const image = cardImage || getExerciseImage(info);
       const muscles = getMuscleNames(info);
+      const secondaryList = info.musclesSecondary || info.muscles_secondary || [];
       setSelectedExercise({
         id: info.id,
         source: info.source,
         name,
         description,
         image,
+        hasRealImage: Boolean(info.hasRealImage),
         muscles,
         musclesSecondary:
-          info.muscles_secondary?.map((m) => m.name_en || m.name) || [],
+          secondaryList.map((m) => m.nameEn || m.name_en || m.name).filter(Boolean),
         category: info.category?.name || "Other",
+        categoryId: info.category?.id ?? null,
         equipment: info.equipment?.map((e) => e.name) || [],
+        equipmentIds: info.equipment?.map((e) => e.id).filter(Boolean) || [],
+        muscleIds: info.muscles?.map((m) => m.id).filter(Boolean) || [],
+        secondaryMuscleIds: secondaryList.map((m) => m.id).filter(Boolean),
         images: getExerciseImages(info),
       });
     } catch {
@@ -355,7 +363,8 @@ export function useWorkouts() {
 
   // Throws with the server's message, for the dialog to show inline. The grid
   // reloads so the new workout is in it. The photo goes up after the workout
-  // exists: if it fails the workout stays, and the dialog is told
+  // exists. A photo the moderation check blocks takes the workout back out, so
+  // nothing is added. Any other photo failure leaves the workout, and the dialog is told
   const addWorkout = useCallback(async (body, photo) => {
     if (!requireOnline()) throw new Error("You're offline. Connect to add a workout.");
     const created = await createWorkout(body);
@@ -363,13 +372,75 @@ export function useWorkouts() {
     if (photo) {
       try {
         await uploadWorkoutPhoto(created.id, photo);
-      } catch {
-        photoFailed = true;
+      } catch (err) {
+        if (err?.code !== "PHOTO_REJECTED") photoFailed = true;
+        else {
+          // The block is already on record, deleting the workout doesn't touch it
+          let undone = true;
+          try {
+            await deleteWorkout(created.id);
+          } catch {
+            undone = false;
+          }
+          reloadExercises();
+          throw Object.assign(new Error(undone
+            ? "That photo can't be used, so the workout wasn't added. Choose a different photo or remove it."
+            : "That photo can't be used, and the workout couldn't be taken back. Delete it from your workouts."), { code: "PHOTO_REJECTED" });
+        }
       }
     }
     reloadExercises();
     return { photoFailed };
   }, [reloadExercises]);
+
+  // Updates one of the user's own workouts, optionally replacing or removing its photo
+  const editWorkout = useCallback(async (id, body, photo) => {
+    if (!requireOnline()) throw new Error("You're offline. Connect to edit a workout.");
+    const nextBody = { ...body };
+    if (photo) delete nextBody.removePhoto;
+    let updated = await updateWorkout(id, nextBody);
+    let photoFailed = false;
+    if (photo) {
+      try {
+        updated = await uploadWorkoutPhoto(id, photo);
+      } catch (err) {
+        if (err?.code === "PHOTO_REJECTED") {
+          evictExerciseImage(id);
+          reloadExercises();
+          plan.refresh();
+          refreshSessions();
+          throw Object.assign(new Error("Workout details were saved, but that photo can't be used. Choose a different photo or remove it."), { code: "PHOTO_REJECTED" });
+        }
+        photoFailed = true;
+      }
+    }
+    evictExerciseImage(id);
+    reloadExercises();
+    plan.refresh();
+    refreshSessions();
+    setSelectedExercise((prev) => {
+      if (!prev || prev.id !== id) return prev;
+      const { name, description } = getEnglishTranslation(updated);
+      const secondaryList = updated.musclesSecondary || updated.muscles_secondary || [];
+      return {
+        ...prev,
+        name,
+        description,
+        image: getExerciseImage(updated),
+        hasRealImage: Boolean(updated.hasRealImage),
+        muscles: getMuscleNames(updated),
+        musclesSecondary: secondaryList.map((m) => m.nameEn || m.name_en || m.name).filter(Boolean),
+        category: updated.category?.name || "Other",
+        categoryId: updated.category?.id ?? null,
+        equipment: updated.equipment?.map((e) => e.name) || [],
+        equipmentIds: updated.equipment?.map((e) => e.id).filter(Boolean) || [],
+        muscleIds: updated.muscles?.map((m) => m.id).filter(Boolean) || [],
+        secondaryMuscleIds: secondaryList.map((m) => m.id).filter(Boolean),
+        images: getExerciseImages(updated),
+      };
+    });
+    return { photoFailed };
+  }, [reloadExercises, plan.refresh, refreshSessions]);
 
   // Deletes one of the user's own workouts. The server removes every trace, so
   // what showed it is reloaded: the grid, favorites/routines/schedule, history.
@@ -391,6 +462,8 @@ export function useWorkouts() {
     closeDetail,
     detailLoading,
     detailPlan,
+    editingWorkout,
+    editWorkout,
     editor,
     equipment,
     equipmentList,
@@ -422,6 +495,7 @@ export function useWorkouts() {
     setAddOpen,
     setDetailLoading,
     setDetailPlan,
+    setEditingWorkout,
     setEditor,
     setEquipment,
     setMuscles,

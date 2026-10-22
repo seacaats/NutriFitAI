@@ -4,24 +4,21 @@ import { Ionicons } from "@expo/vector-icons";
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// Shared dialog shell: a centered card on web, a bottom sheet on phones
+// Shared dialog shell: centered card on web, bottom sheet on native phones
 
 export default function SheetModal({ visible, title, subtitle, onClose, footer, children, darkMode, wide = false }) {
   const tone = getScreenTones(darkMode);
   const web = Platform.OS === "web";
-  // Each caller clears its routine or session as it closes; the last open
-  // content stays up while the dialog leaves (like ConfirmModal)
+  // Keeps content visible during exit transitions
   const shown = useHeldWhileClosing(visible, { title, subtitle, footer, children });
-  // Phone sheets reach the screen edge: keep the last row clear of the
-  // gesture bar, with the same breathing room as Browse's details
+  // Ensure bottom padding accounts for device safe-area gesture bar on native
   const insets = useSafeAreaInsets();
   const sheetPad = web ? null : { paddingBottom: insets.bottom + (shown.footer ? 14 : 40) };
 
   return (
-    // Never over another screen: hidden once you've navigated away
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={[styles.overlay, !web && styles.overlaySheet]}>
-        {/* Tapping the dim background closes, like most modern dialogs */}
+        {/* Backdrop dismiss tap */}
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
 
         <View

@@ -36,8 +36,7 @@ export default function RegisterScreen() {
   const form = useRegisterForm();
   const { width } = useWindowDimensions();
   const isWide = width >= BREAKPOINT;
-  // The form's own width: half the screen beside the brand panel. Under
-  // COMPACT_FORM the paired fields stack so their placeholders fit
+  // Stack paired inputs when the form column is narrower than COMPACT_FORM.
   const compact = (isWide ? width / 2 : width) < COMPACT_FORM;
 
   return (
@@ -51,7 +50,7 @@ export default function RegisterScreen() {
             </Pressable>
           )}
 
-          {/* Step 2 replaces step 1 in place -- same card */}
+          {/* Step 2 replaces step 1 in place within the same card */}
           <View style={styles.card}>
             {!form.detailsOpen ? (
               <>
@@ -59,7 +58,6 @@ export default function RegisterScreen() {
                 <Text style={styles.subtitle}>Start your healthy lifestyle today!</Text>
                 <FormAlert tone="info" message={form.notice} onDismiss={form.dismissNotice} />
 
-                {/* Stacked on small screens so each placeholder shows in full */}
                 <View style={[styles.row, styles.accountFieldSpacing, compact && styles.stackedRow]}>
                   <FormInput size="sm"
                     label="First Name"
@@ -111,7 +109,6 @@ export default function RegisterScreen() {
                   style={styles.accountFieldSpacing}
                 />
 
-
                 <FormInput size="sm"
                   label="Confirm Password"
                   required
@@ -149,7 +146,6 @@ export default function RegisterScreen() {
                 <Text style={styles.title}>About You</Text>
                 <Text style={styles.subtitle}>Help us tailor your plan. You can update your details later from your profile page.</Text>
 
-                {/* Age / Height / Weight: one row, or on small screens age on its own row with height and weight below, like the phone */}
                 {compact ? (
                   <>
                     <FormInput size="sm" label="Age" required icon="calendar-outline" placeholder="Age" maxLength={3} value={form.age} onChangeText={form.setAge} onSubmitEditing={form.onSubmitEditing} keyboardType="number-pad" style={styles.fieldSpacing} />
@@ -166,7 +162,7 @@ export default function RegisterScreen() {
                   </View>
                 )}
 
-                {/* Sex -- optional; tap again to clear */}
+                {/* Optional sex selector; tapping the active option clears it */}
                 <Text style={styles.sectionLabel}>
                   <Ionicons name="person-circle-outline" size={13} color={colors.green700} /> Sex <Text style={styles.optional}>(Optional)</Text>
                 </Text>
@@ -249,7 +245,6 @@ export default function RegisterScreen() {
                   style={styles.fieldSpacing}
                 />
 
-                {/* Consent */}
                 <Pressable style={styles.termsRow} onPress={form.toggleAgreeTerms}>
                   <View style={[styles.checkbox, form.agreeTerms && styles.checkboxChecked]}>
                     {form.agreeTerms && <Ionicons name="checkmark" size={11} color="#ffffff" />}
@@ -292,14 +287,13 @@ const createStyles = (colors) => StyleSheet.create({
 
   root: { flex: 1, flexDirection: "row", backgroundColor: colors.screenDark },
 
-  // Left panel
   leftPanel: { flex: 1, backgroundColor: colors.bgMint },
   container: {
     flexGrow: 1,
     paddingHorizontal: spacing.lg,
     paddingVertical: 32,
     width: "100%",
-    maxWidth: 448, // max-w-md
+    maxWidth: 448,
     alignSelf: "center",
     justifyContent: "center",
   },
@@ -312,7 +306,6 @@ const createStyles = (colors) => StyleSheet.create({
   title: { ...typography.h2, color: colors.textPrimary },
   subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 4, marginBottom: spacing.md },
   fieldSpacing: { marginBottom: 14 },
-  // Sits under the field above it, inside that field's spacing
   fieldNote: { marginTop: -8, marginBottom: 14, fontSize: 11, lineHeight: 16, color: colors.textSecondary },
   genderPill: { flex: 1, paddingVertical: 10, borderRadius: radii.sm, backgroundColor: colors.inputBg, alignItems: "center" },
   hint: { ...typography.tiny, color: colors.textSecondary, marginTop: -4, marginBottom: 10 },
@@ -329,7 +322,6 @@ const createStyles = (colors) => StyleSheet.create({
   },
   footerRow: { flexDirection: "row", justifyContent: "center", marginTop: spacing.sm },
 
-  // Right panel
   rightPanel: { flex: 1, backgroundColor: colors.brandPanel, alignItems: "center", justifyContent: "center" },
   rightPanelContent: { alignItems: "center", maxWidth: 400, paddingHorizontal: spacing.xl },
   rightLogo: { width: 220, height: 220, marginBottom: spacing.md },

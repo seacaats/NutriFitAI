@@ -11,14 +11,11 @@ export const WORKOUT_TABS = [
   { key: "recent", label: "Recent", icon: "time" },
 ];
 
-// A tab is remembered for a few hours. After that the page opens on Browse
-// ("Picked for you"), the more useful start to a new session
+// Tab persistence window before reverting to default Browse tab
 const TAB_MEMORY_MS = 4 * 60 * 60 * 1000;
 const isTab = (key) => WORKOUT_TABS.some((t) => t.key === key);
 
-// The open tab. A link's ?tab= (a workout reminder, the dashboard's plan)
-// opens that tab without being remembered; otherwise the last tab this
-// account picked recently, else Browse. Unknown values are ignored
+// Resolves active tab from query parameter, cached state, or default
 export function useWorkoutTab() {
   const userId = useAuth().user?.id;
   const { tab: linked } = useLocalSearchParams();

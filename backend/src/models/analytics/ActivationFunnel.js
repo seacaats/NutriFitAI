@@ -3,10 +3,8 @@ const { CALENDAR_DAY } = require('../shared');
 
 const { Schema } = mongoose;
 
-// One snapshot per day of how far new accounts get, counted by
-// services/analytics/activationFunnel.js and shown on admin Analytics. `from` and `to`
-// are the signup days of the accounts counted; each step only includes the
-// accounts that passed every step before it
+// Daily activation funnel snapshot for signups in [from, to]. Each step counts
+// only accounts that completed all prior steps
 const activationFunnelSchema = new Schema(
   {
     day: { ...CALENDAR_DAY, required: true },

@@ -1,4 +1,4 @@
-// One generic adapter handles every OpenAI-compatible provider via configuration
+// Generic adapter for OpenAI-compatible chat completion providers.
 
 class ProviderError extends Error {
   /**
@@ -11,13 +11,10 @@ class ProviderError extends Error {
     this.status = opts.status ?? 0;
     this.retryAfterMs = opts.retryAfterMs ?? null;
     this.provider = opts.provider;
-    // Flags transient or non transient errors (400 or 401)
     this.transient = opts.transient ?? true;
   }
 }
 
-// Convert Retry-After header into amount of time 
-// to wait to send requests to a specific model
 function parseRetryAfter(headers) {
   const raw = headers?.get?.('retry-after');
   if (!raw) return null;
@@ -30,10 +27,7 @@ function parseRetryAfter(headers) {
 }
 
 /**
- * Builds a chat client.
- *
  * @param {{ name: string, baseUrl: string, apiKey?: string|null, model: string, timeoutMs?: number, maxTokens?: number, headers?: object }} config
- *   headers  sent on every request, e.g. a tunnel's Basic auth
  */
 function createOpenAICompatibleProvider(config) {
   const { name, baseUrl, apiKey, model, timeoutMs = 30000, maxTokens = 700, headers = {} } = config;
@@ -42,7 +36,6 @@ function createOpenAICompatibleProvider(config) {
     name,
     model,
 
-    // Checks model configurations for the router to resolve at server startup
     isConfigured() {
       return Boolean(baseUrl && model && (apiKey || name === 'ollama'));
     },
@@ -51,12 +44,10 @@ function createOpenAICompatibleProvider(config) {
      * @param {{ system: string, messages: Array<{ role: 'user'|'assistant', content: string }>, signal?: AbortSignal }} request
      * @returns {Promise<{ text: string, usage: object|null }>}
      */
-    async chat(request) { 
-      // Force a definitive pass/fail for each chat request with an enforced timeout deadline
+    async chat(request) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-      // Upstream cancellation has to reach the socket too, killing the underlying provider request
       const onAbort = () => controller.abort();
       request.signal?.addEventListener('abort', onAbort, { once: true });
 
@@ -90,9 +81,7 @@ function createOpenAICompatibleProvider(config) {
 
       if (!response.ok) {
         const body = await response.text().catch(() => '');
-        // Defines and distinguishes from transiesnt and non-transient status codes/bugs
-        // An ngrok error (tunnel offline: the PC is off) is transient too,
-        // whatever its status, so the chain moves on to the next provider
+        // Treat 429, 5xx, and offline ngrok tunnels as transient so failover continues
         const transient = response.status === 429 || response.status >= 500
           || response.headers.has('ngrok-error-code');
         throw new ProviderError(`${name} returned ${response.status}: ${body.slice(0, 300)}`, {
@@ -106,7 +95,6 @@ function createOpenAICompatibleProvider(config) {
       const payload = await response.json().catch(() => null);
       const text = payload?.choices?.[0]?.message?.content;
 
-      // Treat every non-useful successful request
       if (typeof text !== 'string' || text.trim() === '') {
         throw new ProviderError(`${name} returned an empty completion`, {
           provider: name,

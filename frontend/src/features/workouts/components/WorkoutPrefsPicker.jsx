@@ -11,12 +11,10 @@ import { StyleSheet, View } from "react-native";
 import Chip from "./Chip";
 import SectionLabel from "./SectionLabel";
 
-// Workout preferences: the Workouts filters' categories, equipment and muscles, but
-// multi-select. Used by the onboarding and Profile. The Workouts screen
-// lists exercises matching these first, then the rest (GET /workouts?shuffle)
+// Workout preferences picker for onboarding and profile forms.
+// Configures preferred categories, equipment, and target muscle groups.
 
-// The catalog's categories, equipment and muscles, for picking and for naming saved ids.
-// `enabled` false skips the fetch: /workouts is user-only, an admin gets a 403
+// Fetches options for workout preference selections
 export function useWorkoutOptions(enabled = true) {
   const [categories, setCategories] = useState([]);
   const [equipmentList, setEquipmentList] = useState([]);
@@ -38,7 +36,7 @@ export function useWorkoutOptions(enabled = true) {
   return { categories, equipmentList, muscleList, loading };
 }
 
-// "Chest, Legs · Bodyweight only", or "" with nothing picked
+// Generates a human-readable summary of workout preferences
 export function describeWorkoutPrefs(prefs, { categories, equipmentList, muscleList = [] }) {
   if (!prefs) return "";
   const parts = [];
@@ -57,10 +55,10 @@ export default function WorkoutPrefsPicker({ value, onChange, options, darkMode 
   const prefs = value || NO_WORKOUT_PREFS;
   const { categories, equipmentList, muscleList = [], loading } = options;
   const set = (changes) => onChange({ ...prefs, ...changes });
-  // Older saved prefs have no muscle lists
   const muscleIds = prefs.muscleIds || [];
   const secondaryIds = prefs.secondaryMuscleIds || [];
-  // A muscle is main or secondary, never both: picking one clears the other
+
+  // Toggle muscle selection between primary and secondary groups
   const toggleMuscle = (id, key) => {
     const main = key === "muscleIds";
     set({
@@ -92,7 +90,6 @@ export default function WorkoutPrefsPicker({ value, onChange, options, darkMode 
         ))}
       </View>
 
-      {/* Single choice, same three as the filters */}
       <SectionLabel darkMode={darkMode}>Equipment</SectionLabel>
       <View style={styles.chips}>
         <Chip label="Any" active={prefs.equipment == null} onPress={() => set({ equipment: null, equipmentIds: [] })} darkMode={darkMode} />
@@ -100,7 +97,6 @@ export default function WorkoutPrefsPicker({ value, onChange, options, darkMode 
         <Chip label="Needs equipment" active={prefs.equipment === "any"} onPress={() => set({ equipment: "any" })} darkMode={darkMode} />
       </View>
 
-      {/* What they have, once "Needs equipment" is picked. None picked = any */}
       {prefs.equipment === "any" && equipmentList.length > 0 && (
         <View style={[styles.chips, styles.nested]}>
           {equipmentList.map((e) => (
@@ -136,9 +132,7 @@ export default function WorkoutPrefsPicker({ value, onChange, options, darkMode 
   );
 }
 
-// The Workouts screen's "Preferences" dialog. Loads the saved choice on open,
-// saves on "Save", then `onSaved` reloads "Picked for you". `options` is the
-// screen's own categories, equipment and muscles list, so nothing is fetched twice
+// Workout preferences modal dialog for updating user exercise filters
 export function WorkoutPrefsModal({ visible, onClose, onSaved, options, darkMode }) {
   const [value, setValue] = useState(null);
   const [saving, setSaving] = useState(false);

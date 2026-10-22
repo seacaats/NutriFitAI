@@ -1,23 +1,15 @@
 const { z } = require('zod');
 const { CALENDAR_DAY_RE } = require('../utils/calendarDay');
-
-// Mirrors GLASS_ML / MIN_WATER_GOAL_ML in utils/goals/goalLimits.js and WATER_GOAL in the
-// frontend's goalOptions.js. Recommended intake is about 2-3.7 L a day, so a goal
-// tops out at 4 L, and nothing above 5 L a day is logged (past that, drinking
-// water faster than the kidneys clear it can cause hyponatremia)
 const { MIN_WATER_GOAL_ML, MAX_WATER_GOAL_ML } = require('../utils/goals/goalLimits');
+
 const MAX_DAY_ML = 5000;
-// One drink, like a large bottle
 const MAX_DRINK_ML = 1500;
 
 const waterRangeSchema = z.object({
-  // Up to 90 per request. `to` is the last day of the window (defaults to
-  // today), so the history screen can page back 30 days at a time
   days: z.coerce.number().int().min(1).max(90).optional(),
   to: z.string().regex(CALENDAR_DAY_RE, 'expected YYYY-MM-DD').optional(),
 }).strict();
 
-// Omitted amount = one glass
 const logWaterSchema = z.object({
   amountMl: z.coerce.number().int()
     .min(10, 'Enter at least 10 ml.')
@@ -37,7 +29,6 @@ const waterDayParamSchema = z.object({
   date: z.string().regex(CALENDAR_DAY_RE, 'expected YYYY-MM-DD'),
 }).strict();
 
-// A day's drinks, in order. Each one is the same range as a single log
 const waterDaySchema = z.object({
   amounts: z.array(
     z.coerce.number().int().min(10, 'Each drink is at least 10 ml.').max(MAX_DRINK_ML, `Each drink is at most ${MAX_DRINK_ML.toLocaleString('en-US')} ml.`),

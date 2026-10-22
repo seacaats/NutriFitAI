@@ -12,7 +12,6 @@ function getLanIp() {
       candidates.push({ name, address: a.address });
     }
   }
-  // prefer the usual physical adapters
   const preferred = candidates.find((c) => /^(en0|eth0|wlan0|Wi-Fi|Ethernet)$/i.test(c.name));
   return (preferred ?? candidates[0])?.address ?? null;
 }

@@ -3,13 +3,9 @@ import { resolveMediaUrl } from "@/shared/services/mediaUrl";
 
 /**
  * Workout catalog client.
- *
- * Thin client over the server's synced catalog. Unused legacy wrappers
- * (fetchExercises, searchExercises, fetchExerciseImages, fetchExerciseBatch)
- * were removed; everything left here is imported by the workouts screens
  */
 
-const LANG = 2; // English. Kept for the helpers' legacy shape checks
+const LANG = 2; // English
 
 /* ------------------------------------------------------------------ fetching */
 
@@ -31,8 +27,7 @@ export async function fetchEquipment() {
 /**
  * A page of exercises.
  *
- * Returns the wger-shaped envelope ({ count, next, results }) the screens were
- * written against, so their paging logic keeps working while it is simplified.
+ * Returns envelope ({ count, next, previous, results, suggested }) for pagination.
  */
 export async function fetchExerciseInfoPage({
   category,
@@ -50,7 +45,6 @@ export async function fetchExerciseInfoPage({
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   // With no filter the server shuffles the catalog, preferred exercises first
   // (suggested: true when there are any, for "Picked for you")
-  // when no filter is set, and answers with suggested: true
   if (shuffle) params.set("shuffle", String(shuffle));
   if (category) params.set("category", String(category));
   if (search) params.set("search", search);
@@ -64,8 +58,7 @@ export async function fetchExerciseInfoPage({
   // Only these exercises (the Favorites tab)
   if (ids) params.set("ids", ids.join(","));
 
-  // The server defaults to illustrated exercises only. Opt out explicitly when
-  // a screen genuinely wants the full catalog.
+  // The server defaults to illustrated exercises only unless opted out explicitly
   if (includeImageless) params.set("hasImage", "false");
 
   const data = await apiClient.get(`/workouts?${params.toString()}`, { auth: true });
@@ -80,43 +73,44 @@ export async function fetchExerciseInfoPage({
 }
 
 /**
- * One exercise by wger id. For the details dialogs: while the server can't
- * be reached it gives back the saved copy or fails at once, never waits,
- * so a dialog can't open on its own when the connection comes back.
- * `signal` cancels it outright when the dialog closes
+ * One exercise by id. Non-blocking when offline so dialogs do not delay.
+ * `signal` cancels it when the dialog closes.
  */
 export async function fetchExerciseInfo(id, { signal } = {}) {
   return apiClient.get(`/workouts/${id}`, { auth: true, wait: false, signal });
 }
 
-// The workout this user can see under that name (wger's or their own), or
-// null. For the "Add workout" field while typing: gives back the saved copy
-// or fails at once while offline, never waits
-export async function findWorkoutByName(name, { signal } = {}) {
+// Checks for existing workouts with this name (wger or personal)
+export async function findWorkoutByName(name, { excludeId, signal } = {}) {
   const params = new URLSearchParams({ name });
+  if (excludeId != null) params.set("excludeId", String(excludeId));
   const data = await apiClient.get(`/workouts/match?${params.toString()}`, { auth: true, wait: false, signal });
   return data.match || null;
 }
 
-// Adds a workout of the user's own. confirmDuplicate: a wger workout has the
-// same name and they were asked. Throws with the server's message
+// Adds a personal workout
 export function createWorkout(body) {
   return apiClient.post("/workouts", body, { auth: true });
 }
 
-// Deletes one of the user's own workouts and everything that referenced it
+// Updates a personal workout
+export function updateWorkout(id, body) {
+  return apiClient.patch(`/workouts/${id}`, body, { auth: true });
+}
+
+// Deletes a personal workout
 export function deleteWorkout(id) {
   return apiClient.delete(`/workouts/${id}`, { auth: true });
 }
 
-// A photo for one of the user's own workouts. file: { uri, name, type }
+// Uploads a photo for a personal workout
 export function uploadWorkoutPhoto(id, file) {
   return apiClient.uploadFile(`/workouts/${id}/photo`, file, { field: "photo", auth: true });
 }
 
 /* ------------------------------------------------- routines, favorites, schedule */
 
-// Your routines plus built-ins
+// User routines plus built-ins
 export async function fetchRoutines() {
   const data = await apiClient.get("/workouts/routines", { auth: true });
   return data.routines || [];
@@ -182,19 +176,13 @@ export function unscheduleWorkout(id) {
 
 /* ------------------------------------------------------------------- helpers */
 
-/**
- * Name and description for a record.
- *
- * The server stores the English translation directly, so this is now a read
- * rather than a search through a translations array. The legacy branch remains
- * for anything still holding a raw wger object.
- */
+/** Returns the display name and description for an exercise record. */
 export function getEnglishTranslation(info) {
   if (info?.name) {
     return { name: info.name, description: info.description || "" };
   }
 
-  // Legacy wger shape.
+  // Legacy wger shape fallback
   if (!info?.translations?.length) {
     return {
       name: info?.name || `Exercise #${info?.id}`,
@@ -208,21 +196,13 @@ export function getEnglishTranslation(info) {
   };
 }
 
-/**
- * Always true for a synced record: the sync drops anything without a usable
- * English name, so an untranslated entry can no longer reach the client.
- * Retained so the screens' filters keep compiling.
- */
+/** Checks whether the exercise has a valid English name. */
 export function hasEnglishTranslation(info) {
   if (info?.name) return Boolean(info.name.trim());
   return Boolean(info?.translations?.some((t) => t.language === LANG && t.name?.trim()));
 }
 
-/**
- * Localized titles wger mislabels as English are now dropped at sync time, so
- * this always returns false for synced records. Kept as a safety net for any
- * cached data written before the switch.
- */
+/** Checks for untranslated localized exercise titles. */
 export function isBlockedLocalizedExercise(name = "") {
   const normalized = name
     .normalize("NFD")
@@ -231,21 +211,14 @@ export function isBlockedLocalizedExercise(name = "") {
   return normalized.includes("puente de gluteos");
 }
 
-/** First image, or the category's stable fallback. */
+/** First image, or the category's fallback. */
 export function getExerciseImage(info) {
   return getExerciseImages(info)[0] || getWorkoutFallbackImage(info?.category?.name);
 }
 
-/**
- * All image URLs.
- *
- * Normalised and deduplicated at sync time, so this is now a read. The legacy
- * branch handles the several shapes wger returned across versions.
- */
+/** All normalized image URLs for an exercise. */
 export function getExerciseImages(info) {
   if (Array.isArray(info?.images) && info.images.every((i) => typeof i === "string")) {
-    // wger's are absolute already. A user's own photo is a path on the API
-    // with the local storage driver
     return info.images.map(resolveMediaUrl);
   }
 
@@ -258,13 +231,7 @@ export function getExerciseImages(info) {
     .filter(Boolean);
 }
 
-/**
- * Kept for legacy/cached data. Synced URLs are already absolute https.
- *
- * The http→https rewrite is the important line: a browser blocks an http image
- * on an https page as mixed content, so an un-normalised legacy URL renders as
- * nothing at all.
- */
+/** Normalizes image URLs to secure absolute paths. */
 function normalizeImageUrl(url) {
   if (!url) return null;
   if (typeof url === "object") return normalizeImageUrl(url.image || url.url || url.src);
@@ -278,7 +245,7 @@ function normalizeImageUrl(url) {
   return value;
 }
 
-/** Muscle display names, preferring the English label. */
+/** Muscle display names, preferring English labels. */
 export function getMuscleNames(info) {
   const muscles = [
     ...(info?.muscles || []),
@@ -292,14 +259,7 @@ export function getMuscleNames(info) {
 
 /* ---------------------------------------------------------------- fallbacks */
 
-/**
- * Stable, manually chosen artwork so a card stays useful when an exercise has
- * no uploaded image.
- *
- * Stays client-side deliberately: these are a presentation choice, not catalog
- * data, and storing them per exercise would put ~1,300 copies of a dozen URLs
- * into a 512 MB database.
- */
+/** Category fallback artwork when an exercise lacks an uploaded photo. */
 const WORKOUT_FALLBACK_IMAGES = {
   Abs: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=900&q=80",
   Arms: "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?auto=format&fit=crop&w=900&q=80",

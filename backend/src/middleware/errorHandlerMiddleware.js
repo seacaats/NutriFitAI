@@ -2,25 +2,26 @@ const { ApiError } = require('../utils/httpResponse');
 const env = require('../../config/env');
 
 function notFoundHandler(req, res, next) {
-  res.status(404).json({ success: false, code: 'NOT_FOUND', // Route detail stays in development; users get plain wording
-    message: env.nodeEnv === 'production' ? "We couldn't find that." : `Route not found: ${req.method} ${req.originalUrl}` });
+  res.status(404).json({
+    success: false,
+    code: 'NOT_FOUND',
+    message: env.nodeEnv === 'production' ? "We couldn't find that." : `Route not found: ${req.method} ${req.originalUrl}`,
+  });
 }
 
-// MongoDB duplicate-key error (E11000), raised on any unique-index violation
+// MongoDB duplicate-key error code
 const MONGO_DUPLICATE_KEY = 11000;
 
 function errorHandler(err, req, res, next) {
   let error = err;
 
   if (err && err.code === MONGO_DUPLICATE_KEY) {
-    // Returns which field and value caused a duplicate key conflict
     error = ApiError.conflict('A record with these details already exists.', {
       details: env.nodeEnv === 'development' ? err.keyValue : undefined,
     });
   }
 
-  // Multer rejects oversized or extra files before the controller runs.
-  // Without this they surfaced as a 500 (avatars included)
+  // Map Multer upload errors to 413/400
   if (err && err.name === 'MulterError') {
     error = err.code === 'LIMIT_FILE_SIZE'
       ? new ApiError(413, err.field === 'audio' ? 'That recording is too long. Try a shorter one.' : 'That image is too large.', { code: 'FILE_TOO_LARGE' })

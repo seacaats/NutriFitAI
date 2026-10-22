@@ -146,21 +146,19 @@ const createStyles = (colors) => StyleSheet.create({
 
   root: { flex: 1, flexDirection: "row", backgroundColor: colors.screenDark },
 
-  //Left panel
   leftPanel: { flex: 1, backgroundColor: colors.brandPanel, alignItems: "center", justifyContent: "center" },
   leftPanelContent: { alignItems: "center", maxWidth: 400, paddingHorizontal: spacing.xl },
   leftLogo: { width: 220, height: 220, marginBottom: spacing.md },
   leftHeading: { ...typography.brandHeading, color: colors.brandLight, textAlign: "center" },
   leftQuote: { ...typography.body, color: colors.quoteText, textAlign: "center", marginTop: spacing.md, lineHeight: 22 },
 
-  //Right Panel
   rightPanel: { flex: 1, backgroundColor: colors.bgMint },
   container: {
     flexGrow: 1,
     paddingHorizontal: spacing.lg,
     paddingVertical: 40,
     width: "100%",
-    maxWidth: 448, // max-w-md
+    maxWidth: 448,
     alignSelf: "center",
     justifyContent: "center",
   },
@@ -200,5 +198,4 @@ const createStyles = (colors) => StyleSheet.create({
   footerRow: { flexDirection: "row", justifyContent: "center", marginTop: spacing.lg },
 
   alert: { marginTop: spacing.md, marginBottom: 0 },
-
 });

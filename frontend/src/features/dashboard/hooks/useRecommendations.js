@@ -16,6 +16,7 @@ export function useRecommendations() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const errorTimer = useRef(null);
 
   // A failed load (e.g. the session isn't ready yet, or the server is busy
   // generating) is retried a couple of times, so the cards show up without a page refresh
@@ -72,6 +73,9 @@ export function useRecommendations() {
       setError("");
     } catch (err) {
       setError(err?.message || "Couldn't refresh your recommendations.");
+      // A pacing message isn't worth keeping on screen
+      clearTimeout(errorTimer.current);
+      errorTimer.current = setTimeout(() => setError(""), 5000);
     } finally {
       setBusy(false);
     }

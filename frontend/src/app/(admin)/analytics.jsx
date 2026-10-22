@@ -12,12 +12,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 /**
- * Analytics -- the admin dashboard (web only, like the rest
- * of (admin)). Counts across the whole app from GET /admin/analytics: no
- * names, emails or health values.
- *
- * "Active" means opened the app that day (any signed-in use, counted once
- * per user per day), regular users only
+ * Admin analytics dashboard (web only). Displays aggregate platform counts from
+ * GET /admin/analytics without personal or health data.
+ * "Active" counts distinct regular users who opened the app on a given day.
  */
 
 const DASH = "—";
@@ -37,8 +34,7 @@ const USAGE_ROWS = [
   { key: "coachMessages", label: "Coach messages", icon: "hardware-chip-outline" },
 ];
 
-// New accounts, in the order they move through the app. Each step counts only
-// the accounts that passed the ones before it
+// Sequential onboarding and retention funnel stages; each stage requires passing prior stages.
 const FUNNEL_ROWS = [
   { key: "signedUp", label: "Signed up" },
   { key: "verified", label: "Verified email" },
@@ -47,7 +43,7 @@ const FUNNEL_ROWS = [
   { key: "returned", label: "Came back on a later day" },
 ];
 
-// A y-axis top a little above the highest point, never below `min`
+// Round up y-axis maximum to the nearest multiple of `step`, floored at `min`.
 const ceilTo = (n, step, min = step) => Math.max(min, Math.ceil(n / step) * step);
 
 function Panel({ title, note, children, tone, style }) {
@@ -62,7 +58,7 @@ function Panel({ title, note, children, tone, style }) {
   );
 }
 
-// Bars of how many new accounts reached each step, against the sign-ups
+// Progress bars showing the share of new accounts reaching each funnel step.
 function Funnel({ activation, tone, loading }) {
   const steps = activation?.steps;
   if (loading) return <Skeleton width={220} height={15} />;
@@ -89,7 +85,7 @@ function Funnel({ activation, tone, loading }) {
   );
 }
 
-// A donut with its legend. Empty when every count is 0
+// Donut chart with legend breakdown.
 function Breakdown({ rows, counts, tone, centerLabel, loading }) {
   const total = rows.reduce((s, r) => s + (counts?.[r.key] || 0), 0);
   return (
@@ -121,10 +117,10 @@ export default function AdminAnalyticsScreen() {
   const { width } = useWindowDimensions();
   const narrow = width < 900;
   const { view: v, loading, error, refresh } = useAdminAnalytics();
-  // First load: the page's real layout with placeholders. A refresh keeps the old numbers
+  // Show skeleton placeholders on initial load; retain existing numbers during manual refresh.
   const first = loading && !v;
 
-  // Stacked cards keep their natural height (flex: 1 would collapse them in a column)
+  // Preserve natural card height when stacked vertically on narrow viewports.
   const panelFlex = narrow ? styles.stackItem : styles.flex1;
 
   const activeTop = ceilTo(Math.max(0, ...(v?.activeSeries.map((d) => d.value) || [0])), 5);
@@ -178,7 +174,7 @@ export default function AdminAnalyticsScreen() {
         />
       </View>
 
-      {/* Trends over the last 30 days */}
+      {/* 30-day trend charts */}
       <View style={[styles.row, narrow && styles.column]}>
         <Panel title="Active users" note="Per day, last 30 days" tone={tone} style={panelFlex}>
           {first ? (
@@ -216,7 +212,7 @@ export default function AdminAnalyticsScreen() {
         </Panel>
       </View>
 
-      {/* Accounts at least a week old, so each has had time to log and return */}
+      {/* Cohort funnel for accounts at least 7 days old */}
       <Panel
         title="New-user funnel"
         note={v?.activation?.steps?.signedUp ? `${v.activation.steps.signedUp.toLocaleString()} accounts, at least a week old` : "Accounts at least a week old"}
@@ -227,7 +223,6 @@ export default function AdminAnalyticsScreen() {
       </Panel>
 
       <View style={[styles.row, narrow && styles.column]}>
-        {/* What people used this week */}
         <Panel title="Feature use" note="Last 7 days" tone={tone} style={panelFlex}>
           {USAGE_ROWS.map((r, i) => (
             <View key={r.key} style={[styles.usageRow, i > 0 && { borderTopWidth: 1, borderTopColor: tone.border }]}>
@@ -240,7 +235,6 @@ export default function AdminAnalyticsScreen() {
           ))}
         </Panel>
 
-        {/* Severity is the audit log's chain (Audit Logs page) */}
         <Panel title="Audit events" note="Last 7 days, by severity" tone={tone} style={panelFlex}>
           <Breakdown rows={AUDIT_ROWS} counts={v?.audit} tone={tone} centerLabel="events" loading={first} />
         </Panel>
@@ -252,10 +246,8 @@ export default function AdminAnalyticsScreen() {
 const styles = StyleSheet.create({
   ...adminStyles,
 
-  // alignSelf: not stretched across the page when the header stacks
   refreshBtn: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: shellColors.primary, borderRadius: radii.sm, paddingHorizontal: 14, paddingVertical: 9 },
   refreshText: { fontSize: 13, fontWeight: "700", color: colors.white },
-
 
   row: { flexDirection: "row", gap: 12, marginBottom: 12 },
   column: { flexDirection: "column" },

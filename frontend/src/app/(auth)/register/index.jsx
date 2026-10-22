@@ -44,10 +44,9 @@ export default function RegisterScreen() {
           contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + spacing.lg }]}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Step 2 replaces step 1 in place -- same container */}
+          {/* Step 2 replaces step 1 in place within the same container */}
           {!form.detailsOpen ? (
             <>
-              {/* Step 1 only; step 2 has its own Back to step 1 */}
               <AuthBackLink fallback={form.backTo} />
 
               <View style={styles.headerBlock}>
@@ -96,7 +95,6 @@ export default function RegisterScreen() {
                 icon="lock-closed-outline"
                 placeholder="Password (min. 8 characters)"
                 value={form.password}
-                // Same cap as the server password limit
                 maxLength={64}
                 onChangeText={form.setPassword}
                 onSubmitEditing={form.onSubmitEditing}
@@ -146,7 +144,6 @@ export default function RegisterScreen() {
                 <Text style={styles.subtitle}>Help us tailor your plan. You can update your details later from your profile page.</Text>
               </View>
 
-              {/* Age */}
               <FormInput
                 label="Age"
                 required
@@ -159,13 +156,12 @@ export default function RegisterScreen() {
                 style={styles.fieldSpacing}
               />
 
-              {/* Height / Weight */}
               <View style={[styles.row, styles.fieldSpacing]}>
                 <FormInput label="Height (cm)" required icon="resize-outline" placeholder="Height (cm)" maxLength={6} value={form.height} onChangeText={form.setHeight} onSubmitEditing={form.onSubmitEditing} keyboardType="decimal-pad" style={styles.thirdField} />
                 <FormInput label="Weight (kg)" required icon="barbell-outline" placeholder="Weight (kg)" maxLength={6} value={form.weight} onChangeText={form.setWeight} onSubmitEditing={form.onSubmitEditing} keyboardType="decimal-pad" style={styles.thirdField} />
               </View>
 
-              {/* Sex -- optional; tap again to clear */}
+              {/* Optional sex selector; tapping the active option clears it */}
               <Text style={styles.sectionLabel}>
                 <Ionicons name="person-circle-outline" size={13} color={colors.green700} /> Sex <Text style={styles.optional}>(Optional)</Text>
               </Text>
@@ -176,7 +172,6 @@ export default function RegisterScreen() {
                   </Pressable>
                 ))}
               </View>
-
 
               <Text style={styles.sectionLabel}>
                 <Ionicons name="restaurant-outline" size={13} color={colors.green700} /> Diet Preference <Text style={styles.required}>*</Text>
@@ -248,7 +243,6 @@ export default function RegisterScreen() {
                 style={styles.fieldSpacing}
               />
 
-              {/* Consent */}
               <Pressable style={styles.termsRow} onPress={form.toggleAgreeTerms}>
                 <View style={[styles.checkbox, form.agreeTerms && styles.checkboxChecked]}>
                   {form.agreeTerms && <Ionicons name="checkmark" size={11} color="#ffffff" />}
@@ -287,7 +281,6 @@ const createStyles = (colors) => StyleSheet.create({
   subtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 4 },
 
   fieldSpacing: { marginBottom: 14 },
-  // Sits under the field above it, inside that field's spacing
   fieldNote: { marginTop: -8, marginBottom: 14, fontSize: 11, lineHeight: 16, color: colors.textSecondary },
   genderPill: { flex: 1, paddingVertical: 12, borderRadius: radii.sm, backgroundColor: colors.inputBg, alignItems: "center", borderWidth: 1, borderColor: colors.border },
   hint: { ...typography.tiny, color: colors.textSecondary, marginTop: -4, marginBottom: 10 },

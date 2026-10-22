@@ -9,11 +9,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-/**
- * How long to wait for the opener to acknowledge the result before giving up
- * on the handshake. Delivery is normally sub-millisecond; this only covers a
- * busy or unresponsive opener tab
- */
+// Timeout waiting for the opener tab to acknowledge the BroadcastChannel result.
 const ACK_TIMEOUT_MS = 2000;
 
 function isPopup(params) {
@@ -31,8 +27,7 @@ function firstParam(value) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-// On web, read the query straight from the address bar. Router params can
-// still be empty on the first render, which used to look like a missing token
+// On web, read query parameters directly from window.location.search before router params hydrate.
 function readQuery(params) {
   if (typeof window !== "undefined" && window.location?.search) {
     const search = new URLSearchParams(window.location.search);
@@ -50,13 +45,9 @@ function readQuery(params) {
 }
 
 /**
- * Publishes the sign-in result to the opener and resolves once the opener has
- * acknowledged it or the wait times out
- *
- * The channel is deliberately NOT closed on the same tick as postMessage:
- * BroadcastChannel dispatch is asynchronous, so closing the channel and the
- * window immediately afterwards destroys the popup before the message is
- * flushed, and the opener never receives anything
+ * Publishes the OAuth result to the opener tab via BroadcastChannel and waits
+ * for an acknowledgment before closing the channel, ensuring asynchronous
+ * delivery completes before window.close() runs.
  */
 function publishResult(result) {
   return new Promise((resolve) => {
@@ -83,7 +74,7 @@ function publishResult(result) {
       try {
         channel.close();
       } catch {
-        // already closed — nothing to do
+        // Channel already closed
       }
       resolve(delivered);
     }
@@ -104,8 +95,7 @@ export default function GoogleAuthCallback() {
   const { refresh, role } = useAuth();
   const ranOnce = useRef(false);
 
-  // Set only when the popup could not hand the result back to the opener, so
-  // the window explains itself instead of closing silently
+  // Set when the popup cannot hand the result back to the opener tab.
   const [stranded, setStranded] = useState(null);
 
   useEffect(() => {
@@ -125,9 +115,7 @@ export default function GoogleAuthCallback() {
               params: {
                 googleError: result.error || "exchange_failed",
                 googleMessage: result.message || "",
-                // Carried so the login screen can prefill the register screen
-                // (error=registration_required). Empty for every other
-                // failure, which the login screen ignores
+                // Passed on error=registration_required so the login screen can prefill registration.
                 googleEmail: result.email || "",
               },
             });
@@ -142,16 +130,13 @@ export default function GoogleAuthCallback() {
           return;
         }
 
-        // Nothing is listening (opener navigated away, channel unsupported,
-        // popups isolated). Never close silently — the user would be left on
-        // the login screen with no explanation
+        // Opener did not acknowledge (closed, navigated away, or isolated); show fallback UI in popup.
         if (result.mfa) {
-          // The second step can't be finished from this window
           setStranded({ success: false, message: googleErrorMessage("mfa_undelivered") });
         } else if (result.success && result.accessToken) {
           try {
             await setAccessToken(result.accessToken);
-            await refresh();  // status becomes AUTHENTICATED before the nav
+            await refresh();
             setStranded({ success: true });
           } catch {
             setStranded({ success: false, message: googleErrorMessage("storage_failed") });
@@ -164,13 +149,11 @@ export default function GoogleAuthCallback() {
       const query = readQuery(params);
 
       if (query.error) {
-        // `email` accompanies error=registration_required only
         await finish({ success: false, error: query.error, email: query.email || "" });
         return;
       }
 
-      // No token and no error: a stray visit (Back button, history, reload),
-      // not a failed sign-in. Leave quietly instead of showing an error
+      // Redirect stray visits without a token or error back to login.
       if (!query.exchangeToken) {
         if (popup) {
           await finish({ success: false, error: "missing_exchange_token" });
@@ -186,7 +169,7 @@ export default function GoogleAuthCallback() {
         const data = await exchangeGoogleToken(exchangeToken);
 
         if (data.mfaRequired) {
-          // 2FA comes next, on the login screen: no session yet
+          // Hand off the pending MFA challenge to the login screen.
           const mfa = mfaFromExchange(data);
           if (popup) {
             await finish({ success: true, mfa });
@@ -199,11 +182,9 @@ export default function GoogleAuthCallback() {
         } else {
           await setAccessToken(data.accessToken);
           const me = await refresh();
-          await finish({ success: true, role: me?.role }); // → router.replace(homeFor(role))
+          await finish({ success: true, role: me?.role });
         }
       } catch (err) {
-        // Forward the server's own message ("Invalid or expired sign-in
-        // session…", rate-limit copy, etc.)
         await finish({
           success: false,
           error: "exchange_failed",

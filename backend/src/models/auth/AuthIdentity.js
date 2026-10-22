@@ -3,9 +3,7 @@ const { USER_REF, withId } = require('../shared');
 
 const { Schema } = mongoose;
 
-// Provider identities have their own collection rather than being embedded
-// on the user. A compound unique index across two top-level fields keeps
-// duplicate-key errors and similar issues interpretable
+// External OAuth provider identities linked to user accounts
 const authIdentitySchema = new Schema(
   {
     userId: USER_REF,
@@ -25,8 +23,7 @@ authIdentitySchema.statics.findByProviderSubject = async function findByProvider
   return withId(await this.findOne({ provider, providerSubject }, null, opts(client)).lean());
 };
 
-// Link a provider identity (Just Google right now) to a user.
-// $setOnInsert means an already-linked identity never changes owner
+// Links a provider identity to a user ($setOnInsert prevents reassigning an existing link)
 authIdentitySchema.statics.link = async function link(input, client) {
   await this.updateOne(
     { provider: input.provider, providerSubject: input.providerSubject },

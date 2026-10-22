@@ -26,13 +26,10 @@ import {
   View,
 } from "react-native";
 
-// Server words each row (message + fields)
-
-// Rows this close to their TTL get a badge, so an admin can hold them in time
+// Warn when an unheld row is within 30 days of TTL expiry so an admin can place a hold if needed.
 const EXPIRY_WARNING_DAYS = 30;
 
-// Skeleton gray for blocks on the page background in light mode (the default
-// one is meant for cards and barely shows against the page)
+// Darker skeleton fill for elements rendered directly on the light-mode page background.
 const LIGHT_SKELETON_ON_PAGE = "#dfe3e8";
 
 function daysLeft(expiresAt) {
@@ -52,7 +49,7 @@ const CATEGORY_LABELS = {
   system: "System",
 };
 
-// "By User" side filter. "Self" = the user acted on their own account
+// "By User" role filter modes ("Self" matches rows where the user acted on their own account).
 const SUBJECT_MODES = [
   { value: "all", label: "All" },
   { value: "actor", label: "As Actor" },
@@ -62,10 +59,9 @@ const SUBJECT_MODES = [
 
 const ROLE_LABELS = { user: "User", admin: "Admin" };
 
-// A full user id (UUID), searchable only when no name or email matches
+// Full UUID pattern allowing direct log lookup by user ID even after account deletion.
 const USER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// "User (Unverified)" when the actor hadn't verified their email at the time
 function actorRoleLabel(row) {
   if (!row.actorRole) return null;
   const base = ROLE_LABELS[row.actorRole] || row.actorRole;
@@ -83,8 +79,6 @@ export default function AuditLogsScreen() {
   const [expandedId, setExpandedId] = useState(null);
   const [exportNotice, setExportNotice] = useState(null);
   const [exporting, setExporting] = useState(false);
-  // These sit on the page background, where the default skeleton gray is
-  // nearly invisible in light mode: a step darker there
   const skeletonTint = darkMode ? null : { backgroundColor: LIGHT_SKELETON_ON_PAGE };
 
   const runExport = async () => {
@@ -95,11 +89,7 @@ export default function AuditLogsScreen() {
   const [searchTerm, setSearchTerm] = useState("");
   const search = useUserSearch(log.byUser && !log.subject ? searchTerm : "");
 
-  /**
-   * Built from the server's meta response, not hardcoded. An admin is never
-   * offered a category whose actions they cannot see -- an empty "System"
-   * filter that can only ever return nothing is worse than no filter.
-   */
+  // Build category pills from server metadata so only categories visible to the current role appear.
   const categoryFilters = useMemo(() => {
     const categories = log.meta?.categories || [];
     return [
@@ -114,8 +104,7 @@ export default function AuditLogsScreen() {
     ];
   }, [log.meta]);
 
-  /** Actions within the chosen category, for the second-level drill-in. Only
-   *  shown once a category narrows it to a readable handful. */
+  // Second-level action filters within the selected category.
   const actionFilters = useMemo(() => {
     if (!log.category || !log.meta?.actions) return [];
     const inCategory = log.meta.actions.filter((entry) => entry.category === log.category);
@@ -135,7 +124,6 @@ export default function AuditLogsScreen() {
         <View>
           <Text style={[styles.whenDate, { color: tone.text }]}>{formatMonthDay(row.createdAt)}</Text>
           <Text style={[styles.whenTime, { color: tone.muted }]}>{formatClockTime(row.createdAt)}</Text>
-          {/* A held row is kept regardless, so it needs no warning */}
           {!row.held && daysLeft(row.expiresAt) !== null && daysLeft(row.expiresAt) <= EXPIRY_WARNING_DAYS && (
             <Text style={[styles.whenTime, { color: colors.danger }]}>
               Expires in {Math.max(daysLeft(row.expiresAt), 0)}d
@@ -174,8 +162,6 @@ export default function AuditLogsScreen() {
       title: "What happened",
       flex: 3,
       render: (row) => (
-        // Two lines, so a long name doesn't cut the sentence off. The full
-        // text and its values are in the drawer
         <Text numberOfLines={2} style={[styles.message, { color: tone.text }]}>{row.message}</Text>
       ),
     },
@@ -194,9 +180,7 @@ export default function AuditLogsScreen() {
     <View style={styles.expandedWrap}>
       <Text selectable style={[styles.fullMessage, { color: tone.text }]}>{row.message}</Text>
 
-      {/* The action's own values (reason, counts, filters...), already
-          worded by the server. Instants come as type "datetime" and are
-          shown in the reader's time zone */}
+      {/* Action-specific metadata fields formatted by the server */}
       {row.fields?.length > 0 && (
         <DetailGrid
           items={row.fields.map((field) => ({
@@ -217,7 +201,6 @@ export default function AuditLogsScreen() {
           { label: "Subject", value: row.target },
           { label: "Subject role", value: row.targetRole ? ROLE_LABELS[row.targetRole] || row.targetRole : null },
           { label: "Subject type", value: row.targetType },
-          // DetailGrid drops null entries, so a row without them has fewer cells
           { label: "Actor ID", value: row.actorId },
           { label: "Subject ID", value: row.targetId },
           { label: "IP address", value: row.ipAddress },
@@ -225,15 +208,14 @@ export default function AuditLogsScreen() {
         ]}
       />
 
-      {/* Before/after values. A small table rather than a
-          sentence, because comparing two values is a scanning task. */}
+      {/* Before/after field diff table */}
       {Array.isArray(row.changes) && row.changes.length > 0 && (
         <View style={[styles.changesBox, { borderColor: tone.border }]}>
           <Text style={[styles.changesTitle, { color: tone.muted }]}>CHANGES</Text>
           {row.changes.map((change) => (
             <View key={change.field} style={styles.changeRow}>
               <Text style={[styles.changeField, { color: tone.text }]}>{change.label}</Text>
-              {/* Health fields are recorded without values on purpose (HEALTH_FIELDS) */}
+              {/* Health fields omit raw values in audit logs */}
               {change.hidden ? (
                 <Text style={[styles.changeFrom, styles.changeHidden, { color: tone.muted }]}>Not recorded (health data)</Text>
               ) : (
@@ -268,7 +250,6 @@ export default function AuditLogsScreen() {
           </Text>
         </View>
         <View style={styles.headerActions}>
-          {/* The button waits for the filter menu */}
           {log.firstLoad && <Skeleton width={128} height={38} borderRadius={radii.sm} style={skeletonTint} />}
           {!log.firstLoad && (
             <Pressable
@@ -287,7 +268,6 @@ export default function AuditLogsScreen() {
         </View>
       </View>
 
-      {/* Exports are recorded in the log too (admin.audit_log.exported) */}
       {exportNotice && (
         <Text style={[styles.exportNotice, { color: exportNotice.ok ? tone.muted : colors.danger }]}>
           {exportNotice.message}
@@ -295,7 +275,6 @@ export default function AuditLogsScreen() {
       )}
 
       <View style={styles.filters}>
-        {/* The categories come with the filter menu; until then, pills in their place */}
         {!log.firstLoad ? (
           <FilterRow options={categoryFilters} value={log.category} onChange={log.setCategory} />
         ) : (
@@ -327,7 +306,6 @@ export default function AuditLogsScreen() {
                   <TextInput
                     {...ring.handlers}
                     value={searchTerm}
-                    // Same cap as the server search limit
                     maxLength={120}
                     onChangeText={setSearchTerm}
                     placeholder="Search a user by name or email (e.g. juan@example.com)"
@@ -337,8 +315,7 @@ export default function AuditLogsScreen() {
                   />
                   {search.searching && <ActivityIndicator size="small" color={shellColors.primary} />}
                 </View>
-                {/* No name/email match but it's a full user id: search the logs by it
-                    anyway, which also covers accounts that have since been deleted */}
+                {/* Allow direct UUID lookup when no live account matches (e.g. deleted users) */}
                 {!search.searching && !search.results.length && USER_ID_RE.test(searchTerm.trim()) && (
                   <View style={[styles.results, { borderColor: tone.border }]}>
                     <Pressable
@@ -493,11 +470,9 @@ const styles = StyleSheet.create({
   },
   refreshText: { fontSize: 13, fontWeight: "700", color: colors.white },
 
-  // Wraps under the title on a narrow screen instead of squeezing it
   headerActions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
   changeHidden: { textDecorationLine: "none", fontStyle: "italic" },
 
-  // Wraps under the input on a narrow screen
   exportBtn: {
     flexDirection: "row",
     alignItems: "center",

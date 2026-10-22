@@ -2,21 +2,17 @@ const env = require('../../../config/env');
 const keys = require('./keys');
 
 /**
- * Storage adapter. Callers never branch on driver when another is configured
- *
- * Driver contract:
+ * Storage adapter interface:
  *   save(buffer, { key, contentType })  -> Promise<{ key, bytes }>
  *   remove(key)                         -> Promise<void>  (never throws)
  *   removePrefix(prefix)                -> Promise<void>  (never throws)
- *   list(prefix)                        -> Promise<string[]>  (keys)
+ *   list(prefix)                        -> Promise<string[]>
  *   exists(key)                         -> Promise<boolean>
+ *   read(key)                           -> Promise<Buffer | null>  (never throws)
  *   urlFor(key)                         -> Promise<string | null>
- * 
  */
 
-// local = the uploads/ folder (development, or one server with a backed-up
-// disk); r2 = Cloudflare R2 (deployed). Required lazily, so local never
-// loads the AWS SDK
+// Lazy-load drivers so local deployments do not load the AWS SDK
 const drivers = {
   local: () => require('./localStore'),
   r2: () => require('./r2Store'),
@@ -29,7 +25,6 @@ if (!selected) {
 
 const store = selected();
 
-// Size check at the adapter
 function assertWithinLimit(buffer) {
   if (buffer.length > env.storage.maxUploadBytes) {
     const mb = (env.storage.maxUploadBytes / (1024 * 1024)).toFixed(1);

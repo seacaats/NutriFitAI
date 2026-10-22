@@ -1,11 +1,5 @@
-// Concern detection and the wellbeing rules for the coach. Boundary layer (module)
-// for chatProvider.js and contextBuilder.js
-//
-// Detection is deliberately loose: a false alarm only softens the next reply,
-// a miss could leave someone in distress talking to a fitness bot. The model
-// still does the talking, this only decides which extra rules it gets
+// Concern detection and wellbeing prompt rules for the AI coach.
 
-// English and Filipino/Taglish, since users write both
 const PATTERNS = {
   selfHarm: [
     /\b(kill myself|end my life|end it all|want to die|wanna die|take my own life|suicid\w*|self[- ]?harm\w*|hurt(ing)? myself|cut(ting)? myself|no reason to live|better off (dead|without me)|don'?t want to (live|be here|wake up)|can'?t go on)\b/i,
@@ -30,26 +24,22 @@ const PATTERNS = {
   ],
 };
 
-// How many earlier user messages still count. A distress message stays
-// relevant for the replies after it, not only the one it was sent in
+// Number of recent user messages checked so distress context persists across follow-up turns
 const LOOKBACK_USER_MESSAGES = 6;
 
 /**
- * @param {string} message the new user message
- * @param {string[]} [recent] earlier user messages of the thread, oldest first
- * @returns {string[]} concern keys found, e.g. ['selfHarm']
+ * @param {string} message
+ * @param {string[]} [recent]
+ * @returns {string[]}
  */
 function detectConcerns(message, recent = []) {
   const texts = [message, ...recent.slice(-LOOKBACK_USER_MESSAGES)];
   return Object.keys(PATTERNS).filter((key) => {
-    // A prompt-injection attempt only matters for the message it is in
     const scope = key === 'injection' ? [message] : texts;
     return scope.some((t) => PATTERNS[key].some((re) => re.test(String(t || ''))));
   });
 }
 
-// Philippine numbers only when the user's timezone says so, never invented
-// for anyone else
 function emergencyLine(timeZone) {
   return timeZone === 'Asia/Manila'
     ? 'In the Philippines they can call the NCMH Crisis Hotline at 1553, or 911 for an emergency.'
@@ -95,8 +85,7 @@ const SECTIONS = {
 };
 
 /**
- * The extra system-prompt block for the concerns found. Empty for none.
- * `ctx` is { isMinor, timeZone }
+ * Builds the additional system-prompt rules for detected concerns.
  */
 function concernSection(concerns, ctx = {}) {
   if (!concerns.length) return [];
@@ -111,8 +100,7 @@ function concernSection(concerns, ctx = {}) {
   return lines;
 }
 
-// Sent when the model could not answer a self-harm message (quota, outage), so
-// that person never gets a bare error
+// Static fallback reply when AI providers are unavailable during a self-harm message
 function fallbackReply(timeZone) {
   return [
     'I\'m really sorry you\'re feeling this way, and I\'m glad you told me. You matter, and you don\'t have to carry this alone.',
