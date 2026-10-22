@@ -2,7 +2,7 @@ const { Router } = require('express');
 
 const controller = require('../controllers/profileController');
 const { validateBody } = require('../middleware/validateMiddleware');
-const { memoryUpload, IMAGE_MAX_BYTES } = require('../middleware/uploadMiddleware');
+const { imageUpload, IMAGE_MAX_BYTES } = require('../middleware/uploadMiddleware');
 const { requireRole } = require('../middleware/authMiddleware');
 const { passwordCheckLimiter, avatarUploadLimiter } = require('../middleware/rateLimitMiddleware');
 const {
@@ -11,7 +11,7 @@ const {
 
 const router = Router();
 
-const avatarUpload = memoryUpload(IMAGE_MAX_BYTES);
+const avatarUpload = imageUpload(IMAGE_MAX_BYTES);
 
 router.get(
   '/', 

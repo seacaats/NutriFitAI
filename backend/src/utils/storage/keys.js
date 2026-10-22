@@ -4,7 +4,10 @@ const crypto = require('crypto');
 
 const EXT_BY_TYPE = {
   'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/pjpeg': 'jpg',
   'image/png': 'png',
+  'image/x-png': 'png',
   'image/webp': 'webp',
 };
 

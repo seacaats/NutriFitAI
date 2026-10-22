@@ -2,7 +2,7 @@ const { Router } = require('express');
 
 const controller = require('../controllers/workouts');
 const { validateBody, validateQuery, validateParams } = require('../middleware/validateMiddleware');
-const { memoryUpload, IMAGE_MAX_BYTES } = require('../middleware/uploadMiddleware');
+const { imageUpload, IMAGE_MAX_BYTES } = require('../middleware/uploadMiddleware');
 const {
   sessionRangeSchema, logSessionSchema, listQuerySchema, createRoutineSchema, updateRoutineSchema,
   logRoutineSessionSchema, favoriteSchema, favoriteParamsSchema, scheduleSchema, idParamSchema,
@@ -11,7 +11,7 @@ const {
 
 const router = Router();
 
-const photoUpload = memoryUpload(IMAGE_MAX_BYTES);
+const photoUpload = imageUpload(IMAGE_MAX_BYTES);
 
 // Static sub-routes declared before /:id so they are not parsed as exercise ids
 router.get(

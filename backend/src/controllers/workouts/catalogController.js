@@ -325,7 +325,7 @@ const uploadWorkoutPhoto = asyncHandler(async (req, res) => {
   const contentType = (req.file.mimetype || '').split(';')[0].trim().toLowerCase();
   if (!EXT_BY_TYPE[contentType] || !looksLikeImage(req.file.buffer, EXT_BY_TYPE[contentType])) {
     throw ApiError.badRequest(
-      'That file could not be used. Upload a JPEG, PNG or WebP image under 2 MB.',
+      'Unsupported file format. Please upload a JPEG, PNG, or WebP image under 2 MB.',
       { code: 'INVALID_IMAGE' },
     );
   }

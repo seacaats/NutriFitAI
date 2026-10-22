@@ -10,7 +10,10 @@ const ALLOWED_HOSTS = [/(^|\.)googleusercontent\.com$/i];
 
 const ALLOWED_TYPES = {
   'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/pjpeg': 'jpg',
   'image/png': 'png',
+  'image/x-png': 'png',
   'image/webp': 'webp',
 };
 

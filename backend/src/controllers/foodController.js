@@ -106,7 +106,7 @@ const createScan = asyncHandler(async (req, res) => {
   const mimetype = (file.mimetype || '').split(';')[0].trim().toLowerCase();
   const ext = storage.keys.EXT_BY_TYPE[mimetype];
   if (!ext || !looksLikeImage(file.buffer, ext)) {
-    throw ApiError.badRequest('Upload a JPEG, PNG or WebP photo.', { code: 'INVALID_IMAGE' });
+    throw ApiError.badRequest('Unsupported file format. Please upload a JPEG, PNG, or WebP photo.', { code: 'INVALID_IMAGE' });
   }
 
   // Run moderation in parallel with storage and food detection

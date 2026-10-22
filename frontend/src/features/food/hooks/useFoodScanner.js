@@ -1,6 +1,7 @@
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
 import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { toLocalISODate } from "@/shared/utils/dates";
+import { validateImageFile } from "@/shared/utils/imageValidators";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams } from "expo-router";
@@ -168,11 +169,28 @@ function useScanner({ onMealLogged } = {}) {
   // A new photo replaces any staged one and any result on screen. `asset`
   // is { uri, name, type, width? } from the camera or the picker
   const stage = useCallback(async (asset) => {
-    setStaged(await preparePhoto(asset));
-    setScan(null);
-    setSelection({});
-    setLoggedMeal(null);
-    setError("");
+    const errorMsg = validateImageFile(asset);
+    if (errorMsg) {
+      setError(errorMsg);
+      return false;
+    }
+    try {
+      const prepared = await preparePhoto(asset);
+      const postError = validateImageFile(prepared);
+      if (postError) {
+        setError(postError);
+        return false;
+      }
+      setStaged(prepared);
+      setScan(null);
+      setSelection({});
+      setLoggedMeal(null);
+      setError("");
+      return true;
+    } catch {
+      setError("Unsupported file format. Please upload a JPEG, PNG, or WebP image.");
+      return false;
+    }
   }, []);
 
   /**
@@ -314,6 +332,7 @@ function useScanner({ onMealLogged } = {}) {
     recentLoading,
     busy,
     error,
+    setError,
     clearError: () => setError(""),
     selection,
     chosen,
@@ -454,6 +473,13 @@ export function useFoodScanner() {
     if (result.canceled || !result.assets?.[0]) return;
 
     const asset = result.assets[0];
+    const validationError = validateImageFile(asset);
+    if (validationError) {
+      setCameraOpen(false);
+      scanner.setError(validationError);
+      return;
+    }
+
     setCameraOpen(false);
     scanner.stage({
       uri: asset.uri,

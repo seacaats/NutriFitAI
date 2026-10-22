@@ -100,7 +100,7 @@ export default function FoodScannerScreen() {
             </View>
           )}
 
-          <ScreenError message={scanner.scan ? "" : scanner.error} onDismiss={scanner.clearError} />
+          <ScreenError message={scanner.error} onDismiss={scanner.clearError} />
 
           {/* Staged photo controls before analysis */}
           {!cameraOpen && scanner.staged && (

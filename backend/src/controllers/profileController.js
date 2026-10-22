@@ -316,7 +316,7 @@ const uploadAvatar = asyncHandler(async (req, res) => {
   const stored = await saveUploadedAvatar(req.userId, req.file.buffer, req.file.mimetype);
   if (!stored) {
     throw ApiError.badRequest(
-      'That file could not be used. Upload a JPEG, PNG or WebP image under 2 MB.',
+      'Unsupported file format. Please upload a JPEG, PNG, or WebP image under 2 MB.',
       { code: 'INVALID_IMAGE' },
     );
   }

@@ -57,6 +57,7 @@ export default function ProfileScreen() {
     saving,
     editing,
     error,
+    clearError,
     saved,
     bmi,
     bmiLabel,
@@ -143,7 +144,7 @@ export default function ProfileScreen() {
         )}
       </View>
 
-      <ScreenError message={error} />
+      <ScreenError message={error} onDismiss={clearError} />
 
       {saved && (
         <View style={[styles.savedBanner, { backgroundColor: darkMode ? "#263322" : colors.mintTint, borderColor: darkMode ? "#14532d" : "#bbf7d0" }]}>

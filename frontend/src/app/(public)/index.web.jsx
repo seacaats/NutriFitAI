@@ -29,7 +29,8 @@ const downloadApk = () => {
   const a = document.createElement("a");
   a.href = APK_URL;
   a.download = "NutriFitAI.apk";
-  a.rel = "noopener";
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -146,7 +147,15 @@ export default function LandingScreen() {
             </View>
 
             {/* The app itself, for Android phones */}
-            <Pressable onPress={downloadApk} accessibilityLabel="Download the Android app" style={({ hovered }) => [styles.apkBtn, hovered && styles.apkBtnHover]}>
+            <Pressable
+              onPress={downloadApk}
+              accessibilityLabel="Download the Android app"
+              accessibilityRole="link"
+              href={APK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={({ hovered }) => [styles.apkBtn, hovered && styles.apkBtnHover]}
+            >
               <Ionicons name="logo-android" size={20} color={p.accent} />
               <View>
                 <Text style={styles.apkTitle}>Download for Android</Text>

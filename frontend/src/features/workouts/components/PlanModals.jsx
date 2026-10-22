@@ -7,6 +7,7 @@ import { FormAlert, RingInput, useFocusRing } from "@/shared/components/ui/FormI
 import SheetModal from "@/shared/components/ui/SheetModal";
 import Stepper from "@/shared/components/ui/Stepper";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
+import { IMAGE_MAX_BYTES_STANDARD, validateImageFile } from "@/shared/utils/imageValidators";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -313,7 +314,13 @@ export function AddWorkoutModal({ visible, workout, onClose, onSave, categories,
     const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, aspect: [4, 3], quality: 0.8 });
     if (picked.canceled || !picked.assets?.length) return undefined;
     const asset = picked.assets[0];
+    const validationError = validateImageFile(asset, { maxBytes: IMAGE_MAX_BYTES_STANDARD });
+    if (validationError) {
+      setError(validationError);
+      return undefined;
+    }
     setRemovePhoto(false);
+    setError("");
     return setPhoto({ uri: asset.uri, name: asset.fileName || "workout.jpg", type: asset.mimeType || "image/jpeg" });
   }
 
@@ -363,13 +370,20 @@ export function AddWorkoutModal({ visible, workout, onClose, onSave, categories,
           ...(secondaryIds.length ? { secondaryMuscleIds: secondaryIds } : {}),
           ...(confirmDuplicate ? { confirmDuplicate: true } : {}),
         };
+      if (photo) {
+        const photoValidationError = validateImageFile(photo, { maxBytes: IMAGE_MAX_BYTES_STANDARD });
+        if (photoValidationError) {
+          setError(photoValidationError);
+          return;
+        }
+      }
       const result = await onSave(payload, photo);
       setConfirming(false);
       if (result?.photoFailed) {
         setAdded(true);
-        setError(isEditing
+        setError(result.photoError || (isEditing
           ? "Workout updated, but its photo couldn't be uploaded."
-          : "Workout added, but its photo couldn't be uploaded.");
+          : "Workout added, but its photo couldn't be uploaded."));
         return;
       }
       onClose();

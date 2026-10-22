@@ -15,6 +15,7 @@ import { useAuth } from "@/shared/context/AuthContext";
 import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { resolveMediaUrl } from "@/shared/services/mediaUrl";
 import { AGE_MAX, AGE_MIN, isValidEmail, validateName, validateNumber } from "@/shared/utils/formValidators";
+import { IMAGE_MAX_BYTES_STANDARD, validateImageFile } from "@/shared/utils/imageValidators";
 import * as ImagePicker from "expo-image-picker";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
@@ -267,6 +268,12 @@ export function useProfileForm({ identityOnly = false } = {}) {
     if (picked.canceled || !picked.assets?.length) return false;
 
     const asset = picked.assets[0];
+    const validationError = validateImageFile(asset, { maxBytes: IMAGE_MAX_BYTES_STANDARD });
+    if (validationError) {
+      setError(validationError);
+      return false;
+    }
+
     setPendingAvatar({
       uri: asset.uri,
       name: asset.fileName || "avatar.jpg",
@@ -285,6 +292,12 @@ export function useProfileForm({ identityOnly = false } = {}) {
   async function saveAvatar() {
     if (!pendingAvatar) return false;
 
+    const validationError = validateImageFile(pendingAvatar, { maxBytes: IMAGE_MAX_BYTES_STANDARD });
+    if (validationError) {
+      setError(validationError);
+      return false;
+    }
+
     setAvatarUploading(true);
     setError("");
     try {
@@ -294,6 +307,14 @@ export function useProfileForm({ identityOnly = false } = {}) {
         // The picker hands back a blob: URL on web, which the server can't
         // read -- it has to be fetched back into real bytes first
         const blob = await (await fetch(pendingAvatar.uri)).blob();
+        const blobError = validateImageFile(
+          { type: blob.type, size: blob.size, name: pendingAvatar.name },
+          { maxBytes: IMAGE_MAX_BYTES_STANDARD }
+        );
+        if (blobError) {
+          setError(blobError);
+          return false;
+        }
         formData.append("avatar", blob, pendingAvatar.name);
       } else {
         formData.append("avatar", {
@@ -372,6 +393,8 @@ export function useProfileForm({ identityOnly = false } = {}) {
     saving,
     editing,
     error,
+    setError,
+    clearError: () => setError(""),
     saved,
     bmi,
     bmiLabel,

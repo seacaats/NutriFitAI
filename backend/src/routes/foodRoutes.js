@@ -3,7 +3,7 @@ const { Router } = require('express');
 const env = require('../../config/env');
 const controller = require('../controllers/foodController');
 const { validateBody, validateQuery, validateParams } = require('../middleware/validateMiddleware');
-const { memoryUpload } = require('../middleware/uploadMiddleware');
+const { imageUpload } = require('../middleware/uploadMiddleware');
 const { foodScanLimiter } = require('../middleware/rateLimitMiddleware');
 const {
   scanIdSchema, scanPageSchema, logMealSchema, mealIdSchema, mealHistorySchema, nutritionGoalsSchema,
@@ -11,7 +11,7 @@ const {
 
 const router = Router();
 
-const scanUpload = memoryUpload(env.storage.maxUploadBytes);
+const scanUpload = imageUpload(env.storage.maxUploadBytes);
 
 router.post(
   '/scans',

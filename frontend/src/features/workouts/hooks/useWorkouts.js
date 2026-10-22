@@ -369,12 +369,15 @@ export function useWorkouts() {
     if (!requireOnline()) throw new Error("You're offline. Connect to add a workout.");
     const created = await createWorkout(body);
     let photoFailed = false;
+    let photoError = null;
     if (photo) {
       try {
         await uploadWorkoutPhoto(created.id, photo);
       } catch (err) {
-        if (err?.code !== "PHOTO_REJECTED") photoFailed = true;
-        else {
+        if (err?.code !== "PHOTO_REJECTED") {
+          photoFailed = true;
+          photoError = err?.message || null;
+        } else {
           // The block is already on record, deleting the workout doesn't touch it
           let undone = true;
           try {
@@ -390,7 +393,7 @@ export function useWorkouts() {
       }
     }
     reloadExercises();
-    return { photoFailed };
+    return { photoFailed, photoError };
   }, [reloadExercises]);
 
   // Updates one of the user's own workouts, optionally replacing or removing its photo
@@ -400,6 +403,7 @@ export function useWorkouts() {
     if (photo) delete nextBody.removePhoto;
     let updated = await updateWorkout(id, nextBody);
     let photoFailed = false;
+    let photoError = null;
     if (photo) {
       try {
         updated = await uploadWorkoutPhoto(id, photo);
@@ -412,6 +416,7 @@ export function useWorkouts() {
           throw Object.assign(new Error("Workout details were saved, but that photo can't be used. Choose a different photo or remove it."), { code: "PHOTO_REJECTED" });
         }
         photoFailed = true;
+        photoError = err?.message || null;
       }
     }
     evictExerciseImage(id);
@@ -439,7 +444,7 @@ export function useWorkouts() {
         images: getExerciseImages(updated),
       };
     });
-    return { photoFailed };
+    return { photoFailed, photoError };
   }, [reloadExercises, plan.refresh, refreshSessions]);
 
   // Deletes one of the user's own workouts. The server removes every trace, so
