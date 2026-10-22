@@ -101,3 +101,37 @@ export function validateImageFile(file, { maxBytes, allowConvertibleMobile } = {
 
   return null;
 }
+
+/**
+ * Safely invokes ImagePicker.launchImageLibraryAsync and validates the result.
+ * Catches any unhandled exceptions thrown by expo-image-picker (e.g., when picking
+ * unsupported file types like .zip or .pdf on web).
+ *
+ * @param {object} ImagePicker - Expo ImagePicker module
+ * @param {object} [pickerOptions] - Options passed to launchImageLibraryAsync
+ * @param {object} [validatorOptions] - Options passed to validateImageFile ({ maxBytes, allowConvertibleMobile })
+ * @returns {Promise<{ asset: object|null, error: string|null, canceled: boolean }>}
+ */
+export async function pickImageSafe(ImagePicker, pickerOptions = {}, validatorOptions = {}) {
+  const defaultErrorMsg = validatorOptions.maxBytes
+    ? "Unsupported file format. Please upload a JPEG, PNG, or WebP image under 2 MB."
+    : "Unsupported file format. Please upload a JPEG, PNG, or WebP image.";
+
+  try {
+    const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
+    if (!result || result.canceled || !result.assets?.length) {
+      return { asset: null, error: null, canceled: true };
+    }
+
+    const asset = result.assets[0];
+    const validationError = validateImageFile(asset, validatorOptions);
+    if (validationError) {
+      return { asset: null, error: validationError, canceled: false };
+    }
+
+    return { asset, error: null, canceled: false };
+  } catch (err) {
+    // expo-image-picker throws Error("Unsupported file type: ...") on Web when non-image files are chosen
+    return { asset: null, error: defaultErrorMsg, canceled: false };
+  }
+}

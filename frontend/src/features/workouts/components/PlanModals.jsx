@@ -7,7 +7,7 @@ import { FormAlert, RingInput, useFocusRing } from "@/shared/components/ui/FormI
 import SheetModal from "@/shared/components/ui/SheetModal";
 import Stepper from "@/shared/components/ui/Stepper";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
-import { IMAGE_MAX_BYTES_STANDARD, validateImageFile } from "@/shared/utils/imageValidators";
+import { IMAGE_MAX_BYTES_STANDARD, pickImageSafe, validateImageFile } from "@/shared/utils/imageValidators";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -309,16 +309,24 @@ export function AddWorkoutModal({ visible, workout, onClose, onSave, categories,
   }, [visible, workout]);
 
   async function pickPhoto() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) return setError("Photo library access is needed to add a photo.");
-    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, aspect: [4, 3], quality: 0.8 });
-    if (picked.canceled || !picked.assets?.length) return undefined;
-    const asset = picked.assets[0];
-    const validationError = validateImageFile(asset, { maxBytes: IMAGE_MAX_BYTES_STANDARD });
-    if (validationError) {
-      setError(validationError);
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) return setError("Photo library access is needed to add a photo.");
+    } catch {
+      // Permission request not supported on this platform
+    }
+
+    const { asset, error } = await pickImageSafe(
+      ImagePicker,
+      { mediaTypes: ["images"], allowsEditing: true, aspect: [4, 3], quality: 0.8 },
+      { maxBytes: IMAGE_MAX_BYTES_STANDARD },
+    );
+    if (error) {
+      setError(error);
       return undefined;
     }
+    if (!asset) return undefined;
+
     setRemovePhoto(false);
     setError("");
     return setPhoto({ uri: asset.uri, name: asset.fileName || "workout.jpg", type: asset.mimeType || "image/jpeg" });

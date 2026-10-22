@@ -15,7 +15,7 @@ import { useAuth } from "@/shared/context/AuthContext";
 import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { resolveMediaUrl } from "@/shared/services/mediaUrl";
 import { AGE_MAX, AGE_MIN, isValidEmail, validateName, validateNumber } from "@/shared/utils/formValidators";
-import { IMAGE_MAX_BYTES_STANDARD, validateImageFile } from "@/shared/utils/imageValidators";
+import { IMAGE_MAX_BYTES_STANDARD, pickImageSafe, validateImageFile } from "@/shared/utils/imageValidators";
 import * as ImagePicker from "expo-image-picker";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
@@ -253,26 +253,32 @@ export function useProfileForm({ identityOnly = false } = {}) {
   async function changeAvatar() {
     setError("");
 
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError("Photo library access is needed to change your picture.");
-      return false;
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setError("Photo library access is needed to change your picture.");
+        return false;
+      }
+    } catch {
+      // Permission request not supported on this platform
     }
 
-    const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-    if (picked.canceled || !picked.assets?.length) return false;
+    const { asset, error } = await pickImageSafe(
+      ImagePicker,
+      {
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      },
+      { maxBytes: IMAGE_MAX_BYTES_STANDARD },
+    );
 
-    const asset = picked.assets[0];
-    const validationError = validateImageFile(asset, { maxBytes: IMAGE_MAX_BYTES_STANDARD });
-    if (validationError) {
-      setError(validationError);
+    if (error) {
+      setError(error);
       return false;
     }
+    if (!asset) return false;
 
     setPendingAvatar({
       uri: asset.uri,

@@ -1,7 +1,7 @@
 import { apiClient, ApiClientError } from "@/shared/api/apiClient";
 import { usePullRefresh } from "@/shared/context/PullRefreshContext";
 import { toLocalISODate } from "@/shared/utils/dates";
-import { validateImageFile } from "@/shared/utils/imageValidators";
+import { pickImageSafe, validateImageFile } from "@/shared/utils/imageValidators";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams } from "expo-router";
@@ -466,21 +466,21 @@ export function useFoodScanner() {
   };
 
   const pickImage = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) return;
-
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
-    if (result.canceled || !result.assets?.[0]) return;
-
-    const asset = result.assets[0];
-    const validationError = validateImageFile(asset);
-    if (validationError) {
-      setCameraOpen(false);
-      scanner.setError(validationError);
-      return;
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) return;
+    } catch {
+      // Permission request not supported on this platform
     }
 
     setCameraOpen(false);
+    const { asset, error } = await pickImageSafe(ImagePicker, { mediaTypes: ["images"], quality: 0.8 });
+    if (error) {
+      scanner.setError(error);
+      return;
+    }
+    if (!asset) return;
+
     scanner.stage({
       uri: asset.uri,
       name: asset.fileName || asset.uri.split("/").pop() || photoName(),
