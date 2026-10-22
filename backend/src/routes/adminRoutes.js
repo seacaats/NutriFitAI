@@ -9,40 +9,37 @@ const {
 const {
   requireAuth,
   requireFreshRole,
-  requireMinimumRole,
+  requireRole,
 } = require('../middleware/authMiddleware');
 const {
   auditLogQuerySchema,
   auditExportQuerySchema,
   userListQuerySchema,
-  updateRoleSchema,
   adminReasonSchema,
   adminProfileSchema,
   auditNoteSchema,
   userIdParamSchema,
   auditLogIdParamSchema,
+  adminCreateUserSchema,
+  sessionParamSchema,
 } = require('../validators/adminValidators');
 
 const router = Router();
 
 /**
- * The admin and superadmin API.
+ * The admin API.
  * 
  * requireAuth = who's making the request
  * requireFreshRole = what's that user's role
- * requireMinimumRole = is their role high enough to be permitted
+ * requireRole = is their role permitted
  * 
  */
 
 // Floor for the whole router: nothing mounted here, now or later, is reachable
-// below admin even if a route forgets its own check. Superadmin-only routes
-// add superadminOnly on top
-router.use(requireAuth, requireFreshRole, requireMinimumRole('admin'));
+// below admin even if a route forgets its own check
+router.use(requireAuth, requireFreshRole, requireRole('admin'));
 
-// ---------------------------------------------------------------------------
-// Admin and above
-// ---------------------------------------------------------------------------
-const adminOnly = requireMinimumRole('admin');
+const adminOnly = requireRole('admin');
 
 // Counts across the app, no personal data (admin/analyticsController)
 router.get(
@@ -76,7 +73,7 @@ router.get(
   controller.getAuditMeta
 );
 
-// Notes on a row, admin and above. Holds are superadmin only (below)
+// Notes and holds on a row. A hold keeps a row past its expiry, or lets it go
 router.get(
   '/audit-logs/:id/notes',
   adminOnly,
@@ -91,8 +88,46 @@ router.post(
   controller.addAuditNote,
 );
 
-// Acting on an account. Rank is checked in the controller: an admin acts on
-// users, a superadmin on users and admins, nobody on themselves
+// Adds a regular or admin account. The person sets their own password (see the controller)
+router.post(
+  '/users',
+  adminOnly,
+  validateBody(adminCreateUserSchema),
+  controller.createUser,
+);
+
+// Sessions: see a user's signed-in devices, end one or all of them
+router.get(
+  '/users/:id/sessions',
+  adminOnly,
+  validateParams(userIdParamSchema),
+  controller.listUserSessions,
+);
+router.delete(
+  '/users/:id/sessions/:sid',
+  adminOnly,
+  validateParams(sessionParamSchema),
+  validateBody(adminReasonSchema),
+  controller.revokeUserSession,
+);
+router.delete(
+  '/users/:id/sessions',
+  adminOnly,
+  validateParams(userIdParamSchema),
+  validateBody(adminReasonSchema),
+  controller.revokeAllUserSessions,
+);
+
+// Clears another admin's authenticator so they set up a new one at their next sign-in
+router.post(
+  '/users/:id/authenticator-reset',
+  adminOnly,
+  validateParams(userIdParamSchema),
+  validateBody(adminReasonSchema),
+  controller.resetUserAuthenticator,
+);
+
+// Acting on an account. Nobody acts on themselves (checked in the controller)
 router.patch(
   '/users/:id/profile',
   adminOnly,
@@ -129,55 +164,42 @@ router.post(
   controller.cancelPasswordReset,
 );
 
-// ---------------------------------------------------------------------------
-// Superadmin only
-// ---------------------------------------------------------------------------
-const superadminOnly = requireMinimumRole('superadmin');
-
-router.get(
-  '/admins', 
-  superadminOnly, 
-  validateQuery(userListQuerySchema), 
-  controller.listAdmins
-);
-
-// Granting and revoking privilege
-router.patch(
-  '/users/:id/role',
-  superadminOnly,
-  validateParams(userIdParamSchema),
-  validateBody(updateRoleSchema),
-  controller.updateUserRole,
-);
-
+// Schedules the deletion (see the controller), and takes it back
 router.delete(
   '/users/:id',
-  superadminOnly,
+  adminOnly,
   validateParams(userIdParamSchema),
   validateBody(adminReasonSchema),
   controller.deleteUser,
+);
+router.post(
+  '/users/:id/deletion/cancel',
+  adminOnly,
+  validateParams(userIdParamSchema),
+  validateBody(adminReasonSchema),
+  controller.cancelUserDeletion,
 );
 
 // Keep a row past its expiry, or let it go
 router.post(
   '/audit-logs/:id/hold',
-  superadminOnly,
+  adminOnly,
   validateParams(auditLogIdParamSchema),
   validateBody(adminReasonSchema),
   controller.holdAuditLog,
 );
 router.delete(
   '/audit-logs/:id/hold',
-  superadminOnly,
+  adminOnly,
   validateParams(auditLogIdParamSchema),
   validateBody(adminReasonSchema),
   controller.releaseAuditHold,
 );
 
-// CSV of every row matching the filters, unredacted
+// CSV of every row matching the filters
 router.get(
   '/audit-logs/export',
-  superadminOnly,
+  adminOnly,
   validateQuery(auditExportQuerySchema),
   controller.exportAuditLogs,
 );

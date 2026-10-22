@@ -1,4 +1,5 @@
 const User = require('../../models/user/User');
+const Session = require('../../models/auth/Session');
 const WeightLog = require('../../models/user/WeightLog');
 const {
   signAccessToken, signRefreshToken, refreshSessionRemainingMs, refreshCookieMaxAgeMs, verifyRefreshToken,
@@ -27,7 +28,7 @@ function rejectRefresh(req, targetId, reason) {
 const refresh = asyncHandler(async (req, res) => {
   const token = req.cookies[REFRESH_COOKIE_NAME];
   if (!token) {
-    throw ApiError.unauthorized('No refresh session found. Please log in again.');
+    throw ApiError.unauthorized('Your session has expired. Please log in again.');
   }
 
   let payload;
@@ -57,9 +58,6 @@ const refresh = asyncHandler(async (req, res) => {
     throw hold.error;
   }
 
-  const accessToken = signAccessToken(user);
-
-
   // Check for sxp, regardless of refresh/replacement cookie
   const remainingMs = refreshSessionRemainingMs(payload);
   if (remainingMs <= 0) {
@@ -68,7 +66,23 @@ const refresh = asyncHandler(async (req, res) => {
     throw ApiError.unauthorized('Your session has expired. Please log in again.');
   }
 
-  const rotated = signRefreshToken(user, Boolean(payload.rmb), payload.sxp || Date.now() + remainingMs);
+  // The session row decides whether this token still counts. A revoked or
+  // missing row ends the session here. Tokens from before sessions existed
+  // carry no sid, so they get a row now
+  const expiresAt = new Date(Date.now() + refreshCookieMaxAgeMs(payload));
+  let sid = payload.sid;
+  if (sid) {
+    if (!(await Session.touch(sid, user.id, expiresAt))) {
+      clearRefreshCookie(res, req);
+      await rejectRefresh(req, user.id, 'session_revoked');
+      throw ApiError.unauthorized('Your session has ended. Please log in again.');
+    }
+  } else {
+    sid = (await Session.open(user.id, { ip: req.ip, userAgent: req.get('user-agent'), expiresAt })).id;
+  }
+
+  const accessToken = signAccessToken(user, sid);
+  const rotated = signRefreshToken(user, Boolean(payload.rmb), payload.sxp || Date.now() + remainingMs, sid);
   // Same options helper as login -- maxAge is min(idle 
   // window, remaining ceiling), see refreshCookieMaxAgeMs
   res.cookie(REFRESH_COOKIE_NAME, rotated, refreshCookieOptions(req, refreshCookieMaxAgeMs(payload)));
@@ -87,13 +101,19 @@ const logout = asyncHandler(async (req, res) => {
   // Unauthenticated route, so the actor comes from the refresh cookie. No
   // valid cookie means there was no session to end, and nothing is recorded
   let sub = null;
+  let sid = null;
   try {
     const payload = verifyRefreshToken(req.cookies[REFRESH_COOKIE_NAME]);
-    if (payload.type === 'refresh') sub = payload.sub;
+    if (payload.type === 'refresh') {
+      sub = payload.sub;
+      sid = payload.sid || null;
+    }
   } catch {
     sub = null;
   }
   if (sub) {
+    // The row ends with the session, so it stops showing in the admin's list
+    if (sid) await Session.revoke(sub, sid).catch(() => {});
     await logAction(req, { action: 'auth.logout', targetType: 'user' }, { userId: sub });
   }
 
@@ -105,7 +125,7 @@ const logout = asyncHandler(async (req, res) => {
 const me = asyncHandler(async (req, res) => {
   const user = await User.getById(req.userId);
   if (!user) {
-    throw ApiError.notFound('User not found');
+    throw ApiError.notFound("We couldn't find your account.");
   }
 
   const profile = await User.getProfile(req.userId);

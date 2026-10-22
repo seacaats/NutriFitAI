@@ -5,7 +5,8 @@ import ActionButton from "@/shared/components/ui/ActionButton";
 import { RingField, RingInput } from "@/shared/components/ui/FormInput";
 import { ScreenError } from "@/shared/components/ui/ScreenAlert";
 import Stepper from "@/shared/components/ui/Stepper";
-import { NUTRITION_GOAL_FIELDS as GOAL_FIELDS, nutritionGoalProblem as goalProblem, MAX_SERVINGS, MIN_SERVINGS } from "@/shared/constants/goalOptions";
+import { calorieEstimate, describeCalorieEstimate, NUTRITION_GOAL_FIELDS as GOAL_FIELDS, nutritionGoalProblem as goalProblem, MAX_GRAMS, MIN_GRAMS } from "@/shared/constants/goalOptions";
+import { useAuth } from "@/shared/context/AuthContext";
 import { chipTints, colors, getScreenTones, shellColors } from "@/shared/theme/nutrifitai";
 import { toLocalISODate } from "@/shared/utils/dates";
 import { Ionicons } from "@expo/vector-icons";
@@ -150,7 +151,7 @@ const MANUAL_FIELDS = [
 ];
 
 /**
- * What the model found, with a checkbox and servings per food, the meal
+ * What the model found, with a checkbox and grams per food, the meal
  * type, a running total, and "Log meal". `onScanAnother` clears the screen
  */
 export function ScanResultCard({ scanner, darkMode, onScanAnother, style, loading = false }) {
@@ -233,6 +234,13 @@ export function ScanResultCard({ scanner, darkMode, onScanAnother, style, loadin
     <View style={shell}>
       <Text style={[styles.cardTitle, { color: tone.text }]}>Detected Food</Text>
       <Text style={[styles.muted, { color: tone.muted }]}>Untick anything that's wrong and set how much you had.</Text>
+      {/* Lets people know the grams aren't limited to the − / + steps */}
+      <View style={[styles.hintRow, { backgroundColor: tone.soft }]}>
+        <Ionicons name="create-outline" size={16} color={shellColors.primary} />
+        <Text style={[styles.hintText, { color: tone.text }]}>
+          Tap the grams to type your own amount ({MIN_GRAMS}–{MAX_GRAMS.toLocaleString()} g), or use − / + for 25 g steps.
+        </Text>
+      </View>
 
       {/* Many foods scroll here instead of stretching the card */}
       <ScrollView style={styles.itemScroll} contentContainerStyle={styles.itemList} nestedScrollEnabled>
@@ -250,21 +258,21 @@ export function ScanResultCard({ scanner, darkMode, onScanAnother, style, loadin
                   <View style={styles.flex1}>
                     <Text style={[styles.itemName, { color: tone.text }]}>{capitalize(item.foodName)}</Text>
                     <Text style={[styles.itemMeta, { color: tone.muted }]}>
-                      {[item.serving && `per ${item.serving}`, item.confidence !== null && `${Math.round(item.confidence * 100)}% match`]
+                      {[item.serving && `${item.serving}${item.defaultGrams ? ` ≈ ${item.defaultGrams} g` : ""}`, item.confidence !== null && `${Math.round(item.confidence * 100)}% match`]
                         .filter(Boolean)
                         .join(" · ")}
                     </Text>
                   </View>
                 </Pressable>
-                {/* Tap − / + in halves, or type any amount from a quarter up */}
+                {/* Tap − / + in 25 g steps, or type any weight */}
                 {pick.selected && (
                   <Stepper
-                    label="Servings"
-                    value={pick.servings}
-                    onChange={(v) => scanner.setServings(item.itemId, v)}
-                    min={MIN_SERVINGS}
-                    max={MAX_SERVINGS}
-                    step={0.5}
+                    label="Grams"
+                    value={pick.grams}
+                    onChange={(v) => scanner.setGrams(item.itemId, v)}
+                    min={MIN_GRAMS}
+                    max={MAX_GRAMS}
+                    step={25}
                     editable
                     darkMode={darkMode}
                   />
@@ -275,7 +283,7 @@ export function ScanResultCard({ scanner, darkMode, onScanAnother, style, loadin
               {pick.selected && !item.hasNutrition && (
                 <View style={styles.manualWrap}>
                   <Text style={[styles.itemMeta, { color: colors.orange400 }]}>
-                    No nutrition data for this food yet. Enter it per serving:
+                    No nutrition data for this food yet. Enter it per 100 g:
                   </Text>
                   <View style={styles.manualRow}>
                     {MANUAL_FIELDS.map((f) => (
@@ -319,7 +327,7 @@ export function ScanResultCard({ scanner, darkMode, onScanAnother, style, loadin
         <Total label="Carbs" value={totals.carbsG} suffix="g" color={chipTints.blue.icon} tone={tone} />
         <Total label="Fat" value={totals.fatG} suffix="g" color={chipTints.orange.icon} tone={tone} />
       </View>
-      <Text style={[styles.disclaimer, { color: tone.muted }]}>Estimates from a photo. Adjust servings for accuracy.</Text>
+      <Text style={[styles.disclaimer, { color: tone.muted }]}>Estimates from a photo. Adjust grams for accuracy.</Text>
 
       <ScreenError message={error} onDismiss={scanner.clearError} />
 
@@ -328,7 +336,7 @@ export function ScanResultCard({ scanner, darkMode, onScanAnother, style, loadin
           ? <ActivityIndicator color={colors.white} />
           : <Text style={styles.primaryBtnText}>Log {mealType}</Text>}
       </Pressable>
-      {/* Not logged yet, so the coach sees the foods at one serving each */}
+      {/* Not logged yet, so the coach sees the foods at one typical serving each */}
       <AskCoachButton scanId={scan.id} tone={tone} />
     </View>
   );
@@ -425,14 +433,21 @@ const asText = (goals) => Object.fromEntries(GOAL_FIELDS.map((f) => [f.key, goal
  */
 export function NutritionGoalsCard({ meals, darkMode, style, loading = false }) {
   const tone = getScreenTones(darkMode);
+  const { user } = useAuth();
   const saved = asText(meals.goals);
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [showWhy, setShowWhy] = useState(false);
 
   const values = draft || saved;
   const changed = GOAL_FIELDS.some((f) => values[f.key] !== saved[f.key]);
+  // Recommended calories from the profile, re-worked as height, weight,
+  // activity level or goal change. null while any of them is missing
+  const estimate = user ? calorieEstimate(user) : null;
+  const advice = describeCalorieEstimate(estimate, user?.fitnessGoal);
+  const showEstimate = estimate && values.dailyCaloriesKcal !== String(estimate.kcal);
 
   const edit = (key, text) => {
     setDone(false);
@@ -480,6 +495,37 @@ export function NutritionGoalsCard({ meals, darkMode, style, loading = false }) 
           darkMode={darkMode}
         />
       </View>
+
+      {/* Only filled in, never saved, until the user taps Use it and Save */}
+      {!loading && showEstimate && (
+        <View style={[styles.hintBox, { backgroundColor: tone.soft }]}>
+          <View style={styles.hintTop}>
+            <Ionicons name="sparkles-outline" size={16} color={shellColors.primary} />
+            <View style={styles.flex1}>
+              <Text style={[styles.hintTitle, { color: tone.text }]}>{`We suggest ${advice.headline.toLowerCase()}`}</Text>
+              <Text style={[styles.hintText, { color: tone.muted }]}>{advice.basis}</Text>
+            </View>
+            <Pressable onPress={() => edit("dailyCaloriesKcal", String(estimate.kcal))} hitSlop={8} accessibilityRole="button">
+              <Text style={styles.hintLink}>Use it</Text>
+            </Pressable>
+          </View>
+          {advice.note ? <Text style={[styles.hintText, { color: tone.text }]}>{advice.note}</Text> : null}
+          <Pressable onPress={() => setShowWhy((v) => !v)} hitSlop={8} accessibilityRole="button" accessibilityState={{ expanded: showWhy }}>
+            <Text style={styles.hintLink}>{showWhy ? "Hide details" : "How is this worked out?"}</Text>
+          </Pressable>
+          {showWhy &&
+            advice.steps.map((step) => (
+              <View key={step.label} style={styles.hintStep}>
+                <Text style={[styles.hintText, { color: tone.muted }]}>{step.label}</Text>
+                <Text style={[styles.hintStepValue, { color: tone.text }]}>{step.value}</Text>
+              </View>
+            ))}
+        </View>
+      )}
+
+      {!loading && user && !estimate && !(user.age < 18) && (
+        <Text style={[styles.muted, { color: tone.muted }]}>Add your age, height and weight in Profile to get a recommended calorie target.</Text>
+      )}
 
       <View style={styles.goalGrid}>
         {GOAL_FIELDS.map((f) => {

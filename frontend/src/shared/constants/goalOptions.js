@@ -64,11 +64,11 @@ export function weightTargetProblem(targetText, paceText) {
 // "" -> null, "0.5" -> 0.5
 export const decimalOrNull = (text) => (String(text ?? "").trim() ? Number(text) : null);
 
-// Food servings: a quarter up to 50. Mirrors
+// Grams of one food in a meal. Mirrors
 // mealItemSchema in foodValidators.js
-export const MIN_SERVINGS = 0.25;
-// Mirrors the servings limit in the backend's foodValidators.js
-export const MAX_SERVINGS = 50;
+export const MIN_GRAMS = 5;
+// Mirrors the grams limit in the backend's foodValidators.js
+export const MAX_GRAMS = 5000;
 
 export const COACH_TONES = [
   { value: "friendly", label: "Friendly", icon: "happy-outline", hint: "Warm and conversational." },
@@ -86,18 +86,68 @@ export const NO_WORKOUT_PREFS = { categoryIds: [], equipment: null, equipmentIds
 const ACTIVITY_FACTORS = {
   sedentary: 1.2,
   "lightly-active": 1.375,
-  "moderately-active": 1.55,
+  // 1.465 = exercise 4-5 times a week, the same value calculator.net uses;
+  // 1.55 is for daily exercise, which the app has no level for
+  "moderately-active": 1.465,
   "very-active": 1.725,
 };
 const GOAL_ADJUST = { "lose-weight": -500, "gain-weight": 300, "build-muscle": 250 };
 
-export function suggestCalories({ age, sex, heightCm, weightKg, activityLevel, fitnessGoal }) {
+// Same estimate as suggestCalories, with the steps shown to the user:
+// { bmr, maintenance, adjust, kcal, bmi, heldAtMaintenance } (all kcal a day),
+// or null when something it needs is missing
+export function calorieEstimate({ age, sex, heightCm, weightKg, activityLevel, fitnessGoal }) {
   if (!age || age < 18 || !heightCm || !weightKg) return null;
   // Without a sex, halfway between the two constants
   const sexConstant = sex === "male" ? 5 : sex === "female" ? -161 : -78;
   const bmr = 10 * weightKg + 6.25 * heightCm - 5 * age + sexConstant;
   // A custom activity level is treated as lightly active
-  const kcal = bmr * (ACTIVITY_FACTORS[activityLevel] || 1.375) + (GOAL_ADJUST[fitnessGoal] || 0);
+  const maintenance = bmr * (ACTIVITY_FACTORS[activityLevel] || 1.375);
+  const bmi = weightKg / (heightCm / 100) ** 2;
+  // Someone already underweight is never told to eat less (the reference
+  // calculator says the same: "you probably do not need to lose weight")
+  const wantedAdjust = GOAL_ADJUST[fitnessGoal] || 0;
+  const heldAtMaintenance = wantedAdjust < 0 && bmi < UNDERWEIGHT_BMI;
+  const adjust = heldAtMaintenance ? 0 : wantedAdjust;
   // Never below 1,200, same floor the coach keeps to
-  return Math.round(Math.max(1200, Math.min(5000, kcal)) / 50) * 50;
+  const kcal = Math.round(Math.max(1200, Math.min(5000, maintenance + adjust)) / 50) * 50;
+  return { bmr: Math.round(bmr), maintenance: Math.round(maintenance), adjust, kcal, bmi, heldAtMaintenance };
+}
+
+const UNDERWEIGHT_BMI = 18.5;
+const GOAL_PHRASES = {
+  "lose-weight": "to lose weight gradually",
+  "gain-weight": "to help you gain weight",
+  "build-muscle": "to help you build muscle",
+};
+
+// Plain-language text for the recommendation banner:
+// { headline, basis, steps: [{ label, value }], note }
+export function describeCalorieEstimate(estimate, fitnessGoal) {
+  if (!estimate) return null;
+  const n = (v) => `${Math.abs(v).toLocaleString()} kcal`;
+  const goalPhrase = estimate.adjust ? GOAL_PHRASES[fitnessGoal] : null;
+  const steps = [
+    { label: "What your body burns just staying alive", value: n(estimate.bmr) },
+    { label: "What you burn in a typical day, with your activity", value: n(estimate.maintenance) },
+  ];
+  if (estimate.adjust) {
+    steps.push({
+      label: estimate.adjust > 0 ? "Extra to support your goal" : "Small daily reduction for your goal",
+      value: `${estimate.adjust > 0 ? "+" : "-"}${n(estimate.adjust)}`,
+    });
+  }
+  steps.push({ label: "Your suggested target", value: n(estimate.kcal) });
+  return {
+    headline: `About ${estimate.kcal.toLocaleString()} kcal a day`,
+    basis: `Based on your age, height, weight and activity${goalPhrase ? `, ${goalPhrase}` : ", to keep your weight steady"}.`,
+    steps,
+    note: estimate.heldAtMaintenance
+      ? "Your weight is already low for your height, so this keeps you at maintenance instead of cutting calories. A doctor or dietitian can give you personal advice."
+      : "",
+  };
+}
+
+export function suggestCalories(profile) {
+  return calorieEstimate(profile)?.kcal ?? null;
 }

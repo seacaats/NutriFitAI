@@ -1,4 +1,5 @@
-import { DASH, MACRO_COLORS, MacroRow, pct, PlannedWorkouts } from "@/features/dashboard/components/DashboardWidgets";
+import { DASH, MACRO_COLORS, MacroRow, pct, PlannedWorkouts, RecommendationsStrip } from "@/features/dashboard/components/DashboardWidgets";
+import { useRecommendations } from "@/features/dashboard/hooks/useRecommendations";
 import OnboardingPrompt from "@/features/onboarding/components/OnboardingPrompt";
 import { useDashboard } from "@/features/progress/hooks/useProgress";
 import { formatMl } from "@/features/water/components/WaterCards";
@@ -19,8 +20,8 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-na
 
 // Today at a glance, all real data: /progress/today (useDashboard) for food,
 // steps, the week, weight and streak; useWater and useWorkoutSessions for
-// water and the weekly workout count. There is no calorie goal in the app,
-// so calories show the amount eaten and the macro split, not a % of target
+// water and the weekly workout count. Calories show the amount eaten against
+// the daily goal when one is set, and the macro split
 
 
 const MEAL_LABELS = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", snack: "Snack" };
@@ -31,6 +32,7 @@ const ceilTo = (n, step) => Math.max(step, Math.ceil(n / step) * step);
 
 export default function DashboardScreen() {
   const dash = useDashboard();
+  const recs = useRecommendations();
   const v = dash.view;
   const { summary: workoutSummary } = useWorkoutSessions();
   // Real water log; the + button logs one 250 ml glass
@@ -66,6 +68,9 @@ export default function DashboardScreen() {
       <ScreenError message={dash.error} />
       {/* Onboarding: first visit goes there, then a banner until it's filled in */}
       <OnboardingPrompt darkMode={darkMode} />
+
+      {/* Recommendations: only shown once there is a card */}
+      <RecommendationsStrip recs={recs} darkMode={darkMode} onOpen={(item) => router.push(item.action.route)} style={styles.recs} />
 
       {/* Stats */}
       <View style={[styles.statsRow, narrow && styles.wrapRow]}>
@@ -301,12 +306,13 @@ function LegendRow({ color, label, value, textColor }) {
 
 const styles = StyleSheet.create({
   pageHeader: { marginBottom: 16 },
+  recs: { marginBottom: 12 },
   pageTitle: { fontSize: 24, fontWeight: "800" },
-  pageSubtitle: { marginTop: 4, fontSize: 13 },
-  errorText: { fontSize: 12, fontWeight: "600", color: "#dc2626", marginBottom: 12 },
+  pageSubtitle: { marginTop: 6, fontSize: 14 },
+  errorText: { fontSize: 13, fontWeight: "600", color: "#dc2626", marginBottom: 12 },
   ...dashboardStyles,
 
-  card: { borderRadius: radii.sm, borderWidth: 1, padding: 12 },
+  card: { borderRadius: radii.sm, borderWidth: 1, padding: 16 },
   statCard: { flex: 1},
   statCardNarrow: { minWidth: 220 },
   stackItem: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
@@ -321,13 +327,14 @@ const styles = StyleSheet.create({
   mt4: { marginTop: 16 },
   mt5: { marginTop: 20 },
 
-  cardLabel: { fontSize: 12, fontWeight: "600" },
-  pctGreen: { fontSize: 12, fontWeight: "700", color: shellColors.primary },
-  bigNum: { fontSize: 20, fontWeight: "700" },
-  midNum: { fontSize: 24, fontWeight: "700" },
-  kcalSuffix: { fontSize: 13, fontWeight: "500" },
-  lSuffix: { fontSize: 13, fontWeight: "500" },
-  smallMuted: { fontSize: 12, fontWeight: "600", marginTop: 4 },
+  // Text sizes and card padding raised a step: nothing under 10px
+  cardLabel: { fontSize: 13, fontWeight: "600" },
+  pctGreen: { fontSize: 13, fontWeight: "700", color: shellColors.primary },
+  bigNum: { fontSize: 22, fontWeight: "700" },
+  midNum: { fontSize: 26, fontWeight: "700" },
+  kcalSuffix: { fontSize: 14, fontWeight: "500" },
+  lSuffix: { fontSize: 14, fontWeight: "500" },
+  smallMuted: { fontSize: 13, fontWeight: "600", marginTop: 6 },
 
   progressTrack: { marginTop: 8, height: 8, borderRadius: 4, overflow: "hidden" },
 
@@ -339,8 +346,8 @@ const styles = StyleSheet.create({
   // marginBottom keeps the last card clear of the page edge when stacked
   lowerRow: { flexDirection: "row", gap: 12, marginTop: 12, marginBottom: 4 },
   sectionTitle: { fontSize: 22, fontWeight: "700" },
-  subheading: { fontSize: 13, fontWeight: "600", marginTop: 4 },
-  thisWeek: { fontSize: 10, fontWeight: "600", color: colors.textMuted },
+  subheading: { fontSize: 14, fontWeight: "600", marginTop: 6 },
+  thisWeek: { fontSize: 12, fontWeight: "600", color: colors.textMuted },
 
   mealsRow: { flexDirection: "row", gap: 8, marginTop: 8 },
   // Small screens: more air between the heading, the meal cards and the workout list
@@ -349,32 +356,32 @@ const styles = StyleSheet.create({
   mealCard: { flex: 1, borderRadius: 6, borderWidth: 1, overflow: "hidden" },
   mealCardPhone: { minWidth: "47%" },
   mealIconBox: { height: 64, alignItems: "center", justifyContent: "center" },
-  mealInfo: { padding: 6, gap: 2 },
-  mealTitle: { fontSize: 10, fontWeight: "700" },
-  mealCalories: { fontSize: 8, color: colors.textMuted },
+  mealInfo: { padding: 8, gap: 3 },
+  mealTitle: { fontSize: 12, fontWeight: "700" },
+  mealCalories: { fontSize: 11, color: colors.textMuted },
   mealSkeleton: { marginTop: 2 },
 
 
 
-  chartBox: { marginTop: 12, borderRadius: 6, borderWidth: 1, padding: 8 },
-  chartLabel: { fontSize: 10, fontWeight: "600" },
-  chartAvg: { fontSize: 9, fontWeight: "600", color: colors.textMuted },
+  chartBox: { marginTop: 12, borderRadius: 6, borderWidth: 1, padding: 12 },
+  chartLabel: { fontSize: 12, fontWeight: "600" },
+  chartAvg: { fontSize: 11, fontWeight: "600", color: colors.textMuted },
 
   insightCardsRow: { flexDirection: "row", gap: 12, marginTop: 12 },
   // minWidth 0 + overflow: the donut and legend can't spill past the card edge
   insightCard: { minWidth: 0, overflow: "hidden" },
   donutWrap: { alignItems: "center", justifyContent: "center", marginTop: 12 },
-  donutCenterTitle: { fontSize: 9, fontWeight: "700" },
-  donutCenterSub: { fontSize: 8, color: colors.textMuted },
+  donutCenterTitle: { fontSize: 11, fontWeight: "700" },
+  donutCenterSub: { fontSize: 10, color: colors.textMuted },
 
-  legend: { marginTop: 12, gap: 4 },
+  legend: { marginTop: 12, gap: 6 },
   legendRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   legendLeft: { flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 1, minWidth: 0 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendLabel: { fontSize: 8 },
-  legendValue: { fontSize: 8, fontWeight: "600" },
+  legendLabel: { fontSize: 11 },
+  legendValue: { fontSize: 11, fontWeight: "600" },
 
-  weightNum: { fontSize: 13, fontWeight: "700" },
-  weightDelta: { fontSize: 9, fontWeight: "600", color: colors.green600 },
-  weightSince: { fontSize: 8, color: colors.textMuted, marginTop: 4 },
+  weightNum: { fontSize: 15, fontWeight: "700" },
+  weightDelta: { fontSize: 11, fontWeight: "600", color: colors.green600 },
+  weightSince: { fontSize: 10, color: colors.textMuted, marginTop: 6 },
 });

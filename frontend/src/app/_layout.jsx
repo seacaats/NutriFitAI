@@ -33,7 +33,6 @@ function RootLayoutInner() {
           {/* Public and auth pages follow the theme */}
           <Stack.Screen name="(public)" options={{ contentStyle: { backgroundColor: getPublicTones(darkMode).bg } }} />
           <Stack.Screen name="(auth)" options={{ contentStyle: { backgroundColor: getAuthColors(darkMode).bgMint } }} />
-          <Stack.Screen name="(superadmin)" />
           <Stack.Screen name="(admin)" />
           <Stack.Screen name="(main)" />
         </Stack>

@@ -9,14 +9,14 @@
  * "profile.update") -- at which point grouping and filtering are dead.
  *
  * So: the action string stays the stored value, and everything human about it
- * (the label, the sentence, the colour, the audience) is derived here at READ
+ * (the label, the sentence, the colour) is derived here at READ
  * time. Nothing human is ever written into the collection. That matters
  * because copy changes -- "Admin John edited User Ivan's Profile" becoming
  * "John (admin) edited Ivan's profile" is a one-line edit here and requires no
  * migration of historical rows.
  *
  * NAMING FORMAT: <domain>.<entity>.<verb_past>
- *   auth.login.succeeded      admin.user.role_changed     nutrition.scan.failed
+ *   auth.login.succeeded      admin.user.suspended        nutrition.scan.failed
  * Lowercase, snake_case within a segment, verb always past tense. Two or three segments.
  *
  * THE `details` CONTRACT
@@ -30,14 +30,7 @@
  * into a labelled before/after list without the registry needing an entry
  * per field. Anything else an action wants to record goes alongside it as
  * plain keys, shown through the action's `fields`.
- *
- * REDACTION IS NOT COSMETIC
- * -------------------------
- * `from`/`to` values, IP addresses, user agents, IDs and fields marked
- * `superadmin` are withheld from the admin view.
  */
-
-const AUDIENCES = ['admin', 'superadmin'];
 
 // Days a row is kept, by severity. Stamped onto the row as expiresAt at write
 // time and removed by the audit_logs_expiry TTL index (migration 004).
@@ -93,9 +86,8 @@ const CATEGORIES = [
  * @property {string} category    one of CATEGORIES
  * @property {string} severity    one of SEVERITIES
  * @property {string|null} targetType  what the action acts on, when not the actor
- * @property {string} audience    minimum role that may see this entry at all
  * @property {string} message     one plain sentence, the same for every viewer
- * @property {Array<{label: string, key?: string, value?: string, format?: string, superadmin?: boolean}>} fields
+ * @property {Array<{label: string, key?: string, value?: string, format?: string}>} fields
  *                                labelled values for the expanded row. `format`
  *                                is one of yesno, label, counts, day, datetime,
  *                                filters, action (see formatField)
@@ -115,7 +107,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'info',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} created an account',
 
     fields: [],
@@ -128,7 +119,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'notice',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} accepted the terms of service',
 
     fields: [
@@ -143,7 +133,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'info',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} verified their email',
 
     fields: [],
@@ -154,7 +143,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'info',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} signed in',
 
     fields: [
@@ -163,11 +151,9 @@ const AUDIT_ACTIONS = {
   },
 
   /**
-   * Superadmin-only, and the one action that regularly has a null actor: a
-   * failed login against an address matching no account has nobody to
-   * attribute it to. The schema's nullable userId exists for exactly this.
-   * Restricted because a list of failed attempts against real addresses is an
-   * account-enumeration aid in its own right.
+   * The one action that regularly has a null actor: a failed login against
+   * an address matching no account has nobody to attribute it to. The
+   * schema's nullable userId exists for exactly this.
    *
    * The attempted email is never stored, only details.emailHash (HMAC, see
    * auditLogger.hashIdentifier) -- users sometimes type their password into
@@ -178,7 +164,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'warning',
     targetType: 'user',
-    audience: 'superadmin',
     message: 'Sign-in failed for {target}',
 
     fields: [
@@ -192,7 +177,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'notice',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} turned on two-factor sign-in',
 
     fields: [],
@@ -203,7 +187,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'warning',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} turned off two-factor sign-in',
 
     fields: [],
@@ -214,8 +197,27 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'notice',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} generated new recovery codes',
+
+    fields: [],
+  },
+
+  'auth.email.change_requested': {
+    label: 'Email change requested',
+    category: 'auth',
+    severity: 'notice',
+    targetType: 'user',
+    message: '{actor} asked to change their email',
+
+    fields: [],
+  },
+
+  'auth.email.changed': {
+    label: 'Email changed',
+    category: 'auth',
+    severity: 'warning',
+    targetType: 'user',
+    message: '{actor} changed their email',
 
     fields: [],
   },
@@ -225,7 +227,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'warning',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} signed in with a recovery code',
 
     fields: [],
@@ -236,7 +237,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'warning',
     targetType: 'user',
-    audience: 'admin',
     message: 'A wrong two-factor code was entered for {target}',
 
     fields: [
@@ -249,7 +249,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'warning',
     targetType: 'user',
-    audience: 'admin',
     message: 'Two-factor sign-in was locked for {target}',
 
     fields: [],
@@ -260,7 +259,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'info',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} signed out',
 
     fields: [],
@@ -271,7 +269,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'notice',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} requested a password reset',
 
     fields: [],
@@ -282,7 +279,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'warning',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} reset their password',
 
     fields: [],
@@ -293,7 +289,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'warning',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} changed their password',
 
     fields: [
@@ -306,7 +301,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'notice',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} linked their {provider} account',
 
     fields: [],
@@ -322,7 +316,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'warning',
     targetType: 'user',
-    audience: 'superadmin',
     message: 'Session refresh rejected for {target}',
 
     fields: [
@@ -335,7 +328,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'info',
     targetType: 'user',
-    audience: 'superadmin',
     message: 'Verification code resent to {actor}',
 
     fields: [],
@@ -346,7 +338,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'notice',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} entered their reset code',
 
     fields: [],
@@ -359,7 +350,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'warning',
     targetType: 'user',
-    audience: 'superadmin',
     message: 'Too many {limiter} attempts',
 
     fields: [
@@ -374,7 +364,6 @@ const AUDIT_ACTIONS = {
     category: 'auth',
     severity: 'warning',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} entered a wrong current password',
 
     fields: [],
@@ -388,7 +377,6 @@ const AUDIT_ACTIONS = {
     category: 'account',
     severity: 'info',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} updated their profile',
 
     fields: [],
@@ -401,7 +389,6 @@ const AUDIT_ACTIONS = {
     category: 'account',
     severity: 'info',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} finished setting up their account',
 
     fields: [
@@ -414,7 +401,6 @@ const AUDIT_ACTIONS = {
     category: 'account',
     severity: 'info',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} changed their profile photo',
 
     fields: [],
@@ -425,7 +411,6 @@ const AUDIT_ACTIONS = {
     category: 'account',
     severity: 'info',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} removed their profile photo',
 
     fields: [],
@@ -441,7 +426,6 @@ const AUDIT_ACTIONS = {
     category: 'account',
     severity: 'info',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} changed their goal to {fitnessGoal}',
 
     fields: [
@@ -462,7 +446,6 @@ const AUDIT_ACTIONS = {
     category: 'account',
     severity: 'critical',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} deleted their account',
 
     fields: [
@@ -478,7 +461,6 @@ const AUDIT_ACTIONS = {
     category: 'activity',
     severity: 'info',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} connected {source}',
 
     fields: [
@@ -491,7 +473,6 @@ const AUDIT_ACTIONS = {
     category: 'activity',
     severity: 'notice',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} disconnected {previousSource}',
 
     fields: [],
@@ -512,12 +493,11 @@ const AUDIT_ACTIONS = {
     category: 'nutrition',
     severity: 'warning',
     targetType: 'food_scan',
-    audience: 'admin',
     message: "{actor}'s food scan failed",
     fields: [
       { label: 'Reason', key: 'reason' },
       { label: 'Stage', key: 'stage', format: 'label' },
-      { label: 'Scan ID', key: 'targetId', superadmin: true },
+      { label: 'Scan ID', key: 'targetId' },
     ],
   },
 
@@ -534,7 +514,6 @@ const AUDIT_ACTIONS = {
     category: 'workout',
     severity: 'notice',
     targetType: 'system',
-    audience: 'superadmin',
     message: 'Exercise catalog synced',
 
     fields: [
@@ -558,7 +537,6 @@ const AUDIT_ACTIONS = {
     category: 'coach',
     severity: 'warning',
     targetType: 'system',
-    audience: 'superadmin',
     message: 'AI coach switched from {fromProvider} to {toProvider}',
 
     fields: [
@@ -572,10 +550,22 @@ const AUDIT_ACTIONS = {
     category: 'coach',
     severity: 'warning',
     targetType: 'system',
-    audience: 'superadmin',
     message: "{provider}'s quota ran out",
     fields: [
       { label: 'Limit', key: 'limitKind', format: 'label' },
+      { label: 'Resumes', key: 'resumesAt', format: 'datetime' },
+    ],
+  },
+
+  // Chat keeps working on keyword search while embeddings are paused
+  'coach.embeddings.paused': {
+    label: 'Semantic search paused',
+    category: 'coach',
+    severity: 'warning',
+    targetType: 'system',
+    message: 'Coach semantic search paused ({reason})',
+    fields: [
+      { label: 'HTTP status', key: 'status' },
       { label: 'Resumes', key: 'resumesAt', format: 'datetime' },
     ],
   },
@@ -592,7 +582,6 @@ const AUDIT_ACTIONS = {
     category: 'notification',
     severity: 'info',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} changed their notification settings',
     fields: [
       { label: 'Changes', key: 'summary' },
@@ -604,12 +593,11 @@ const AUDIT_ACTIONS = {
     category: 'notification',
     severity: 'info',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} registered a device for notifications',
 
     fields: [
       { label: 'Platform', key: 'platform', format: 'label' },
-      { label: 'Token hash', key: 'tokenHash', superadmin: true },
+      { label: 'Token hash', key: 'tokenHash' },
     ],
   },
 
@@ -618,11 +606,10 @@ const AUDIT_ACTIONS = {
     category: 'notification',
     severity: 'info',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} unregistered a device from notifications',
 
     fields: [
-      { label: 'Token hash', key: 'tokenHash', superadmin: true },
+      { label: 'Token hash', key: 'tokenHash' },
     ],
   },
 
@@ -631,7 +618,6 @@ const AUDIT_ACTIONS = {
     category: 'notification',
     severity: 'warning',
     targetType: 'user',
-    audience: 'superadmin',
     message: 'A notification to {target} failed',
 
     fields: [
@@ -647,7 +633,6 @@ const AUDIT_ACTIONS = {
     category: 'notification',
     severity: 'notice',
     targetType: 'user',
-    audience: 'superadmin',
     message: 'A device token for {target} was invalidated',
 
     fields: [
@@ -665,15 +650,13 @@ const AUDIT_ACTIONS = {
   // =========================================================================
   /**
    * Recording a READ looks paranoid until you consider that the users
-   * management page exposes every user's email and profile. Restricted to
-   * superadmin so the admin table is not swamped by its own browsing.
+   * management page exposes every user's email and profile.
    */
   'admin.user.viewed': {
     label: 'User record viewed',
     category: 'administration',
     severity: 'notice',
     targetType: 'user',
-    audience: 'superadmin',
     message: "{actor} viewed {target}'s account",
     fields: [],
   },
@@ -683,26 +666,11 @@ const AUDIT_ACTIONS = {
     category: 'administration',
     severity: 'critical',
     targetType: 'user',
-    audience: 'admin',
-    // The example from the brief, generalised: the admin view names the fields,
-    // the superadmin view names the values and the origin.
+    // The example from the brief, generalised: the row names the fields and
+    // the values.
     message: '{actor} renamed {target}',
 
     fields: [
-      { label: 'Reason', key: 'reason' },
-    ],
-  },
-
-  'admin.user.role_changed': {
-    label: 'Role changed',
-    category: 'administration',
-    severity: 'critical',
-    targetType: 'user',
-    audience: 'admin',
-    message: '{actor} made {target} {toRoleWithArticle}',
-
-    fields: [
-      { label: 'Previous role', key: 'fromRole', format: 'label' },
       { label: 'Reason', key: 'reason' },
     ],
   },
@@ -712,7 +680,6 @@ const AUDIT_ACTIONS = {
     category: 'administration',
     severity: 'critical',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} suspended {target}',
 
     fields: [
@@ -725,7 +692,6 @@ const AUDIT_ACTIONS = {
     category: 'administration',
     severity: 'critical',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} reinstated {target}',
 
     fields: [
@@ -738,10 +704,32 @@ const AUDIT_ACTIONS = {
     category: 'administration',
     severity: 'critical',
     targetType: 'user',
-    audience: 'admin',
     message: "{actor} deleted {target}'s account",
     fields: [
       { label: 'Removed', key: 'deletedCounts', format: 'counts' },
+      { label: 'Reason', key: 'reason' },
+    ],
+  },
+
+  'admin.user.deletion_scheduled': {
+    label: 'Deletion scheduled',
+    category: 'administration',
+    severity: 'critical',
+    targetType: 'user',
+    message: '{actor} scheduled {target} for deletion',
+    fields: [
+      { label: 'Deleted on', key: 'purgeAt' },
+      { label: 'Reason', key: 'reason' },
+    ],
+  },
+
+  'admin.user.deletion_cancelled': {
+    label: 'Deletion cancelled',
+    category: 'administration',
+    severity: 'warning',
+    targetType: 'user',
+    message: "{actor} cancelled {target}'s scheduled deletion",
+    fields: [
       { label: 'Reason', key: 'reason' },
     ],
   },
@@ -751,8 +739,68 @@ const AUDIT_ACTIONS = {
     category: 'administration',
     severity: 'critical',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} required {target} to reset their password',
+
+    fields: [
+      { label: 'Reason', key: 'reason' },
+    ],
+  },
+
+  'admin.user.created': {
+    label: 'Account created',
+    category: 'administration',
+    severity: 'critical',
+    targetType: 'user',
+    message: '{actor} created the account for {target}',
+
+    fields: [
+      { label: 'Reason', key: 'reason' },
+    ],
+  },
+
+  'admin.user.session_revoked': {
+    label: 'Session ended',
+    category: 'administration',
+    severity: 'warning',
+    targetType: 'user',
+    message: '{actor} ended a session of {target}',
+
+    fields: [
+      { label: 'Reason', key: 'reason' },
+    ],
+  },
+
+  'admin.user.sessions_revoked': {
+    label: 'All sessions ended',
+    category: 'administration',
+    severity: 'critical',
+    targetType: 'user',
+    message: '{actor} signed {target} out of every device',
+
+    fields: [
+      { label: 'Sessions ended', key: 'count' },
+      { label: 'Reason', key: 'reason' },
+    ],
+  },
+
+  'admin.user.recovery_regenerated': {
+    label: 'Recovery codes regenerated',
+    category: 'administration',
+    severity: 'critical',
+    targetType: 'user',
+    message: '{actor} generated new recovery codes for {target}',
+
+    fields: [
+      { label: 'Reason', key: 'reason' },
+    ],
+  },
+
+  'admin.user.authenticator_reset': {
+    label: 'Authenticator reset',
+    category: 'administration',
+    severity: 'critical',
+    targetType: 'user',
+    message: "{actor} reset {target}'s authenticator app",
 
     fields: [
       { label: 'Reason', key: 'reason' },
@@ -764,7 +812,6 @@ const AUDIT_ACTIONS = {
     category: 'administration',
     severity: 'warning',
     targetType: 'user',
-    audience: 'admin',
     message: '{actor} cancelled the password reset for {target}',
 
     fields: [
@@ -777,7 +824,6 @@ const AUDIT_ACTIONS = {
     category: 'administration',
     severity: 'critical',
     targetType: 'user',
-    audience: 'superadmin',
     message: '{actor} gave {target} {toRole} access',
 
     fields: [
@@ -785,38 +831,9 @@ const AUDIT_ACTIONS = {
     ],
   },
 
-  'admin.admin.revoked': {
-    label: 'Admin revoked',
-    category: 'administration',
-    severity: 'critical',
-    targetType: 'user',
-    audience: 'superadmin',
-    message: "{actor} removed {target}'s admin access",
-    fields: [
-      { label: 'Previous role', key: 'fromRole', format: 'label' },
-      { label: 'Reason', key: 'reason' },
-    ],
-  },
-
-  // Reads of the trail itself. Page 1 only, once per admin per filter set
-  // per 5 minutes; a new filter always writes its own row (controllers/admin/auditController)
-  'admin.audit_log.viewed': {
-    label: 'Audit log viewed',
-    category: 'administration',
-    severity: 'notice',
-    targetType: 'system',
-    audience: 'superadmin',
-    message: '{actor} viewed the audit log',
-
-    fields: [
-      { label: 'Filters', key: 'filters', format: 'filters' },
-    ],
-  },
-
   /**
-   * Auditing the audit trail. An export lifts the entire trail -- including
-   * every redacted value -- out of the system, which is the single most
-   * consequential thing a superadmin can do here.
+   * Auditing the audit trail. An export lifts the entire trail out of the
+   * system, which is the single most consequential thing an admin can do here.
    */
   // Holds keep a row past its expiry (models/AuditHold.js). The row itself
   // is never touched, so both directions are their own critical entries
@@ -825,7 +842,6 @@ const AUDIT_ACTIONS = {
     category: 'administration',
     severity: 'critical',
     targetType: 'system',
-    audience: 'superadmin',
     message: '{actor} put an audit entry on hold',
     fields: [
       { label: 'Entry', key: 'heldAction', format: 'action' },
@@ -839,7 +855,6 @@ const AUDIT_ACTIONS = {
     category: 'administration',
     severity: 'critical',
     targetType: 'system',
-    audience: 'superadmin',
     message: "{actor} released an audit entry's hold",
     fields: [
       { label: 'Entry', key: 'heldAction', format: 'action' },
@@ -855,11 +870,23 @@ const AUDIT_ACTIONS = {
     category: 'administration',
     severity: 'notice',
     targetType: 'system',
-    audience: 'admin',
     message: '{actor} added a note to an audit entry',
     fields: [
       { label: 'Entry', key: 'notedAction', format: 'action' },
-      { label: 'Entry ID', key: 'auditLogId', superadmin: true },
+      { label: 'Entry ID', key: 'auditLogId' },
+    ],
+  },
+
+  // Page 1 only, once per admin per cooldown, per person for a lookup (auditController)
+  'admin.audit_log.viewed': {
+    label: 'Audit log viewed',
+    category: 'administration',
+    severity: 'notice',
+    targetType: 'system',
+    message: '{actor} viewed the audit log',
+
+    fields: [
+      { label: 'Filters', key: 'filters', format: 'exportFilters' },
     ],
   },
 
@@ -868,7 +895,6 @@ const AUDIT_ACTIONS = {
     category: 'administration',
     severity: 'critical',
     targetType: 'system',
-    audience: 'superadmin',
     message: '{actor} exported {rowCount} audit entries',
 
     fields: [
@@ -885,7 +911,6 @@ const AUDIT_ACTIONS = {
     category: 'system',
     severity: 'info',
     targetType: 'system',
-    audience: 'superadmin',
     message: 'Removed {purgedCount} food scan photos over {retentionDays} days old',
 
     fields: [],
@@ -898,7 +923,6 @@ const AUDIT_ACTIONS = {
     category: 'system',
     severity: 'critical',
     targetType: 'system',
-    audience: 'superadmin',
     message: 'Audit log integrity check failed',
 
     fields: [
@@ -922,27 +946,6 @@ function getActionDef(action) {
   return def;
 }
 
-/** True when `role` is at or above the action's minimum audience. */
-function canViewAction(action, viewerRole) {
-  const def = getActionDef(action);
-  const needed = AUDIENCES.indexOf(def.audience);
-  const held = AUDIENCES.indexOf(viewerRole);
-  return needed >= 0 && held >= needed;
-}
-
-// A note entry names the action it was added to, so it is only as visible as that action
-function canViewEntry(entry, viewerRole) {
-  if (!canViewAction(entry.action, viewerRole)) return false;
-  if (entry.action !== 'admin.audit_log.note_added') return true;
-  const noted = entry.details && entry.details.notedAction;
-  return Boolean(noted && AUDIT_ACTIONS[noted]) && canViewAction(noted, viewerRole);
-}
-
-/** Every action a viewer of this role is allowed to see, for the filter menu. */
-function visibleActionsFor(viewerRole) {
-  return Object.keys(AUDIT_ACTIONS).filter((action) => canViewAction(action, viewerRole));
-}
-
 function retentionDaysFor(action) {
   return RETENTION_DAYS[getActionDef(action).severity];
 }
@@ -960,7 +963,4 @@ module.exports = {
   CATEGORIES,
   AUDIT_ACTIONS,
   getActionDef,
-  canViewAction,
-  canViewEntry,
-  visibleActionsFor,
 };

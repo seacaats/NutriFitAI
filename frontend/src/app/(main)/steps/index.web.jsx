@@ -168,7 +168,7 @@ export default function StepsScreen() {
               {(width) => (
               <BarChart width={width} height={CHART_HEIGHT} data={data} margin={{ top: 8, right: 4, left: -14, bottom: 0 }}>
                 <CartesianGrid stroke={palette.border} vertical={false} strokeDasharray="3 3" />
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: palette.muted, fontSize: 11, fontFamily: CHART_FONT }} />
+                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: palette.muted, fontSize: 13, fontFamily: CHART_FONT }} />
                 {/* The daily goal is the top of the chart; a bar over it fills it */}
                 <YAxis
                   domain={[0, steps.dailyGoal]}
@@ -176,7 +176,7 @@ export default function StepsScreen() {
                   allowDataOverflow
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fill: palette.muted, fontSize: 10, fontFamily: CHART_FONT }}
+                  tick={{ fill: palette.muted, fontSize: 12, fontFamily: CHART_FONT }}
                   tickFormatter={(v) => `${v / 1000}k`}
                 />
                 <Tooltip
@@ -285,24 +285,24 @@ const styles = StyleSheet.create({
   // Stacked (narrow) children size to their content. With flex: n they get a
   // zero basis in a column, collapse, and the next card draws over them
   stackItem: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
-  eyebrow: { fontSize: 10, fontWeight: "800", letterSpacing: 1.3 }, pageTitle: { marginTop: 2, fontSize: 28, fontWeight: "800" }, pageSubtitle: { marginTop: 4, fontSize: 13 },
-  headerActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }, syncPill: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 }, syncText: { color: "#4f7150", fontSize: 10, fontWeight: "700" },
-  startButton: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, backgroundColor: shellColors.primary }, startButtonText: { color: colors.white, fontSize: 11, fontWeight: "800" },
+  eyebrow: { fontSize: 12, fontWeight: "800", letterSpacing: 1.3 }, pageTitle: { marginTop: 2, fontSize: 24, fontWeight: "800" }, pageSubtitle: { marginTop: 4, fontSize: 14 },
+  headerActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }, syncPill: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 }, syncText: { color: "#4f7150", fontSize: 12, fontWeight: "700" },
+  startButton: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, backgroundColor: shellColors.primary }, startButtonText: { color: colors.white, fontSize: 13, fontWeight: "800" },
   rowGap: { flexDirection: "row", alignItems: "center", gap: 13 },
   heroRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 }, heroCard: { minWidth: 280, flex: 2.2, borderWidth: 1, borderRadius: radii.md, padding: 18 },
-  stepIcon: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: shellColors.primary }, cardKicker: { fontSize: 9, fontWeight: "800", letterSpacing: 1 }, heroValue: { fontSize: 30, lineHeight: 34, fontWeight: "800" }, goalPercent: { color: shellColors.primary, fontSize: 20, fontWeight: "800" },
-  goalTrack: { height: 9, borderRadius: 5, overflow: "hidden", marginTop: 17 }, goalFill: { height: 9, borderRadius: 5, backgroundColor: shellColors.primary }, goalCopy: { fontSize: 10, marginTop: 9 }, goalCopyStrong: { fontSize: 10, fontWeight: "700", marginTop: 9 },
-  metricCard: { minWidth: 145, flex: 1, borderWidth: 1, borderRadius: radii.md, padding: 16 }, metricIcon: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" }, metricLabel: { marginTop: 12, fontSize: 10, fontWeight: "700" }, metricValueRow: { flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 3 }, metricValue: { fontSize: 22, fontWeight: "800" }, metricSuffix: { fontSize: 10, fontWeight: "600" },
+  stepIcon: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: shellColors.primary }, cardKicker: { fontSize: 11, fontWeight: "800", letterSpacing: 1 }, heroValue: { fontSize: 30, lineHeight: 34, fontWeight: "800" }, goalPercent: { color: shellColors.primary, fontSize: 20, fontWeight: "800" },
+  goalTrack: { height: 9, borderRadius: 5, overflow: "hidden", marginTop: 17 }, goalFill: { height: 9, borderRadius: 5, backgroundColor: shellColors.primary }, goalCopy: { fontSize: 12, marginTop: 9 }, goalCopyStrong: { fontSize: 12, fontWeight: "700", marginTop: 9 },
+  metricCard: { minWidth: 145, flex: 1, borderWidth: 1, borderRadius: radii.md, padding: 16 }, metricIcon: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" }, metricLabel: { marginTop: 12, fontSize: 12, fontWeight: "700" }, metricValueRow: { flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 3 }, metricValue: { fontSize: 22, fontWeight: "800" }, metricSuffix: { fontSize: 12, fontWeight: "600" },
   contentRow: { flexDirection: "row", alignItems: "stretch", gap: 12, marginTop: 12 },
   editRow: { flexDirection: "row", alignItems: "stretch", gap: 12, marginTop: 12 },
   editItem: { flex: 1, minWidth: 0 }, chartCard: { minWidth: 280, flex: 2.2, borderWidth: 1, borderRadius: radii.md, padding: 18, flexDirection: "column" }, // Wraps the tabs under the title once the card is too narrow for both
-  chartHeader: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12 }, sectionTitle: { fontSize: 17, fontWeight: "800" }, sectionSubtitle: { marginTop: 3, fontSize: 10 },
+  chartHeader: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12 }, sectionTitle: { fontSize: 17, fontWeight: "800" }, sectionSubtitle: { marginTop: 3, fontSize: 12 },
   // Fixed height. The card no longer stretches to the side column (see
   // contentRow), so there is no empty space under it either
   chartWrap: { height: CHART_HEIGHT, marginTop: 14 },
   chartSkeleton: { flex: 1, flexDirection: "row", alignItems: "flex-end", justifyContent: "space-around", paddingLeft: 30 },
   goalCopySkeleton: { marginTop: 9 },
-  challengeCard: { flex: 1, minWidth: 250, borderRadius: radii.md, padding: 20 }, challengeIcon: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" }, challengeKicker: { marginTop: 28, fontSize: 9, fontWeight: "800", letterSpacing: 1.1 }, challengeTitle: { marginTop: 5, fontSize: 21, fontWeight: "800" }, challengeCopy: { marginTop: 8, fontSize: 11, lineHeight: 17 },
-  challengeNumbers: { flexDirection: "row", alignItems: "baseline", marginTop: 22 }, challengeCurrent: { fontSize: 19, fontWeight: "800" }, challengeGoal: { fontSize: 10, fontWeight: "600" }, challengeTrack: { height: 8, borderRadius: 4, overflow: "hidden", marginTop: 8 }, challengeFill: { height: 8, borderRadius: 4 }, challengeFooter: { flexDirection: "row", gap: 6, alignItems: "center", marginTop: 13 }, challengeFooterText: { fontSize: 10, fontWeight: "600" },
+  challengeCard: { flex: 1, minWidth: 250, borderRadius: radii.md, padding: 20 }, challengeIcon: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" }, challengeKicker: { marginTop: 28, fontSize: 11, fontWeight: "800", letterSpacing: 1.1 }, challengeTitle: { marginTop: 5, fontSize: 21, fontWeight: "800" }, challengeCopy: { marginTop: 8, fontSize: 13, lineHeight: 17 },
+  challengeNumbers: { flexDirection: "row", alignItems: "baseline", marginTop: 22 }, challengeCurrent: { fontSize: 19, fontWeight: "800" }, challengeGoal: { fontSize: 12, fontWeight: "600" }, challengeTrack: { height: 8, borderRadius: 4, overflow: "hidden", marginTop: 8 }, challengeFill: { height: 8, borderRadius: 4 }, challengeFooter: { flexDirection: "row", gap: 6, alignItems: "center", marginTop: 13 }, challengeFooterText: { fontSize: 12, fontWeight: "600" },
   recentSpacing: { marginTop: 12 },
 });

@@ -127,7 +127,7 @@ export default function WorkoutsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color={c.sidebarText} />
+          <Ionicons name="chevron-back" size={22} color={c.sidebarText} />
         </Pressable>
         <Text style={[styles.pageTitle, textColor]}>Workouts</Text>
         {/* Same width as the back button, so the title stays centered */}
@@ -331,7 +331,7 @@ export default function WorkoutsScreen() {
           ))}
 
           {/* Load More */}
-          {hasMoreRef.current && !searchQuery && (
+          {hasMoreRef.current && (
             <Pressable
               onPress={() => loadExercises(false)}
               style={[styles.loadMoreBtn, { borderColor: c.dropdownBorder }]}
@@ -640,6 +640,7 @@ function ExerciseDetailModal({
                   <ActionButton
                     variant="secondary"
                     label={favorite ? "Favorited" : "Favorite"}
+                    active={favorite}
                     onPress={onToggleFavorite}
                     darkMode={darkMode}
                   />

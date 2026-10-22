@@ -45,6 +45,7 @@ export default function FormInput({
     <View style={[styles.wrapper, focused && styles.wrapperFocused, boxStyle, !label && style]}>
       {icon && <Ionicons name={icon} size={iconSize} color={colors.green600} style={styles.leftIcon} />}
       <TextInput
+        underlineColorAndroid="transparent"
         style={[styles.input, size === "sm" && styles.inputSm]}
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
@@ -157,6 +158,7 @@ export function RingInput({ style, onFocus, onBlur, ...props }) {
   const ring = useFocusRing();
   return (
     <TextInput
+      underlineColorAndroid="transparent"
       {...props}
       style={[style, ring.input, ring.style]}
       onFocus={(e) => { ring.handlers.onFocus(); onFocus?.(e); }}

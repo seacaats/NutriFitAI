@@ -45,12 +45,6 @@ const MENU_ITEMS = [
     section: "Administration",
   },
   {
-    name: "Admins",
-    icon: "shield-checkmark-outline",
-    route: "/admins",
-    section: "Administration",
-  },
-  {
     name: "Audit Logs",
     icon: "document-text-outline",
     route: "/audit-logs",

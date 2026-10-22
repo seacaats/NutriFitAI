@@ -2,20 +2,17 @@ const { ApiError } = require('../utils/httpResponse');
 const { verifyAccessToken } = require('../utils/auth/token');
 const User = require('../models/user/User');
 const DailyVisit = require('../models/user/DailyVisit');
+const Session = require('../models/auth/Session');
 const { today } = require('../utils/calendarDay');
 
 
 // Synced with the "role" enum in models/user/User.js
 /**
- * Every role the system knows about, weakest first. Must stay in sync with the
- * `role` enum in src/models/user/User.js -- a value accepted here but
- * rejected there (or vice versa) fails open.
- *
- * Order is load-bearing: requireMinimumRole compares indexes, so appending a
- * stronger role is safe while inserting one mid-list re-ranks everything after
- * it.
+ * Every role the system knows about. Must stay in sync with the `role` enum
+ * in src/models/user/User.js -- a value accepted here but rejected there
+ * (or vice versa) fails open.
  */
-const ROLES = ['user', 'admin', 'superadmin'];
+const ROLES = ['user', 'admin'];
 const DEFAULT_ROLE = 'user';
 
 // ---- Timezone (X-Timezone header) -------------------------------------------
@@ -98,6 +95,8 @@ function requireAuth(req, res, next) {
     req.userId = payload.sub;
     req.userEmail = payload.email;
     req.userRole = ROLES.includes(payload.role) ? payload.role : DEFAULT_ROLE;
+    // The session this token came from (none on tokens from before sessions existed)
+    req.sessionId = payload.sid || null;
     rememberTimeZone(req.userId, req.timeZone);
     rememberVisit(req.userId, req.userRole, req.timeZone);
     return next();
@@ -135,33 +134,6 @@ function requireRole(...allowed) {
 }
 
 /**
- * Hierarchical counterpart to requireRole: satisfied by the named role or any
- * stronger one, so `requireMinimumRole('admin')` admits a superadmin without
- * every admin route having to list both.
- *
- * Mirrors AuthContext.hasAtLeastRole on the client, and like requireRole it
- * denies by default -- an unknown role has index -1 and never clears the bar.
- */
-function requireMinimumRole(minimum) {
-  const needed = ROLES.indexOf(minimum);
-
-  return function checkMinimumRole(req, res, next) {
-    if (!req.userId) {
-      return next(ApiError.unauthorized('Please sign in to continue.'));
-    }
-    const held = ROLES.indexOf(req.userRole);
-    if (needed < 0 || held < needed) {
-      return next(
-        ApiError.forbidden("You don't have permission to do that.", {
-          code: 'INSUFFICIENT_ROLE',
-        }),
-      );
-    }
-    return next();
-  };
-}
-
-/**
  * Re-reads the caller's role from the database and overwrites req.userRole
  * with it, rejecting the request if the account is gone.
  *
@@ -179,7 +151,7 @@ function requireMinimumRole(minimum) {
  * surface it is the entire threat model, so these routes pay one indexed
  * primary-key lookup to close it.
  *
- * Mount order matters: requireAuth -> requireFreshRole -> requireMinimumRole,
+ * Mount order matters: requireAuth -> requireFreshRole -> requireRole,
  * so the role check reads the refreshed value rather than the token's.
  */
 async function requireFreshRole(req, res, next) {
@@ -207,6 +179,11 @@ async function requireFreshRole(req, res, next) {
       );
     }
 
+    // An ended session loses the admin surface at once too, not at the next refresh
+    if (req.sessionId && !(await Session.isLive(req.sessionId, req.userId))) {
+      return next(ApiError.unauthorized('Your session has ended. Please log in again.'));
+    }
+
     // A suspended admin loses the admin surface at once, not when their
     // access token expires
     if (user.suspendedAt) {
@@ -226,7 +203,6 @@ module.exports = {
   DEFAULT_ROLE,
   requireAuth,
   requireRole,
-  requireMinimumRole,
   requireFreshRole,
   readTimeZone,
 };

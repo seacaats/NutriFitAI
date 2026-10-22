@@ -20,5 +20,5 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   pageHeader: { marginBottom: 16 },
   pageTitle: { fontSize: 24, fontWeight: "800" },
-  pageSubtitle: { marginTop: 4, fontSize: 13 },
+  pageSubtitle: { marginTop: 4, fontSize: 14 },
 });

@@ -63,17 +63,17 @@ const resetPassword = asyncHandler(async (req, res) => {
     payload = verifyResetToken(resetToken);
     if (payload.type !== 'password_reset') throw new Error('wrong token type');
   } catch {
-    throw ApiError.unauthorized('Invalid or expired reset authorization. Please restart password reset.');
+    throw ApiError.unauthorized('Your reset session has expired. Please start over.');
   }
 
   const challenge = await AuthChallenge.getById(payload.cid);
   if (!challenge || !challenge.consumedAt || challenge.userId !== payload.sub) {
-    throw ApiError.unauthorized('Invalid or expired reset authorization. Please restart password reset.');
+    throw ApiError.unauthorized('Your reset session has expired. Please start over.');
   }
 
   const user = await User.getById(payload.sub);
   if (!user) {
-    throw ApiError.unauthorized('Invalid or expired reset authorization. Please restart password reset.');
+    throw ApiError.unauthorized('Your reset session has expired. Please start over.');
   }
 
   // The token stays valid, so the user can simply pick another password

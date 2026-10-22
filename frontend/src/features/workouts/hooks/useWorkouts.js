@@ -17,8 +17,9 @@ import {
 } from "@/features/workouts/hooks/useWorkoutApi";
 import { useWorkoutPlan, useWorkoutSessions } from "@/features/workouts/hooks/useWorkoutSessions";
 import { useWorkoutTab } from "@/features/workouts/hooks/useWorkoutTab";
-import { requireOnline } from "@/shared/api/apiClient";
+import { apiClient, requireOnline } from "@/shared/api/apiClient";
 import { usePullRefresh } from "@/shared/context/PullRefreshContext";
+import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // Everything the Workouts screen keeps, shared by web and phone: the exercise
@@ -48,7 +49,14 @@ export function useWorkouts() {
   const [exercises, setExercises] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  // Opened from a recommendation: /workouts?search=<exercise name>, or
+  // /workouts?rec=<id> for a routine card (below)
+  const { search: linkedSearch, rec: linkedRec } = useLocalSearchParams();
+  const linked = typeof linkedSearch === "string" ? linkedSearch : "";
+  const [searchQuery, setSearchQuery] = useState(linked);
+  // What is actually sent to the server, trailing the input so typing doesn't
+  // fire a request per keystroke
+  const [debouncedSearch, setDebouncedSearch] = useState(linked.trim());
   const [selectedExercise, setSelectedExercise] = useState(null);
   // A ref, so a reload sees the new roll at once. Rolled again on every filter
   // or preference change (and on refresh); paging keeps the same one
@@ -95,6 +103,17 @@ export function useWorkouts() {
     if (next?.routine && !requireOnline()) return;
     setPlayerState(next);
   }, []);
+  // A routine recommendation: the editor opens pre-filled as a new routine,
+  // saved only when the user saves it. A failure leaves the screen as it was
+  const startedRec = useRef(null);
+  useEffect(() => {
+    if (typeof linkedRec !== "string" || startedRec.current === linkedRec) return;
+    startedRec.current = linkedRec;
+    apiClient
+      .get(`/recommendations/${linkedRec}/draft`, { auth: true })
+      .then((draft) => setEditor({ open: true, routine: draft }))
+      .catch(() => {});
+  }, [linkedRec]);
   // Set when the detail sheet was opened from a scheduled session
   const [detailPlan, setDetailPlan] = useState(null);
 
@@ -106,6 +125,9 @@ export function useWorkouts() {
 
   const offsetRef = useRef(0);
   const hasMoreRef = useRef(true);
+  // Bumped on every reset, so a slow response for an old search or filter
+  // can't land on top of a newer one
+  const loadGeneration = useRef(0);
 
   // Load categories on mount
   useEffect(() => {
@@ -120,15 +142,21 @@ export function useWorkouts() {
       .catch(() => {});
   }, []);
 
-  // Load exercises when a filter changes, with a fresh shuffle
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  // Load exercises when a filter or the search changes, with a fresh shuffle
   useEffect(() => {
     shuffleRef.current = rollShuffle(shuffleRef.current);
     loadExercises(true);
-  }, [activeCategory, equipment, muscles, musclesSecondary, workoutSource, source]);
+  }, [activeCategory, equipment, muscles, musclesSecondary, workoutSource, source, debouncedSearch]);
 
   const loadExercises = useCallback(
     async (reset = false) => {
       if (reset) {
+        loadGeneration.current += 1;
         offsetRef.current = 0;
         hasMoreRef.current = true;
         setLoading(true);
@@ -137,6 +165,7 @@ export function useWorkouts() {
         setLoadingMore(true);
       }
 
+      const generation = loadGeneration.current;
       try {
         let offset = offsetRef.current;
         const collected = [];
@@ -158,11 +187,15 @@ export function useWorkouts() {
             muscles,
             musclesSecondary,
             source: workoutSource || undefined,
+            // Searched on the server, across the whole catalog and the user's
+            // own workouts, not just the pages already loaded
+            search: debouncedSearch || undefined,
             ids: favIds || undefined,
-            shuffle: favIds ? undefined : shuffleRef.current,
+            shuffle: favIds || debouncedSearch ? undefined : shuffleRef.current,
             limit: PAGE_SIZE,
             offset,
           });
+          if (generation !== loadGeneration.current) return; // superseded
           const results = infoPage.results || [];
           pageSuggested = infoPage.suggested;
 
@@ -190,6 +223,7 @@ export function useWorkouts() {
           hasMore = infoPage.next !== null;
         }
 
+        if (generation !== loadGeneration.current) return;
         const valid = collected.filter((e) => e && e.name);
         if (reset) {
           setExercises(valid);
@@ -203,25 +237,18 @@ export function useWorkouts() {
       } catch {
         // silently handle
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        if (generation === loadGeneration.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     },
-    [activeCategory, equipment, muscles, musclesSecondary, workoutSource, source],
+    [activeCategory, equipment, muscles, musclesSecondary, workoutSource, source, debouncedSearch],
   );
 
-  // Client-side search
+  // The server already applied the search; this only drops blocked listings
   const englishExercises = exercises.filter((exercise) => !isBlockedLocalizedExercise(exercise.name));
-  const filtered = searchQuery
-    ? englishExercises.filter(
-        (e) =>
-          e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          e.muscles.some((m) =>
-            m.toLowerCase().includes(searchQuery.toLowerCase()),
-          ) ||
-          e.category.toLowerCase().includes(searchQuery.toLowerCase()),
-      )
-    : englishExercises;
+  const filtered = englishExercises;
 
   // Open detail modal. `planned` = { plannedId, targetSets, targetReps } when
   // started from the Upcoming tab, so logging completes that scheduled row

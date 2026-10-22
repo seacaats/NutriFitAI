@@ -6,6 +6,7 @@ import { colors, radii } from "@/shared/theme/nutrifitai";
 import { profileStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { fs } from "@/shared/theme/fontScale";
 
 // The Profile form's fields, shared by the web and phone screens. Web lays
 // them out as a two-column grid and wraps the chips; the phone stacks them
@@ -172,31 +173,31 @@ const shared = {
   // resolved against the wrong height on Android and left it at the top
   fieldSkeletonBar: { position: "absolute", left: 12, right: 12, top: 0, bottom: 0, justifyContent: "center" },
   noteRow: { flexDirection: "row", alignItems: "flex-start", gap: 5, marginTop: 6 },
-  noteText: { flex: 1, fontSize: 11, lineHeight: 16, color: colors.textMuted },
+  noteText: { flex: 1, fontSize: fs(13, 11), lineHeight: 16, color: colors.textMuted },
   pickerWrap: { marginTop: 8 },
 };
 
 const phone = {
   field: { marginBottom: 12 },
-  fieldLabel: { fontSize: 12, fontWeight: "700", marginBottom: 6 },
-  input: { ...shared.input, fontSize: 14 },
+  fieldLabel: { fontSize: fs(14, 12), fontWeight: "700", marginBottom: 6 },
+  input: { ...shared.input, fontSize: fs(15, 14) },
   inputMultiline: { minHeight: 72, textAlignVertical: "top" },
   chips: { flexDirection: "row", gap: 8, paddingVertical: 2 },
   chip: { borderWidth: 1, borderRadius: radii.pill, paddingHorizontal: 12, paddingVertical: 7 },
-  chipText: { fontSize: 12, fontWeight: "600" },
-  selectDisplayText: { fontSize: 14 },
+  chipText: { fontSize: fs(14, 12), fontWeight: "600" },
+  selectDisplayText: { fontSize: fs(15, 14) },
   wideField: {},
 };
 
 const web = {
   field: { flexGrow: 1, flexBasis: 260, minWidth: 0 }, // responsive two-column grid
-  fieldLabel: { fontSize: 12, fontWeight: "600" },
-  input: { ...shared.input, marginTop: 8, fontSize: 13 },
+  fieldLabel: { fontSize: fs(14, 12), fontWeight: "600" },
+  input: { ...shared.input, marginTop: 8, fontSize: fs(14, 13) },
   inputMultiline: { minHeight: 76, textAlignVertical: "top" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
   chip: { borderRadius: radii.sm, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 },
-  chipText: { fontSize: 11, fontWeight: "600" },
-  selectDisplayText: { fontSize: 13 },
+  chipText: { fontSize: fs(13, 11), fontWeight: "600" },
+  selectDisplayText: { fontSize: fs(14, 13) },
   // Takes a whole row of the grid
   wideField: { flexBasis: "100%" },
 };

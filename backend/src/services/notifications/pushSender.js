@@ -80,9 +80,9 @@ async function handleError({ token, userId, kind, details, message }) {
  * The ticket is Expo's immediate answer. An ok ticket is kept for
  * checkReceipts, Apple/Google's later word on whether it was delivered
  *
- * @param {{ userId: string, kind: string, title: string, body: string, link?: string|null }} message
+ * @param {{ userId: string, kind: string, title: string, body: string, link?: string|null, id?: string|null }} message
  */
-async function sendPush({ userId, kind, title, body, link = null }) {
+async function sendPush({ userId, kind, title, body, link = null, id = null }) {
   let tokens;
   try {
     tokens = await PushToken.listFor(userId);
@@ -99,7 +99,8 @@ async function sendPush({ userId, kind, title, body, link = null }) {
       title,
       body,
       sound: 'default',
-      data: link ? { link } : {},
+      // link opens the screen; id lets the app mark the inbox row read
+      data: { ...(link && { link }), ...(id && { id: String(id) }) },
     }));
 
     let tickets;

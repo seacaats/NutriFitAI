@@ -29,23 +29,37 @@ const MAX_PHOTO_WIDTH = 1280;
  * the upload failed on the device before leaving it, reported as "unable to
  * reach the server". A file:// prefix fixes both.
  *
- * Then it's re-saved as a JPEG, scaled down when large: HEIC gallery photos
- * become something the server accepts, and uploads stay small. If that step
- * fails, the prefixed original is used as is
+ * Then JPEG, PNG and WebP photos are kept as they are unless they're large,
+ * when they're scaled down in the same format. Anything else (HEIC gallery
+ * photos) becomes a JPEG the server accepts. If that step fails, the prefixed
+ * original is used as is
  */
-// Camera shots get a dated name; picked photos keep theirs, with the
-// extension swapped to .jpg since they're re-saved as JPEG
+// Camera shots get a dated name; picked photos keep theirs. The extension
+// only changes when the format does (HEIC and the like become JPEG)
 export function photoName(date = new Date()) {
   const pad = (n) => String(n).padStart(2, "0");
   return `IMG_${toLocalISODate(date).replace(/-/g, "")}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}.jpg`;
 }
-const asJpgName = (name) => `${(name || photoName()).replace(/\.[^./]+$/, "")}.jpg`;
+const withExt = (name, ext) => `${(name || photoName()).replace(/\.[^./]+$/, "")}.${ext}`;
+
+// The formats the server takes as they are
+const KEEP_FORMATS = {
+  "image/jpeg": { ext: "jpg", format: ImageManipulator.SaveFormat.JPEG },
+  "image/png": { ext: "png", format: ImageManipulator.SaveFormat.PNG },
+  "image/webp": { ext: "webp", format: ImageManipulator.SaveFormat.WEBP },
+};
 
 async function preparePhoto(asset) {
   const uri = asset.uri?.startsWith("/") ? `file://${asset.uri}` : asset.uri;
   try {
     const shrink = asset.width > MAX_PHOTO_WIDTH;
-    const save = { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG };
+    // Unknown or unsupported types (HEIC...) fall back to JPEG
+    const keep = KEEP_FORMATS[(asset.type || "").toLowerCase()];
+    // Already fine and small enough: send it untouched
+    if (keep && !shrink) return { ...asset, uri };
+
+    const target = keep || KEEP_FORMATS["image/jpeg"];
+    const save = { compress: 0.8, format: target.format };
     let out;
     // Newer SDKs: the context API. Older ones only have manipulateAsync
     if (ImageManipulator.ImageManipulator?.manipulate) {
@@ -56,8 +70,10 @@ async function preparePhoto(asset) {
     } else {
       out = await ImageManipulator.manipulateAsync(uri, shrink ? [{ resize: { width: MAX_PHOTO_WIDTH } }] : [], save);
     }
-    return { uri: out.uri, name: asJpgName(asset.name), type: "image/jpeg" };
+    const type = keep ? asset.type.toLowerCase() : "image/jpeg";
+    return { uri: out.uri, name: withExt(asset.name, target.ext), type };
   } catch {
+    // Not re-encoded: keep the original name and type
     return { ...asset, uri };
   }
 }
@@ -76,10 +92,10 @@ function messageOf(err, fallback) {
 }
 
 // The same food detected more than once (two fish in one photo) becomes one
-// row: the most confident detection, starting at that many servings.
-// Identical means same name, serving and nutrition, so different foods never
-// merge. Logging sends that one item with its servings, which the server
-// multiplies the same way, so totals and the logged meal don't change
+// row: the most confident detection, starting at that many typical portions
+// in grams. Identical means same name, serving and nutrition, so different
+// foods never merge. Logging sends that one item with its grams, so totals
+// and the logged meal don't change
 function mergeDuplicates(scan) {
   if (!scan?.items?.length) return scan;
   const groups = new Map();
@@ -95,23 +111,24 @@ function mergeDuplicates(scan) {
   return { ...scan, items: [...groups.values()] };
 }
 
-// Every detected food starts selected, at one serving per time it was seen.
-// Foods without nutrition data get empty fields the user fills in (per serving)
+// Every detected food starts selected, at one typical portion (in grams) per
+// time it was seen. Foods without nutrition data start at 100 g, with empty
+// fields the user fills in (per 100 g)
 function initialSelection(scan) {
   const next = {};
   for (const item of scan?.items || []) {
     next[item.itemId] = {
       selected: true,
-      servings: item.count || 1,
+      grams: Math.round((item.defaultGrams || 100) * (item.count || 1)),
       manual: item.hasNutrition ? null : { caloriesKcal: "", proteinG: "", carbsG: "", fatG: "" },
     };
   }
   return next;
 }
 
-// Per-serving value for an item: the scan's own, else what the user typed
-function perServing(item, pick, key) {
-  if (item.hasNutrition) return item[key] ?? 0;
+// Per-100 g value for an item: the scan's own, else what the user typed
+function per100(item, pick, key) {
+  if (item.hasNutrition) return item.per100g?.[key] ?? 0;
   const typed = parseFloat(pick?.manual?.[key]);
   return Number.isFinite(typed) ? typed : 0;
 }
@@ -120,7 +137,7 @@ function perServing(item, pick, key) {
  * Backs both scanner screens. A photo is STAGED first (taken or picked, shown
  * locally, nothing sent) so it can be retaken or swapped, the same way
  * Profile stages an avatar. Only analyze() uploads it, which is also what
- * saves the scan. Then: review, adjust servings, log as a meal.
+ * saves the scan. Then: review, adjust grams, log as a meal.
  * The server re-reads the scan when logging, so totals here are a preview
  */
 function useScanner({ onMealLogged } = {}) {
@@ -233,8 +250,8 @@ function useScanner({ onMealLogged } = {}) {
     setSelection((cur) => ({ ...cur, [itemId]: { ...cur[itemId], selected: !cur[itemId]?.selected } }));
   }, []);
 
-  const setServings = useCallback((itemId, servings) => {
-    setSelection((cur) => ({ ...cur, [itemId]: { ...cur[itemId], servings } }));
+  const setGrams = useCallback((itemId, grams) => {
+    setSelection((cur) => ({ ...cur, [itemId]: { ...cur[itemId], grams } }));
   }, []);
 
   // Only for foods the nutrition table lacks. Kept as typed text, stopping at the server's 5,000 limit
@@ -255,7 +272,7 @@ function useScanner({ onMealLogged } = {}) {
     const sum = { caloriesKcal: 0, proteinG: 0, carbsG: 0, fatG: 0 };
     for (const item of chosen) {
       const pick = selection[item.itemId];
-      for (const key of Object.keys(sum)) sum[key] += perServing(item, pick, key) * pick.servings;
+      for (const key of Object.keys(sum)) sum[key] += (per100(item, pick, key) * pick.grams) / 100;
     }
     for (const key of Object.keys(sum)) sum[key] = Math.round(sum[key] * 10) / 10;
     return sum;
@@ -280,7 +297,7 @@ function useScanner({ onMealLogged } = {}) {
             if (Number.isFinite(v)) typed[key] = v;
           }
         }
-        return { scanItemId: item.itemId, servings: pick.servings, ...typed };
+        return { scanItemId: item.itemId, grams: pick.grams, ...typed };
       });
 
       const meal = await apiClient.post("/food/meals", { scanId: scan.id, mealType, items }, { auth: true });
@@ -322,7 +339,7 @@ function useScanner({ onMealLogged } = {}) {
     removeScan,
     reset,
     toggleItem,
-    setServings,
+    setGrams,
     setManual,
     logMeal,
   };

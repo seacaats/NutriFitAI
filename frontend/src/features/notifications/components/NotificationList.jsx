@@ -6,6 +6,7 @@ import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutri
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { fs } from "@/shared/theme/fontScale";
 
 // The inbox, shared by the Notifications screen (mobile and web) and the
 // web header's bell. `compact` is the bell's version: a few rows, no paging
@@ -117,17 +118,17 @@ export default function NotificationList({ compact = false, onNavigate }) {
 const styles = StyleSheet.create({
   wrap: { gap: 8, width: "100%" },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  count: { fontSize: 12, fontWeight: "600" },
-  markAll: { fontSize: 12, fontWeight: "700", color: shellColors.primary },
+  count: { fontSize: fs(14, 12), fontWeight: "600" },
+  markAll: { fontSize: fs(14, 12), fontWeight: "700", color: shellColors.primary },
   row: { flexDirection: "row", alignItems: "flex-start", gap: 10, borderWidth: 1, borderRadius: radii.sm, padding: 12 },
   rowText: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontSize: 14, fontWeight: "700" },
-  body: { fontSize: 12, lineHeight: 17 },
+  title: { fontSize: fs(15, 14), fontWeight: "700" },
+  body: { fontSize: fs(14, 12), lineHeight: 17 },
   rowEnd: { alignItems: "flex-end", gap: 6 },
-  time: { fontSize: 11 },
+  time: { fontSize: fs(13, 11) },
   dot: { width: 8, height: 8, borderRadius: 4 },
   more: { alignSelf: "center", borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 14, paddingVertical: 8, marginTop: 4 },
-  moreText: { fontSize: 12, fontWeight: "700" },
+  moreText: { fontSize: fs(14, 12), fontWeight: "700" },
   skeletonLine: { marginTop: 4 },
-  stateText: { fontSize: 13, textAlign: "center", paddingVertical: 16 },
+  stateText: { fontSize: fs(14, 13), textAlign: "center", paddingVertical: 16 },
 });

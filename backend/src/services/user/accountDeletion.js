@@ -2,6 +2,7 @@ const { withTransaction } = require('../../../config/mongo');
 const User = require('../../models/user/User');
 const WeightLog = require('../../models/user/WeightLog');
 const AuthChallenge = require('../../models/auth/AuthChallenge');
+const Session = require('../../models/auth/Session');
 const AuthIdentity = require('../../models/auth/AuthIdentity');
 const WaterLog = require('../../models/water/WaterLog');
 const FoodScan = require('../../models/food/FoodScan');
@@ -17,6 +18,11 @@ const Notification = require('../../models/notifications/Notification');
 const PushToken = require('../../models/notifications/PushToken');
 const storage = require('../../utils/storage/index');
 const { clearStoredAvatar } = require('../../utils/storage/avatarStore');
+const { logSystemAction } = require('../../utils/audit-logs/auditLogger');
+const { notify } = require('../../services/notifications/notify');
+
+// How long a deleted account waits before the purge. Keep in sync with the notice in notify.js
+const DELETION_GRACE_DAYS = 14;
 
 // Collections keyed by userId. A new userId collection must be added here,
 // or deleting an account leaves its rows behind (see the notes at the end of migration 001).
@@ -24,6 +30,7 @@ const { clearStoredAvatar } = require('../../utils/storage/avatarStore');
 const BY_USER_ID = {
   weightLogs: WeightLog,
   authChallenges: AuthChallenge,
+  authSessions: Session,
   authIdentities: AuthIdentity,
   waterLogs: WaterLog,
   foodScans: FoodScan,
@@ -35,10 +42,11 @@ const BY_USER_ID = {
   pushTokens: PushToken,
 };
 
-// Admins and superadmins only reach /profile, /notifications and /admin, so they
+// Admins only reach /profile, /notifications and /admin, so they
 // own nothing beyond these. Their trail stays, under the names saved on it
 const ADMIN_BY_USER_ID = {
   authChallenges: AuthChallenge,
+  authSessions: Session,
   authIdentities: AuthIdentity,
   notifications: Notification,
   pushTokens: PushToken,
@@ -88,4 +96,29 @@ async function deleteAccount(userId, role = 'user') {
   return counts;
 }
 
-module.exports = { deleteAccount };
+// Deletes accounts whose grace period has ended. Run by the scheduler in server.js,
+// never throws: a failure is picked up again on the next run
+async function purgeDueDeletions() {
+  try {
+    for (const target of await User.listDueForDeletion()) {
+      try {
+        const deletedCounts = await deleteAccount(target.id, target.role || 'user');
+        await logSystemAction({
+          action: 'admin.user.deleted',
+          targetType: 'user',
+          targetId: target.id,
+          targetLabel: target.fullName || target.email,
+          targetRole: target.role || 'user',
+          details: { deletedCounts, reason: 'Deletion grace period ended' },
+        });
+        notify(null, 'account_deleted', { email: target.email });
+      } catch (err) {
+        console.error('[purge] account deletion failed', target.id, err);
+      }
+    }
+  } catch (err) {
+    console.error('[purge] due deletions lookup failed', err);
+  }
+}
+
+module.exports = { deleteAccount, purgeDueDeletions, DELETION_GRACE_DAYS };

@@ -40,10 +40,10 @@ auditHoldSchema.statics.getByAuditLogId = async function getByAuditLogId(auditLo
   return this.findById(String(auditLogId), null, opts(client)).lean();
 };
 
-// Which of a page's rows are held, as a Set of ids
-auditHoldSchema.statics.heldIds = async function heldIds(auditLogIds, client) {
-  const rows = await this.find({ _id: { $in: auditLogIds.map(String) } }, { _id: 1 }, opts(client)).lean();
-  return new Set(rows.map((r) => r._id));
+// The holds on a page's rows (reason, who, when), as a Map keyed by id
+auditHoldSchema.statics.heldMap = async function heldMap(auditLogIds, client) {
+  const rows = await this.find({ _id: { $in: auditLogIds.map(String) } }, { row: 0 }, opts(client)).lean();
+  return new Map(rows.map((r) => [r._id, r]));
 };
 
 // Every hold, newest first. Small by nature (a hold is a deliberate act), so

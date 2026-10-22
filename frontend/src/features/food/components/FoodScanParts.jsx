@@ -1,7 +1,7 @@
 import Skeleton from "@/shared/components/Skeleton";
 import ActionButton from "@/shared/components/ui/ActionButton";
-import ServerImage from "@/shared/components/ui/ServerImage";
 import ConfirmModal from "@/shared/components/ui/ConfirmModal";
+import ServerImage from "@/shared/components/ui/ServerImage";
 import { resolveMediaUrl } from "@/shared/services/mediaUrl";
 import { colors, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { toLocalISODate } from "@/shared/utils/dates";
@@ -10,6 +10,7 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { fs } from "@/shared/theme/fontScale";
 
 // Food scanner pieces shared by the native and web screens: styles, rows and
 // loading placeholders
@@ -42,7 +43,7 @@ export function ScanImage({ uri, style, contentFit = "cover", onError }) {
 /**
  * Opens the AI Coach on a new thread about this scan or logged meal. Only the
  * id travels: the server reads the foods and nutrition itself on every turn.
- * A logged meal is preferred, it has the servings the user actually set
+ * A logged meal is preferred, it has the grams the user actually set
  */
 export function AskCoachButton({ scanId, mealId, tone, compact = false }) {
   const router = useRouter();
@@ -82,7 +83,7 @@ export const styles = StyleSheet.create({
   // No overflow:hidden. With borderRadius it kept the Android preview from
   // drawing on first open, see imageWrap in the native food-scanner screen
   cameraBox: { width: "100%", borderRadius: radii.sm, borderWidth: 1, backgroundColor: "#000" },
-  cameraMessage: { fontSize: 13, textAlign: "center", maxWidth: 300 },
+  cameraMessage: { fontSize: fs(14, 13), textAlign: "center", maxWidth: 300 },
   cameraActions: { flexDirection: "row", gap: 8, marginTop: 4 },
   cameraBar: {
     position: "absolute",
@@ -108,18 +109,18 @@ export const styles = StyleSheet.create({
 
   // Buttons
   primaryBtn: { borderRadius: radii.sm, backgroundColor: shellColors.primary, paddingVertical: 12, paddingHorizontal: 18, alignItems: "center" },
-  primaryBtnText: { fontSize: 14, fontWeight: "700", color: colors.white },
+  primaryBtnText: { fontSize: fs(15, 14), fontWeight: "700", color: colors.white },
   fullBtn: { alignSelf: "stretch", marginTop: 16 },
   fullBtnTight: { alignSelf: "stretch", marginTop: 8 },
   askBtn: { flexDirection: "row", justifyContent: "center", gap: 8 },
-  askBtnText: { fontSize: 14, fontWeight: "600", color: shellColors.primary },
+  askBtnText: { fontSize: fs(15, 14), fontWeight: "600", color: shellColors.primary },
   ghostBtn: { borderRadius: radii.sm, borderWidth: 1, paddingVertical: 12, paddingHorizontal: 18, alignItems: "center" },
-  ghostBtnText: { fontSize: 14, fontWeight: "600" },
+  ghostBtnText: { fontSize: fs(15, 14), fontWeight: "600" },
 
   // Result card
   card: { borderRadius: radii.sm, borderWidth: 1, padding: 16, alignItems: "flex-start" },
   cardTitle: { fontSize: 16, fontWeight: "800", marginTop: 4 },
-  muted: { fontSize: 12, marginTop: 4 },
+  muted: { fontSize: fs(14, 12), marginTop: 4 },
   doneIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: shellColors.primary, alignItems: "center", justifyContent: "center" },
 
   itemList: { gap: 8 },
@@ -127,26 +128,26 @@ export const styles = StyleSheet.create({
   unselected: { opacity: 0.55 },
   itemHead: { flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" },
   itemCheck: { flex: 1, minWidth: 160, flexDirection: "row", alignItems: "center", gap: 10 },
-  itemName: { fontSize: 14, fontWeight: "700" },
-  itemMeta: { fontSize: 11, marginTop: 2 },
+  itemName: { fontSize: fs(15, 14), fontWeight: "700" },
+  itemMeta: { fontSize: fs(13, 11), marginTop: 2 },
 
   manualWrap: { marginTop: 10, gap: 6 },
   manualRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  manualInput: { flexGrow: 1, flexBasis: 70, borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 8, paddingVertical: 6, fontSize: 12 },
+  manualInput: { flexGrow: 1, flexBasis: 70, borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 8, paddingVertical: 6, fontSize: fs(14, 12) },
 
-  sectionLabel: { marginTop: 16, fontSize: 10, fontWeight: "800", letterSpacing: 0.6 },
+  sectionLabel: { marginTop: 16, fontSize: fs(12, 10), fontWeight: "800", letterSpacing: 0.6 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
   chip: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6 },
   chipActive: { backgroundColor: shellColors.primary },
-  chipText: { fontSize: 12, fontWeight: "600" },
+  chipText: { fontSize: fs(14, 12), fontWeight: "600" },
 
   totals: { alignSelf: "stretch", flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 16 },
   total: { flexGrow: 1, flexBasis: "22%", minWidth: 70, borderRadius: 8, backgroundColor: "rgba(127,127,127,0.07)", padding: 10 },
   totalLine: { width: 22, height: 3, borderRadius: 2, marginBottom: 6 },
-  totalLabel: { fontSize: 10 },
+  totalLabel: { fontSize: fs(12, 10) },
   totalValue: { marginTop: 2, fontSize: 15, fontWeight: "800" },
-  totalSuffix: { fontSize: 10, fontWeight: "500" },
-  disclaimer: { marginTop: 8, fontSize: 10 },
+  totalSuffix: { fontSize: fs(12, 10), fontWeight: "500" },
+  disclaimer: { marginTop: 8, fontSize: fs(12, 10) },
   alert: { alignSelf: "stretch", marginTop: 12 },
 
   // Fixed footprint, see RESULT_CARD_MIN_HEIGHT
@@ -165,15 +166,23 @@ export const styles = StyleSheet.create({
   // Meals
   cardStretch: { alignItems: "stretch" },
   fullWidth: { alignSelf: "stretch" },
+  hintRow: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: radii.sm, padding: 10, marginTop: 12 },
+  hintText: { flex: 1, fontSize: fs(14, 12), lineHeight: 17 },
+  hintBox: { borderRadius: radii.sm, padding: 12, marginTop: 12, gap: 8 },
+  hintTop: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  hintTitle: { fontSize: fs(15, 14), fontWeight: "700" },
+  hintStep: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
+  hintStepValue: { fontSize: fs(14, 12), fontWeight: "700" },
+  hintLink: { fontSize: fs(14, 13), fontWeight: "700", color: shellColors.primary },
   goalGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 12, alignSelf: "stretch" },
   goalField: { flexGrow: 1, flexBasis: 130, gap: 6 },
   goalLabelRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  goalLabel: { fontSize: 12, fontWeight: "700" },
+  goalLabel: { fontSize: fs(14, 12), fontWeight: "700" },
   goalBox: { flexDirection: "row", alignItems: "center", gap: 6, height: 40, borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12 },
-  goalInput: { flex: 1, minWidth: 0, fontSize: 14, fontWeight: "600", paddingVertical: 0 },
-  goalUnit: { fontSize: 12, fontWeight: "600" },
+  goalInput: { flex: 1, minWidth: 0, fontSize: fs(15, 14), fontWeight: "600", paddingVertical: 0 },
+  goalUnit: { fontSize: fs(14, 12), fontWeight: "600" },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  recentDayTitle: { fontSize: 13, fontWeight: "800", marginTop: 12 },
+  recentDayTitle: { fontSize: fs(14, 13), fontWeight: "800", marginTop: 12 },
   recentScans: { marginTop: 12, gap: 8 },
   dayTotals: { alignSelf: "stretch", marginTop: 12, marginBottom: 6, gap: 8 },
   dayKcal: { fontSize: 20, fontWeight: "800" },
@@ -181,19 +190,19 @@ export const styles = StyleSheet.create({
   trackFill: { height: 6, borderRadius: 3, backgroundColor: shellColors.primary },
   mealRow: { paddingVertical: 10, gap: 3 },
   mealRight: { flexDirection: "row", alignItems: "center", gap: 12 },
-  mealKcal: { fontSize: 12, fontWeight: "700" },
+  mealKcal: { fontSize: fs(14, 12), fontWeight: "700" },
 
   // History
   historyList: { gap: 12 },
   dayGroup: { gap: 8 },
   dayHead: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 },
   dayTitle: { fontSize: 15, fontWeight: "800" },
-  daySummary: { fontSize: 12, marginLeft: "auto", flexShrink: 1 },
+  daySummary: { fontSize: fs(14, 12), marginLeft: "auto", flexShrink: 1 },
   scanRow: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: radii.sm, borderWidth: 1, padding: 8 },
   scanThumb: { width: 64, height: 64, borderRadius: 6 },
   thumbPlaceholder: { alignItems: "center", justifyContent: "center" },
   more: { alignSelf: "center", borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 18, paddingVertical: 10 },
-  moreText: { fontSize: 13, fontWeight: "700", color: shellColors.primary },
+  moreText: { fontSize: fs(14, 13), fontWeight: "700", color: shellColors.primary },
 });
 
 // ---- Meals -----------------------------------------------------------------------
@@ -265,7 +274,7 @@ export function MealRow({ meal, tone, onDelete, first, showDay = false }) {
       {meal.items.map((item) => (
         <Text key={String(item.itemId)} style={[styles.itemMeta, { color: tone.muted }]}>
           {item.foodName}
-          {item.serving ? ` · ${item.servings} × ${item.serving}` : item.servings !== 1 ? ` · ${item.servings} servings` : ""}
+          {item.portionGrams ? ` · ${item.portionGrams} g` : item.serving ? ` · ${item.servings} × ${item.serving}` : item.servings !== 1 ? ` · ${item.servings} servings` : ""}
           {` · ${Math.round(item.caloriesKcal || 0)} kcal`}
         </Text>
       ))}
@@ -350,7 +359,7 @@ export function ScanHistoryRow({ scan, tone, onPress, onDelete, showDay = false 
       )}
       <View style={styles.flex1}>
         <Text style={[styles.itemName, { color: tone.text }]} numberOfLines={1}>{title}</Text>
-        {/* One serving of each food found, before any adjusting */}
+        {/* Each food found at one typical serving, before any adjusting */}
         <Text style={[styles.mealKcal, { color: shellColors.primary }]}>{Math.round(kcal)} kcal</Text>
         <Text style={[styles.itemMeta, { color: tone.muted }]}>
           {showDay ? `${dayLabel(dayOfInstant(scan.scannedAt))}, ` : ""}{timeOf(scan.scannedAt)}

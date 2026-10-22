@@ -2,7 +2,8 @@ const { ApiError } = require('../utils/httpResponse');
 const env = require('../../config/env');
 
 function notFoundHandler(req, res, next) {
-  res.status(404).json({ success: false, code: 'NOT_FOUND', message: `Route not found: ${req.method} ${req.originalUrl}` });
+  res.status(404).json({ success: false, code: 'NOT_FOUND', // Route detail stays in development; users get plain wording
+    message: env.nodeEnv === 'production' ? "We couldn't find that." : `Route not found: ${req.method} ${req.originalUrl}` });
 }
 
 // MongoDB duplicate-key error (E11000), raised on any unique-index violation
@@ -28,7 +29,7 @@ function errorHandler(err, req, res, next) {
 
   if (!(error instanceof ApiError)) {
     console.error('Unhandled error:', err);
-    error = ApiError.internal(env.nodeEnv === 'production' ? 'Something went wrong' : err.message);
+    error = ApiError.internal(env.nodeEnv === 'production' ? 'Something went wrong on our end. Please try again.' : err.message);
   }
 
   res.status(error.statusCode).json({

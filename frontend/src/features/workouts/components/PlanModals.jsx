@@ -22,6 +22,7 @@ import {
 import Chip from "./Chip";
 import { WorkoutFilters } from "./PlanTiles";
 import SectionLabel from "./SectionLabel";
+import { fs } from "@/shared/theme/fontScale";
 
 // Workouts dialogs: scheduling, the routine editor and the routine player
 
@@ -249,7 +250,7 @@ export function ScheduleModal({ visible, target, onClose, onSubmit, darkMode }) 
 const scheduleStyles = StyleSheet.create({
   wrapRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   row: { flexDirection: "row", gap: 8, alignItems: "flex-end" },
-  summary: { fontSize: 14, fontWeight: "700" },
+  summary: { fontSize: fs(15, 14), fontWeight: "700" },
   timeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   timeBox: {
     width: 56, height: 44, borderWidth: 1, borderRadius: 10,
@@ -258,7 +259,7 @@ const scheduleStyles = StyleSheet.create({
   colon: { fontSize: 20, fontWeight: "800" },
   period: { flexDirection: "row", borderWidth: 1, borderRadius: 10, overflow: "hidden", marginLeft: 4 },
   periodBtn: { paddingHorizontal: 14, height: 42, justifyContent: "center" },
-  periodText: { fontSize: 14, fontWeight: "800" },
+  periodText: { fontSize: fs(15, 14), fontWeight: "800" },
 });
 
 // Add a workout of your own to the catalog: same fields as a synced one. The
@@ -508,7 +509,7 @@ export function AddWorkoutModal({ visible, onClose, onSave, categories, equipmen
 
 const addStyles = StyleSheet.create({
   prompt: { flexDirection: "row", alignItems: "center", gap: 6 },
-  promptText: { flex: 1, fontSize: 12, fontWeight: "600" },
+  promptText: { flex: 1, fontSize: fs(14, 12), fontWeight: "600" },
   photoRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   photo: { width: 96, height: 72, borderRadius: radii.sm },
 });
@@ -769,19 +770,19 @@ const webNoOutline = Platform.OS === "web" ? { outlineStyle: "none" } : null;
 
 const editorStyles = StyleSheet.create({
   flex1: { flex: 1 },
-  input: { borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, ...webNoOutline },
+  input: { borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12, paddingVertical: 10, fontSize: fs(15, 14), ...webNoOutline },
   multiline: { minHeight: 64, textAlignVertical: "top" },
   search: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12, height: 42 },
-  searchInput: { flex: 1, fontSize: 14, ...webNoOutline },
+  searchInput: { flex: 1, fontSize: fs(15, 14), ...webNoOutline },
   results: { borderWidth: 1, borderRadius: radii.sm, overflow: "hidden" },
   resultRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1 },
-  resultName: { fontSize: 13, fontWeight: "700" },
-  resultMeta: { fontSize: 11, marginTop: 1 },
-  hint: { fontSize: 13 },
+  resultName: { fontSize: fs(14, 13), fontWeight: "700" },
+  resultMeta: { fontSize: fs(13, 11), marginTop: 1 },
+  hint: { fontSize: fs(14, 13) },
   item: { borderWidth: 1, borderRadius: radii.sm, padding: 12, gap: 10 },
   itemTop: { flexDirection: "row", alignItems: "center", gap: 10 },
-  itemIndex: { fontSize: 13, fontWeight: "800", width: 18 },
-  itemName: { flex: 1, fontSize: 14, fontWeight: "700" },
+  itemIndex: { fontSize: fs(14, 13), fontWeight: "800", width: 18 },
+  itemName: { flex: 1, fontSize: fs(15, 14), fontWeight: "700" },
   itemSteppers: { flexDirection: "row", gap: 16, paddingLeft: 28 },
 });
 

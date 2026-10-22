@@ -31,5 +31,5 @@ export default function ScreenHeader({ title, description = null, fallback = nul
 const styles = StyleSheet.create({
   head: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
   pageTitle: { fontSize: 24, fontWeight: "800" },
-  pageSubtitle: { marginTop: 4, fontSize: 13 },
+  pageSubtitle: { marginTop: 4, fontSize: 14 },
 });

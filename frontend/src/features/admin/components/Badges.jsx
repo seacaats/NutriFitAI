@@ -40,7 +40,6 @@ export function SeverityBadge({ severity }) {
  */
 const ROLE_TINT = {
   admin: "blue",
-  superadmin: "purple",
 };
 
 export function RoleBadge({ role }) {

@@ -21,7 +21,7 @@ const googleAuthStart = asyncHandler(async (req, res) => {
   // host. isAllowedRedirectUri() handles those without loosening the rule for
   // https redirects (lib/auth/redirectUri.js)
   if (!(await isAllowedRedirectUri(redirectUri))) {
-    throw ApiError.badRequest('Invalid or missing redirectUri');
+    throw ApiError.badRequest('We couldn\'t start Google sign-in from this page. Please go back to the app and try again.');
   }
 
   // "popup" is carried through an encoded state parameter
@@ -44,7 +44,7 @@ const googleAuthCallback = asyncHandler(async (req, res) => {
     ({ redirectUri, popup } = JSON.parse(Buffer.from(state, 'base64url').toString('utf8')));
     if (!(await isAllowedRedirectUri(redirectUri))) throw new Error('redirect not allowlisted');
   } catch {
-    throw ApiError.badRequest('Invalid OAuth state');
+    throw ApiError.badRequest('Your Google sign-in session is no longer valid. Please go back to the app and try signing in again.');
   }
 
   const popupParam = popup ? '1' : '0';
@@ -128,12 +128,12 @@ const googleExchange = asyncHandler(async (req, res) => {
     payload = verifyOauthExchangeToken(exchangeToken);
     if (payload.type !== 'oauth_exchange') throw new Error('wrong token type');
   } catch {
-    throw ApiError.unauthorized('Invalid or expired sign-in session. Please try again.');
+    throw ApiError.unauthorized('Your sign-in expired. Please try again.');
   }
 
   const user = await User.getById(payload.sub);
   if (!user) {
-    throw ApiError.unauthorized('Invalid or expired sign-in session. Please try again.');
+    throw ApiError.unauthorized('Your sign-in expired. Please try again.');
   }
 
   const hold = accountHold(user);

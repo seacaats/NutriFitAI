@@ -7,34 +7,29 @@ import StatCard from "@/features/admin/components/StatCard";
 import { useAdminUsers } from "@/features/admin/hooks/useAdminUsers";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
 import { RingInput, useFocusRing } from "@/shared/components/ui/FormInput";
-import { ROLES, useAuth } from "@/shared/context/AuthContext";
+import { useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { adminStyles } from "@/shared/theme/screenStyles";
-import { NAME_MAX } from "@/shared/utils/formValidators";
-import { formatDate } from "@/shared/utils/formatDate";
+import { isValidEmail, NAME_MAX } from "@/shared/utils/formValidators";
+import { formatDate, formatTimestamp } from "@/shared/utils/formatDate";
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 
 /**
- * Users management -- the directory every admin and superadmin sees.
+ * Users management -- the directory every admin sees.
  *
  * One file rather than an index.jsx / index.web.jsx pair (DataTable.jsx). There is no
  * platform-specific data source here and no divergent design, only a
  * width-dependent column count, so a split would create exactly the
  * hand-synced duplicate that screenStyles.js exists to undo.
- *
- * Roles are not changed here: a superadmin grants and revokes admin access
- * from the Admins screen (app/(superadmin)/admins.jsx), where the people
- * holding it are listed.
  */
 
 const ROLE_FILTERS = [
   { value: null, label: "Everyone" },
   { value: "user", label: "Users" },
   { value: "admin", label: "Admins" },
-  { value: "superadmin", label: "Superadmins" },
 ];
 
 /**
@@ -54,8 +49,83 @@ const ACTION_COPY = {
   reinstate: { title: (p) => `Reinstate ${p.name}?`, body: "They can sign in again right away.", button: "Reinstate" },
   reset: { title: (p) => `Require a password reset for ${p.name}?`, body: "Sign-in is refused until they set a new password through Forgot password.", button: "Require reset" },
   cancelReset: { title: (p) => `Cancel the password reset for ${p.name}?`, body: "Their current password works again right away.", button: "Cancel reset" },
-  delete: { title: (p) => `Permanently delete ${p.name}?`, body: "Their account and all of their data are removed. This can't be undone.", button: "Delete account" },
+  create: { title: () => "Add an account", body: "No password is set: they get an email explaining how to choose their own. Admins set up 2FA at first sign-in.", button: "Create account" },
+  resetMfa: { title: (p) => `Reset the authenticator app for ${p.name}?`, body: "Their app and recovery codes stop working and they are signed out. At their next sign-in they set up a new one.", button: "Reset authenticator" },
+  endSession: { title: (p) => `End this session of ${p.name}?`, body: "Admins are signed out at once, other users within 15 minutes.", button: "End session" },
+  endAll: { title: (p) => `Sign ${p.name} out of every device?`, body: "Admins are signed out at once, other users within 15 minutes.", button: "Sign out everywhere" },
+  delete: { title: (p) => `Delete ${p.name}?`, body: "They are suspended and signed out now. Their account and all of their data are permanently deleted in 14 days unless you cancel.", button: "Schedule deletion" },
+  cancelDelete: { title: (p) => `Cancel the deletion of ${p.name}?`, body: "They can sign in again right away.", button: "Cancel deletion" },
 };
+
+// "Chrome on Windows" from a user agent, which is all an admin needs to tell devices apart
+function deviceOf(userAgent) {
+  const ua = String(userAgent || "");
+  const os = /Android/i.test(ua) ? "Android" : /iPhone|iPad|iOS/i.test(ua) ? "iOS" : /Windows/i.test(ua) ? "Windows" : /Mac OS/i.test(ua) ? "Mac" : /Linux/i.test(ua) ? "Linux" : "";
+  const app = /Edg\//.test(ua) ? "Edge" : /Firefox/i.test(ua) ? "Firefox" : /Chrome/i.test(ua) ? "Chrome" : /Safari/i.test(ua) ? "Safari" : "";
+  if (app && os) return `${app} on ${os}`;
+  return app || os || "Unknown device";
+}
+
+// A user's signed-in devices, loaded when the row opens. Ending one is the same
+// confirm-with-a-reason step as the account actions (never your own row, see canManage)
+function SessionList({ row, users, manage, startAction, tone }) {
+  const [sessions, setSessions] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setSessions(await users.loadSessions(row.id));
+    } catch (err) {
+      setError(err?.message || "Couldn't load sessions.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Once per open row, and again when the parent remounts it after an action
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <View style={[styles.roleActions, { borderTopColor: tone.border }]}>
+      <View style={styles.sessionHead}>
+        <Text style={[styles.roleActionsLabel, { color: tone.muted }]}>Sessions</Text>
+        <Pressable onPress={load} disabled={loading}>
+          <Text style={[styles.sessionLink, { color: shellColors.primary }]}>{loading ? "Loading…" : "Refresh"}</Text>
+        </Pressable>
+      </View>
+      {error && <Text style={[styles.subCell, { color: colors.danger }]}>{error}</Text>}
+      {sessions && sessions.length === 0 && <Text style={[styles.bodyCell, { color: tone.muted }]}>No signed-in devices.</Text>}
+      {(sessions || []).map((s) => (
+        <View key={s.id} style={[styles.sessionRow, { borderColor: tone.border }]}>
+          <View style={styles.flex1}>
+            <Text style={[styles.primaryCell, { color: tone.text }]}>{deviceOf(s.userAgent)}</Text>
+            <Text style={[styles.subCell, { color: tone.muted }]}>
+              Last active {formatTimestamp(s.lastUsedAt)}{s.ip ? ` · ${s.ip}` : ""}
+            </Text>
+          </View>
+          {manage && (
+            <Pressable onPress={() => startAction("endSession", row, { sessionId: s.id })} style={[styles.roleBtn, { borderColor: tone.border, backgroundColor: tone.card }]}>
+              <Text style={[styles.roleBtnText, { color: tone.text }]}>End</Text>
+            </Pressable>
+          )}
+        </View>
+      ))}
+      {manage && sessions && sessions.length > 0 && (
+        <View style={styles.roleBtnRow}>
+          <Pressable onPress={() => startAction("endAll", row)} style={[styles.roleBtn, { borderColor: colors.danger, backgroundColor: tone.card }]}>
+            <Text style={[styles.roleBtnText, { color: colors.danger }]}>Sign out everywhere</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
+  );
+}
 
 export default function AdminUsersScreen() {
   const ring = useFocusRing();
@@ -64,12 +134,10 @@ export default function AdminUsersScreen() {
   const { width } = useWindowDimensions();
   const narrow = width < 900;
 
-  const { user, hasRole, role: myRole } = useAuth();
-  const canDelete = hasRole("superadmin");
+  const { user } = useAuth();
 
-  // Mirrors loadManageableTarget: never yourself, only a strictly lower role.
-  // A courtesy, the server enforces it
-  const canManage = (row) => row.id !== user?.id && ROLES.indexOf(myRole) > ROLES.indexOf(row.role);
+  // Mirrors loadManageableTarget: never yourself. A courtesy, the server enforces it
+  const canManage = (row) => row.id !== user?.id;
 
   const users = useAdminUsers();
   const [expandedId, setExpandedId] = useState(null);
@@ -84,13 +152,23 @@ export default function AdminUsersScreen() {
   const [pendingChange, setPendingChange] = useState(null);
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Bumped after a session action so each open list loads again
+  const [sessionsVersion, setSessionsVersion] = useState(0);
 
   // A rename also needs a first name, the API rejects an empty one
   const canSubmit = reason.trim().length >= 3
-    && !(pendingChange?.kind === "rename" && !pendingChange.firstName.trim());
+    && !(pendingChange?.kind === "rename" && !pendingChange.firstName.trim())
+    && !(pendingChange?.kind === "create" && (!pendingChange.firstName.trim() || !isValidEmail(pendingChange.email)));
 
   const startAction = (kind, row, extra = {}) => {
     setPendingChange({ kind, id: row.id, name: row.fullName || row.email, ...extra });
+    setReason("");
+    setNotice(null);
+  };
+
+  // No row yet: the form starts empty
+  const startCreate = () => {
+    setPendingChange({ kind: "create", id: null, name: "", email: "", firstName: "", lastName: "", role: "user" });
     setReason("");
     setNotice(null);
   };
@@ -107,14 +185,22 @@ export default function AdminUsersScreen() {
     else if (kind === "reinstate") result = await users.reinstate(id, why);
     else if (kind === "reset") result = await users.forcePasswordReset(id, why);
     else if (kind === "cancelReset") result = await users.cancelPasswordReset(id, why);
+    else if (kind === "create") {
+      const lastName = pendingChange.lastName.trim();
+      result = await users.createUser({ email: pendingChange.email.trim(), firstName: pendingChange.firstName.trim(), role: pendingChange.role, ...(lastName ? { lastName } : {}) }, why);
+    } else if (kind === "resetMfa") result = await users.resetAuthenticator(id, why);
+    else if (kind === "endSession") result = await users.revokeSession(id, pendingChange.sessionId, why);
+    else if (kind === "endAll") result = await users.revokeAllSessions(id, why);
     else if (kind === "delete") result = await users.deleteUser(id, why);
+    else if (kind === "cancelDelete") result = await users.cancelDeletion(id, why);
     else {
       setSubmitting(false);
       return;
     }
     setSubmitting(false);
-    setNotice({ ok: result.ok, message: result.message });
+    setNotice({ ok: result.ok, message: result.message, id });
     if (result.ok) {
+      if (kind === "endSession" || kind === "endAll") setSessionsVersion((v) => v + 1);
       setPendingChange(null);
       setReason("");
     }
@@ -131,7 +217,7 @@ export default function AdminUsersScreen() {
             {row.fullName || "—"}
             {row.id === user?.id ? "  (you)" : ""}
           </Text>
-          {row.suspendedAt && <Text style={[styles.subCell, { color: colors.danger }]}>Suspended</Text>}
+          {row.suspendedAt && <Text style={[styles.subCell, { color: colors.danger }]}>{row.deletionScheduledFor ? "Scheduled for Deletion" : "Suspended"}</Text>}
           {/* The email rides under the name below 1100px */}
           {width < 1100 && (
             <Text numberOfLines={1} style={[styles.subCell, { color: tone.muted }]}>{row.email}</Text>
@@ -178,10 +264,23 @@ export default function AdminUsersScreen() {
               ? [{ label: "Terms accepted", value: formatDate(row.termsAcceptedAt) }]
               : []),
             { label: "Joined", value: formatDate(row.createdAt) },
+            ...(row.emailChangedAt ? [{ label: "Email changed", value: formatDate(row.emailChangedAt) }] : []),
             ...(row.suspendedAt
-              ? [{ label: "Suspended", value: `${formatDate(row.suspendedAt)} — ${row.suspendedReason || "no reason"}` }]
+              ? [
+                { label: row.deletionScheduledFor ? "Scheduled for Deletion" : "Suspended", value: formatDate(row.suspendedAt) },
+                { label: "By", value: row.suspendedBy || "Unknown" },
+                { label: "Reason", value: row.suspendedReason || "No reason recorded" },
+              ]
               : []),
-            ...(row.passwordResetRequired ? [{ label: "Password reset", value: "Required at next sign-in" }] : []),
+            ...(row.deletionScheduledFor ? [{ label: "Deletes on", value: formatDate(row.deletionScheduledFor) }] : []),
+            // Who required it and why, like the suspension above
+            ...(row.passwordResetRequired
+              ? [
+                { label: "Password reset required", value: formatDate(row.passwordResetRequiredAt) },
+                { label: "Required by", value: row.passwordResetBy || "Unknown" },
+                { label: "Reset reason", value: row.passwordResetReason || "No reason recorded" },
+              ]
+              : []),
           ]}
         />
 
@@ -195,12 +294,15 @@ export default function AdminUsersScreen() {
               >
                 <Text style={[styles.roleBtnText, { color: tone.text }]}>Edit name</Text>
               </Pressable>
-              <Pressable
-                onPress={() => startAction(row.suspendedAt ? "reinstate" : "suspend", row)}
-                style={[styles.roleBtn, { borderColor: tone.border, backgroundColor: tone.card }]}
-              >
-                <Text style={[styles.roleBtnText, { color: tone.text }]}>{row.suspendedAt ? "Reinstate" : "Suspend"}</Text>
-              </Pressable>
+              {/* Hidden while a deletion is waiting: cancelling it is what reinstates */}
+              {!row.deletionScheduledFor && (
+                <Pressable
+                  onPress={() => startAction(row.suspendedAt ? "reinstate" : "suspend", row)}
+                  style={[styles.roleBtn, { borderColor: tone.border, backgroundColor: tone.card }]}
+                >
+                  <Text style={[styles.roleBtnText, { color: tone.text }]}>{row.suspendedAt ? "Reinstate" : "Suspend"}</Text>
+                </Pressable>
+              )}
               {/* One button that flips, like Suspend / Reinstate */}
               <Pressable
                 onPress={() => startAction(row.passwordResetRequired ? "cancelReset" : "reset", row)}
@@ -210,21 +312,163 @@ export default function AdminUsersScreen() {
                   {row.passwordResetRequired ? "Cancel password reset" : "Require password reset"}
                 </Text>
               </Pressable>
-              {canDelete && (
+              {/* Lost device: back to first-time setup */}
+              {row.role === "admin" && (
                 <Pressable
-                  onPress={() => startAction("delete", row)}
-                  style={[styles.roleBtn, { borderColor: colors.danger, backgroundColor: tone.card }]}
+                  onPress={() => startAction("resetMfa", row)}
+                  style={[styles.roleBtn, { borderColor: tone.border, backgroundColor: tone.card }]}
                 >
-                  <Text style={[styles.roleBtnText, { color: colors.danger }]}>Delete account</Text>
+                  <Text style={[styles.roleBtnText, { color: tone.text }]}>Reset authenticator</Text>
                 </Pressable>
               )}
+              {/* Flips to a cancel while the deletion waits out its grace period */}
+              <Pressable
+                onPress={() => startAction(row.deletionScheduledFor ? "cancelDelete" : "delete", row)}
+                style={[styles.roleBtn, { borderColor: row.deletionScheduledFor ? tone.border : colors.danger, backgroundColor: tone.card }]}
+              >
+                <Text style={[styles.roleBtnText, { color: row.deletionScheduledFor ? tone.text : colors.danger }]}>
+                  {row.deletionScheduledFor ? "Cancel deletion" : "Delete account"}
+                </Text>
+              </Pressable>
             </View>
           </View>
         )}
 
+        {pendingChange?.id === row.id && confirmNode}
+        {notice?.id === row.id && noticeNode}
+
+        <SessionList key={`${row.id}-${sessionsVersion}`} row={row} users={users} manage={canManage(row)} startAction={startAction} tone={tone} />
       </View>
     );
   };
+
+  // The result and the confirm step of an action. A row's own action shows them inside its
+  // drawer, right where the button was pressed, so there is nothing to scroll to or back
+  // from. Add account (no row) shows them at the top
+  const noticeNode = notice && (
+    <View
+      style={[
+        styles.notice,
+        { backgroundColor: notice.ok ? tone.soft : colors.dangerBg, borderColor: notice.ok ? tone.border : colors.danger },
+      ]}
+    >
+      <Ionicons
+        name={notice.ok ? "checkmark-circle-outline" : "alert-circle-outline"}
+        size={16}
+        color={notice.ok ? colors.green600 : colors.danger}
+      />
+      <Text style={[styles.noticeText, { color: notice.ok ? tone.text : colors.danger }]}>{notice.message}</Text>
+      <Pressable onPress={() => setNotice(null)} accessibilityLabel="Dismiss">
+        <Ionicons name="close" size={15} color={tone.muted} />
+      </Pressable>
+    </View>
+  );
+  const confirmNode = pendingChange && (
+    <View style={[styles.confirmCard, { backgroundColor: tone.card, borderColor: colors.danger }]}>
+      <Text style={[styles.confirmTitle, { color: tone.text }]}>
+        {ACTION_COPY[pendingChange.kind].title(pendingChange)}
+      </Text>
+      <Text style={[styles.confirmBody, { color: tone.muted }]}>
+        {ACTION_COPY[pendingChange.kind].body ? `${ACTION_COPY[pendingChange.kind].body} ` : ""}
+        This is recorded in the audit log with your name, the time, and the reason below.
+      </Text>
+      {pendingChange.kind === "rename" && (
+        <View style={styles.nameRow}>
+          <RingInput
+            value={pendingChange.firstName}
+            onChangeText={(firstName) => setPendingChange((p) => ({ ...p, firstName }))}
+            autoFocus
+            placeholder="First name"
+            maxLength={NAME_MAX}
+            placeholderTextColor={tone.muted}
+            style={[styles.reasonInput, styles.nameInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
+          />
+          <RingInput
+            value={pendingChange.lastName}
+            onChangeText={(lastName) => setPendingChange((p) => ({ ...p, lastName }))}
+            placeholder="Last name"
+            maxLength={NAME_MAX}
+            placeholderTextColor={tone.muted}
+            style={[styles.reasonInput, styles.nameInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
+          />
+        </View>
+      )}
+      {pendingChange.kind === "create" && (
+        <>
+          <View style={styles.nameRow}>
+            <RingInput
+              value={pendingChange.firstName}
+              onChangeText={(firstName) => setPendingChange((p) => ({ ...p, firstName }))}
+              autoFocus
+              placeholder="First name"
+              maxLength={NAME_MAX}
+              placeholderTextColor={tone.muted}
+              style={[styles.reasonInput, styles.nameInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
+            />
+            <RingInput
+              value={pendingChange.lastName}
+              onChangeText={(lastName) => setPendingChange((p) => ({ ...p, lastName }))}
+              placeholder="Last name (optional)"
+              maxLength={NAME_MAX}
+              placeholderTextColor={tone.muted}
+              style={[styles.reasonInput, styles.nameInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
+            />
+          </View>
+          <RingInput
+            value={pendingChange.email}
+            onChangeText={(email) => setPendingChange((p) => ({ ...p, email }))}
+            placeholder="Email"
+            maxLength={254}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            placeholderTextColor={tone.muted}
+            style={[styles.reasonInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text, minHeight: 0 }]}
+          />
+          {/* Role picker */}
+          <View style={styles.roleBtnRow}>
+            {["user", "admin"].map((r) => {
+              const on = pendingChange.role === r;
+              return (
+                <Pressable
+                  key={r}
+                  onPress={() => setPendingChange((p) => ({ ...p, role: r }))}
+                  style={[styles.roleBtn, { borderColor: on ? shellColors.primary : tone.border, backgroundColor: on ? tone.soft : tone.card }]}
+                >
+                  <Text style={[styles.roleBtnText, { color: on ? shellColors.primary : tone.text }]}>{r}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      )}
+      <RingInput
+        value={reason}
+        onChangeText={setReason}
+        autoFocus={pendingChange.kind !== "rename" && pendingChange.kind !== "create"}
+        placeholder="Reason (required)"
+        maxLength={300}
+        placeholderTextColor={tone.muted}
+        style={[styles.reasonInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
+        multiline
+      />
+      <View style={styles.confirmActions}>
+        <Pressable
+          onPress={() => { setPendingChange(null); setReason(""); }}
+          style={[styles.secondaryBtn, { borderColor: tone.border }]}
+        >
+          <Text style={[styles.secondaryBtnText, { color: tone.text }]}>Cancel</Text>
+        </Pressable>
+        <Pressable
+          onPress={submitAction}
+          disabled={submitting || !canSubmit}
+          style={[styles.dangerBtn, (submitting || !canSubmit) && styles.btnDisabled]}
+        >
+          <Text style={styles.dangerBtnText}>{submitting ? "Saving…" : ACTION_COPY[pendingChange.kind].button}</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
 
   return (
     <DashboardLayout>
@@ -236,6 +480,10 @@ export default function AdminUsersScreen() {
             Everyone with a NutriFitAI account. Open a row for the full record.
           </Text>
         </View>
+        <Pressable onPress={startCreate} style={styles.refreshBtn}>
+          <Ionicons name="person-add-outline" size={16} color={colors.white} />
+          <Text style={styles.refreshText}>Add account</Text>
+        </Pressable>
         <Pressable onPress={users.refresh} disabled={users.loading} style={[styles.refreshBtn, users.loading && { opacity: 0.6 }]}>
           <Ionicons name="refresh" size={16} color={colors.white} />
           <Text style={styles.refreshText}>{users.loading ? "Loading" : "Refresh"}</Text>
@@ -246,7 +494,6 @@ export default function AdminUsersScreen() {
         <StatCard label="TOTAL ACCOUNTS" value={users.counts?.total} tone={tone} />
         <StatCard label="USERS" value={users.counts?.user} tone={tone} />
         <StatCard label="ADMINS" value={users.counts?.admin} tone={tone} />
-        <StatCard label="SUPERADMINS" value={users.counts?.superadmin} tone={tone} />
       </View>
 
       <View style={[styles.controls, narrow && styles.controlsNarrow]}>
@@ -273,81 +520,8 @@ export default function AdminUsersScreen() {
         <FilterRow options={ROLE_FILTERS} value={users.roleFilter} onChange={users.setRoleFilter} />
       </View>
 
-      {notice && (
-        <View
-          style={[
-            styles.notice,
-            { backgroundColor: notice.ok ? tone.soft : colors.dangerBg, borderColor: notice.ok ? tone.border : colors.danger },
-          ]}
-        >
-          <Ionicons
-            name={notice.ok ? "checkmark-circle-outline" : "alert-circle-outline"}
-            size={16}
-            color={notice.ok ? colors.green600 : colors.danger}
-          />
-          <Text style={[styles.noticeText, { color: notice.ok ? tone.text : colors.danger }]}>{notice.message}</Text>
-          <Pressable onPress={() => setNotice(null)} accessibilityLabel="Dismiss">
-            <Ionicons name="close" size={15} color={tone.muted} />
-          </Pressable>
-        </View>
-      )}
-
-      {/* The confirm step */}
-      {pendingChange && (
-        <View style={[styles.confirmCard, { backgroundColor: tone.card, borderColor: colors.danger }]}>
-          <Text style={[styles.confirmTitle, { color: tone.text }]}>
-            {ACTION_COPY[pendingChange.kind].title(pendingChange)}
-          </Text>
-          <Text style={[styles.confirmBody, { color: tone.muted }]}>
-            {ACTION_COPY[pendingChange.kind].body ? `${ACTION_COPY[pendingChange.kind].body} ` : ""}
-            This is recorded in the audit log with your name, the time, and the reason below.
-          </Text>
-          {pendingChange.kind === "rename" && (
-            <View style={styles.nameRow}>
-              <RingInput
-                value={pendingChange.firstName}
-                onChangeText={(firstName) => setPendingChange((p) => ({ ...p, firstName }))}
-                placeholder="First name"
-                maxLength={NAME_MAX}
-                placeholderTextColor={tone.muted}
-                style={[styles.reasonInput, styles.nameInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
-              />
-              <RingInput
-                value={pendingChange.lastName}
-                onChangeText={(lastName) => setPendingChange((p) => ({ ...p, lastName }))}
-                placeholder="Last name"
-                maxLength={NAME_MAX}
-                placeholderTextColor={tone.muted}
-                style={[styles.reasonInput, styles.nameInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
-              />
-            </View>
-          )}
-          <RingInput
-            value={reason}
-            onChangeText={setReason}
-            placeholder="Reason (required)"
-            maxLength={300}
-            placeholderTextColor={tone.muted}
-            style={[styles.reasonInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
-            multiline
-          />
-          <View style={styles.confirmActions}>
-            <Pressable
-              onPress={() => { setPendingChange(null); setReason(""); }}
-              style={[styles.secondaryBtn, { borderColor: tone.border }]}
-            >
-              <Text style={[styles.secondaryBtnText, { color: tone.text }]}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              onPress={submitAction}
-              disabled={submitting || !canSubmit}
-              style={[styles.dangerBtn, (submitting || !canSubmit) && styles.btnDisabled]}
-            >
-              <Text style={styles.dangerBtnText}>{submitting ? "Saving…" : ACTION_COPY[pendingChange.kind].button}</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
+      {notice && (!notice.id || expandedId !== notice.id) && noticeNode}
+      {pendingChange && (!pendingChange.id || expandedId !== pendingChange.id) && confirmNode}
 
       <DataTable
         columns={columns}
@@ -392,6 +566,10 @@ const styles = StyleSheet.create({
   roleBtnRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   roleBtn: { borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 14, paddingVertical: 8 },
   roleBtnText: { fontSize: 12, fontWeight: "700", textTransform: "capitalize" },
+
+  sessionHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  sessionLink: { fontSize: 12, fontWeight: "700" },
+  sessionRow: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12, paddingVertical: 8 },
 
   confirmCard: { borderWidth: 1, borderRadius: radii.md, padding: 16, gap: 10, marginBottom: 16 },
   confirmTitle: { fontSize: 15, fontWeight: "700" },

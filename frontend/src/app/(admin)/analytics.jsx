@@ -12,9 +12,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 /**
- * Analytics -- the admin and superadmin dashboard (web only, like the rest
+ * Analytics -- the admin dashboard (web only, like the rest
  * of (admin)). Counts across the whole app from GET /admin/analytics: no
- * names, emails or health values, so both roles see the same page.
+ * names, emails or health values.
  *
  * "Active" means opened the app that day (any signed-in use, counted once
  * per user per day), regular users only
@@ -173,7 +173,7 @@ export default function AdminAnalyticsScreen() {
         <StatCard
           label="SUSPENDED"
           value={v ? v.accounts.suspended.toLocaleString() : DASH}
-          hint={v ? `${v.accounts.admins + v.accounts.superadmins} admins` : null}
+          hint={v ? `${v.accounts.admins} admins` : null}
           tone={tone} loading={first}
         />
       </View>
@@ -261,30 +261,30 @@ const styles = StyleSheet.create({
   column: { flexDirection: "column" },
   stackItem: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
 
-  panel: { borderWidth: 1, borderRadius: radii.md, padding: 16, minWidth: 0 },
-  panelHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 12, flexWrap: "wrap" },
-  panelTitle: { fontSize: 15, fontWeight: "800" },
-  panelNote: { fontSize: 11, fontWeight: "600" },
+  panel: { borderWidth: 1, borderRadius: radii.md, padding: 18, minWidth: 0 },
+  panelHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 14, flexWrap: "wrap" },
+  panelTitle: { fontSize: 16, fontWeight: "800" },
+  panelNote: { fontSize: 12, fontWeight: "600" },
 
   usageRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 },
-  usageLabel: { flex: 1, minWidth: 0, fontSize: 13, fontWeight: "600" },
-  usageValue: { fontSize: 15, fontWeight: "800" },
+  usageLabel: { flex: 1, minWidth: 0, fontSize: 14, fontWeight: "600" },
+  usageValue: { fontSize: 16, fontWeight: "800" },
 
   funnelPanel: { marginBottom: 12 },
-  funnelRow: { paddingVertical: 6 },
-  funnelTop: { flexDirection: "row", justifyContent: "space-between", gap: 8, marginBottom: 6 },
-  funnelLabel: { flex: 1, minWidth: 0, fontSize: 13, fontWeight: "600" },
-  funnelValue: { fontSize: 13, fontWeight: "800" },
+  funnelRow: { paddingVertical: 8 },
+  funnelTop: { flexDirection: "row", justifyContent: "space-between", gap: 8, marginBottom: 8 },
+  funnelLabel: { flex: 1, minWidth: 0, fontSize: 14, fontWeight: "600" },
+  funnelValue: { fontSize: 14, fontWeight: "800" },
   funnelTrack: { height: 8, borderRadius: 4, overflow: "hidden" },
   funnelFill: { height: 8, borderRadius: 4, backgroundColor: shellColors.primary },
-  funnelEmpty: { fontSize: 13 },
+  funnelEmpty: { fontSize: 14 },
 
   breakdown: { flexDirection: "row", alignItems: "center", gap: 16, flexWrap: "wrap" },
-  donutValue: { fontSize: 16, fontWeight: "800", textAlign: "center" },
-  donutLabel: { fontSize: 10, fontWeight: "600", textAlign: "center" },
-  legend: { flex: 1, minWidth: 140, gap: 8 },
+  donutValue: { fontSize: 18, fontWeight: "800", textAlign: "center" },
+  donutLabel: { fontSize: 11, fontWeight: "600", textAlign: "center" },
+  legend: { flex: 1, minWidth: 140, gap: 10 },
   legendRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendLabel: { flex: 1, fontSize: 12 },
-  legendValue: { fontSize: 12, fontWeight: "700" },
+  legendLabel: { flex: 1, fontSize: 13 },
+  legendValue: { fontSize: 13, fontWeight: "700" },
 });

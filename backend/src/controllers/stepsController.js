@@ -5,6 +5,7 @@ const { sendSuccess, asyncHandler, ApiError } = require('../utils/httpResponse')
 const { today } = require('../utils/calendarDay');
 const { logAction } = require('../utils/audit-logs/auditLogger');
 const { notify } = require('../services/notifications/notify');
+const { userTimeZone } = require('../services/user/userTimeZone');
 const { DEFAULT_DAILY_STEP_GOAL } = require('../utils/goals/goalLimits');
 
 // Converts step/distance values from the database's string format into real numbers
@@ -51,10 +52,10 @@ const getSteps = asyncHandler(async (req, res) => {
 
 // GET /api/steps/today?date=YYYY-MM-DD
 //
-// `date` is supplied by the client but falls back 
-// to the server's UTC date only when the they omit it
+// `date` is supplied by the client but falls back
+// to today in the user's own timezone when they omit it
 const getToday = asyncHandler(async (req, res) => {
-  const date = req.validatedQuery?.date || new Date().toISOString().slice(0, 10);
+  const date = req.validatedQuery?.date || today(await userTimeZone(req));
 
   const [row, goal] = await Promise.all([
     DailySteps.findByDate({ userId: req.userId, activityDate: date }),
@@ -79,8 +80,7 @@ const getToday = asyncHandler(async (req, res) => {
 // backfilled or edited past day isn't news. Never throws
 async function checkStepGoal(req) {
   try {
-    const timeZone = req.timeZone || (await User.getProfile(req.userId))?.timezone || undefined;
-    const day = today(timeZone);
+    const day = today(await userTimeZone(req));
     const [row, goal] = await Promise.all([
       DailySteps.findByDate({ userId: req.userId, activityDate: day }),
       User.getActiveGoal(req.userId),
@@ -124,7 +124,7 @@ const setManualSteps = asyncHandler(async (req, res) => {
   const { activityDate, stepCount } = req.body;
 
   // The user's own "today", not the server's
-  const timeZone = req.timeZone || (await User.getProfile(req.userId))?.timezone || undefined;
+  const timeZone = await userTimeZone(req);
   const last = today(timeZone);
   // Any past day can be edited, just not a day that hasn't happened yet
   if (activityDate > last) {
@@ -192,7 +192,7 @@ const clearStepSource = asyncHandler(async (req, res) => {
 // PUT /api/steps/goal -- saved on the active goal, like the water goal
 const setStepGoal = asyncHandler(async (req, res) => {
   const goal = await User.setGoalTarget(req.userId, 'dailySteps', req.body.dailySteps);
-  if (!goal) throw ApiError.notFound('User not found');
+  if (!goal) throw ApiError.notFound('We couldn\'t find your account. Please sign in again.');
   return sendSuccess(res, { data: { dailyGoal: goal.dailySteps }, message: 'Step goal saved' });
 });
 

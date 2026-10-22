@@ -36,4 +36,15 @@ const subjectQuerySchema = z
 // generic "not found"
 const conversationIdParamSchema = z.object({ id: objectId('conversation id') }).strict();
 
-module.exports = { sendMessageSchema, subjectQuerySchema, conversationIdParamSchema, MAX_MESSAGE_LENGTH };
+// PATCH /recommendations/:id: close a card and/or rate it
+const recommendationIdParamSchema = z.object({ id: objectId('recommendation id') }).strict();
+
+const recommendationUpdateSchema = z
+  .object({
+    status: z.enum(['dismissed', 'done']).optional(),
+    feedback: z.enum(['up', 'down']).optional(),
+  })
+  .strict()
+  .refine((b) => b.status || b.feedback, { message: 'There are no changes to save.' });
+
+module.exports = { recommendationIdParamSchema, recommendationUpdateSchema, sendMessageSchema, subjectQuerySchema, conversationIdParamSchema, MAX_MESSAGE_LENGTH };

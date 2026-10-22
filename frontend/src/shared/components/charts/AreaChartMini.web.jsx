@@ -33,6 +33,7 @@ export default function AreaChartMini({
   const labelAt = (i) => chartData[i]?.label ?? "";
   const tipAt = (i) => chartData[i]?.tip ?? "";
 
+  // Axis labels at 11px (were 8) so they stay readable
   return (
     <ChartBox height={height}>
       {(width) => (
@@ -45,7 +46,7 @@ export default function AreaChartMini({
               tickFormatter={labelAt}
               // Pre-thinned series (blank labels) print every tick; others auto-thin
               interval={chartData.some((d) => !d.label) ? 0 : "preserveEnd"}
-              tick={{ fontSize: 8, fill: colors.textMuted, fontFamily: CHART_FONT }}
+              tick={{ fontSize: 11, fill: colors.textMuted, fontFamily: CHART_FONT }}
               axisLine={{ stroke: screenTones.dark.muted }}
               tickLine={false}
             />
@@ -58,10 +59,10 @@ export default function AreaChartMini({
               domain={[yMin, yMax]}
               ticks={yTicks}
               tickFormatter={yTickFormat}
-              tick={{ fontSize: 8, fill: colors.textMuted, fontFamily: CHART_FONT }}
+              tick={{ fontSize: 11, fill: colors.textMuted, fontFamily: CHART_FONT }}
               axisLine={false}
               tickLine={false}
-              width={30}
+              width={36}
             />
           ) : (
             <YAxis domain={[yMin, yMax]} hide />

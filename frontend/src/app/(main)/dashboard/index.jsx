@@ -1,4 +1,5 @@
-import { DASH, MacroRow, pct, PlannedWorkouts } from "@/features/dashboard/components/DashboardWidgets";
+import { DASH, MacroRow, pct, PlannedWorkouts, RecommendationsStrip } from "@/features/dashboard/components/DashboardWidgets";
+import { useRecommendations } from "@/features/dashboard/hooks/useRecommendations";
 import OnboardingPrompt from "@/features/onboarding/components/OnboardingPrompt";
 import { useDashboard } from "@/features/progress/hooks/useProgress";
 import { WaterCard } from "@/features/water/components/WaterCards";
@@ -15,7 +16,7 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-na
 
 // The phone dashboard. Same data as the web one (useDashboard), fewer
 // panels: calories and macros, water, steps and streak, shortcuts, and
-// today's plan. No calorie goal exists, so calories show no percentage
+// today's plan. Calories show the daily goal beside the amount eaten when one is set
 
 export default function DashboardScreen() {
   // Real weekly totals. summary is null while loading and on failure; the card
@@ -23,6 +24,7 @@ export default function DashboardScreen() {
   // between states is noisier than one that simply fills in.
   const { summary: workoutSummary } = useWorkoutSessions();
   const dash = useDashboard();
+  const recs = useRecommendations();
   const v = dash.view;
   const stepGoal = v?.goals.dailySteps ?? 0;
 
@@ -56,6 +58,9 @@ export default function DashboardScreen() {
 
       {/* Onboarding: first visit goes there, then a banner until it's filled in */}
       <OnboardingPrompt darkMode={darkMode} />
+
+      {/* Recommendations: only shown once there is a card */}
+      <RecommendationsStrip recs={recs} darkMode={darkMode} onOpen={(item) => router.push(item.action.route)} style={styles.recs} />
 
       {/* Today's calories and macros. Tap for the food scanner */}
       <Pressable onPress={() => router.push("/food-scanner")} style={[styles.card, card]}>
@@ -173,6 +178,7 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   ...dashboardStyles,
   waterCard: { marginBottom: 16 },
+  recs: { marginBottom: 12 },
 
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },
   greeting: { fontSize: 20, fontWeight: "700" },

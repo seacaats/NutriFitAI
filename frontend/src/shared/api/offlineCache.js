@@ -9,7 +9,7 @@ const PREFIX = "nf-cache:v1:";
 // Big lists aren't worth the storage (Android ~6MB, browsers ~5MB)
 const MAX_ENTRY_CHARS = 200_000;
 // Admin data and downloads stay online-only
-const SKIP = [/^\/admin\b/, /^\/superadmin\b/, /^\/auth\/(?!me$)/];
+const SKIP = [/^\/admin\b/, /^\/auth\/(?!me$)/];
 
 export const isCacheable = (path) => !SKIP.some((re) => re.test(path));
 

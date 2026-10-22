@@ -47,7 +47,6 @@ const LABELS = {
   // roles and platforms
   user: 'User',
   admin: 'Admin',
-  superadmin: 'Superadmin',
   ios: 'iOS',
   android: 'Android',
   web: 'Web',
@@ -120,6 +119,7 @@ const SUBJECT_MODES = { actor: 'as actor', target: 'as target', self: 'self' };
 function filters(value) {
   const parts = [];
   if (value.held) parts.push('Held entries');
+  if (value.noted) parts.push('Noted entries');
   if (value.category) parts.push(`Category: ${humanize(value.category)}`);
   if (value.action) parts.push(`Action: ${AUDIT_ACTIONS[value.action]?.label ?? value.action}`);
   // "all" is the default side, so only the narrower ones are named
@@ -195,13 +195,6 @@ function humanField(field) {
     .toLowerCase();
 }
 
-function joinList(parts) {
-  if (parts.length === 0) return '';
-  if (parts.length === 1) return parts[0];
-  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-  return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
-}
-
 // ===========================================================================
 // Names
 // ===========================================================================
@@ -242,20 +235,13 @@ function names(entry) {
 // The row
 // ===========================================================================
 
-function article(word) {
-  return /^[aeiou]/i.test(word) ? `an ${word}` : `a ${word}`;
-}
-
 function sentence(template, details, actor, target) {
   const tokens = {
     ...Object.fromEntries(Object.entries(details).map(([k, v]) => [k, inSentence(v)])),
     actor,
     target: target || 'an account',
   };
-  if (details.toRole) {
-    tokens.toRole = details.toRole;
-    tokens.toRoleWithArticle = article(details.toRole);
-  }
+  if (details.toRole) tokens.toRole = details.toRole;
   // A goal cleared to null reads "none" rather than "null"
   const text = template.replace(/\{(\w+)\}/g, (match, key) => String(tokens[key] ?? 'none'));
   // Only the unnamed fallback starts lowercase. A label never gets lifted,
@@ -267,25 +253,19 @@ function sentence(template, details, actor, target) {
  * The single function every read path calls.
  *
  * Returns the row shape the audit table renders, already redacted for the
- * viewer. The caller must have filtered by canViewAction() first -- this
- * function formats, it does not authorise, and passing it an entry the viewer
- * may not see will happily format it.
+ * viewer. This function formats, it does not authorise.
  *
- * One sentence for every viewer. Everything a superadmin sees beyond an
- * admin -- IDs, IP, user agent, before/after values, superadmin-only fields
- * -- rides in its own field, never in the sentence.
+ * IDs, IP, user agent and before/after values ride in their own fields,
+ * never in the sentence.
  *
  * @param {object} entry   a lean audit_logs document
- * @param {'admin'|'superadmin'} viewerRole
  */
-function formatAuditEntry(entry, viewerRole) {
+function formatAuditEntry(entry) {
   const def = getActionDef(entry.action);
-  const isSuper = viewerRole === 'superadmin';
   const details = (entry.details && typeof entry.details === 'object') ? entry.details : {};
   const { actor, target } = names(entry);
 
   const fields = def.fields
-    .filter((field) => isSuper || !field.superadmin)
     .map((field) => formatField(field, details, entry))
     .filter(Boolean);
 
@@ -300,19 +280,19 @@ function formatAuditEntry(entry, viewerRole) {
     message: sentence(def.message, details, actor, target),
     fields,
     actor,
-    actorId: isSuper ? (entry.userId || null) : null,
+    actorId: entry.userId || null,
     actorRole: entry.role || null,
     // false only when the actor was unverified at the time ("User (Unverified)")
     actorVerified: entry.actorVerified ?? null,
     target,
     targetRole: entry.targetRole || null,
     targetType: entry.targetType || def.targetType || null,
-    targetId: isSuper ? (entry.targetId || null) : null,
-    ipAddress: isSuper ? (entry.ipAddress || null) : null,
-    userAgent: isSuper ? (entry.userAgent || null) : null,
-    // Before/after values are superadmin-only. Health fields carry neither
-    // (see HEALTH_FIELDS), so they come through as hidden
-    changes: isSuper && changes.length
+    targetId: entry.targetId || null,
+    ipAddress: entry.ipAddress || null,
+    userAgent: entry.userAgent || null,
+    // Health fields carry no before/after values (see HEALTH_FIELDS), so
+    // they come through as hidden
+    changes: changes.length
       ? changes.map((c) => ({
         field: c.field,
         label: humanize(humanField(c.field)),
@@ -321,8 +301,6 @@ function formatAuditEntry(entry, viewerRole) {
         hidden: !('from' in c) && !('to' in c),
       }))
       : null,
-    // The admin view: which fields moved, without their values
-    changeFields: changes.length ? humanize(joinList(changes.map((c) => humanField(c.field)))) : null,
     createdAt: entry.createdAt,
     // When TTL deletes the row. The table flags rows close to it
     expiresAt: entry.expiresAt || null,

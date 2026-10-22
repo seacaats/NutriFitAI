@@ -14,9 +14,10 @@ export default function StatCard({ label, value, hint, tone, loading = value == 
   );
 }
 
+// Roomier padding and gaps so label, value and hint read as separate lines
 const styles = StyleSheet.create({
-  card: { flex: 1, minWidth: 150, borderWidth: 1, borderRadius: radii.md, padding: 16, gap: 4 },
-  label: { fontSize: 10, fontWeight: "800", letterSpacing: 0.6 },
-  value: { fontSize: 24, fontWeight: "800" },
-  hint: { fontSize: 11, fontWeight: "600" },
+  card: { flex: 1, minWidth: 150, borderWidth: 1, borderRadius: radii.md, padding: 18, gap: 6 },
+  label: { fontSize: 11, fontWeight: "800", letterSpacing: 0.6 },
+  value: { fontSize: 26, fontWeight: "800" },
+  hint: { fontSize: 12, fontWeight: "600" },
 });

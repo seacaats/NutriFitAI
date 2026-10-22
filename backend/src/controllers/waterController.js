@@ -82,7 +82,7 @@ const removeWater = asyncHandler(async (req, res) => {
 // PUT /api/water/goal -- validator already enforces the 8-glass minimum
 const setWaterGoal = asyncHandler(async (req, res) => {
   const goal = await User.setGoalTarget(req.userId, 'dailyWaterMl', req.body.goalMl);
-  if (!goal) throw ApiError.notFound('User not found');
+  if (!goal) throw ApiError.notFound('We couldn\'t find your account. Please sign in again.');
   const data = await buildWaterPayload(req);
   return sendSuccess(res, { message: 'Water goal saved', data });
 });

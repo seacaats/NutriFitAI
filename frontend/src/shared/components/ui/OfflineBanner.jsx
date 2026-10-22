@@ -24,7 +24,7 @@ export default function OfflineBanner({ style }) {
     <View style={[styles.bar, style]} accessibilityRole="alert">
       <Ionicons name={noConnection ? "wifi-outline" : "cloud-offline-outline"} size={15} color={colors.white} />
       <Text style={styles.text} numberOfLines={1}>
-        {noConnection ? "No internet connection" : "The server is currently unreachable"}
+        {noConnection ? "No internet connection" : "We're having trouble connecting"}
       </Text>
     </View>
   );

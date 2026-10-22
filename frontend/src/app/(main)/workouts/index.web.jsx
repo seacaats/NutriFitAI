@@ -367,7 +367,7 @@ export default function WorkoutsScreen() {
           </View>
 
           {/* Load More */}
-          {hasMoreRef.current && !searchQuery && (
+          {hasMoreRef.current && (
             <Pressable
               onPress={() => loadExercises(false)}
               style={[styles.loadMoreBtn, { borderColor: card.borderColor }]}
@@ -720,6 +720,7 @@ function ExerciseDetailModal({
                   <ActionButton
                     variant="secondary"
                     label={favorite ? "Favorited" : "Favorite"}
+                    active={favorite}
                     onPress={onToggleFavorite}
                     darkMode={darkMode}
                   />
@@ -785,7 +786,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   pageTitle: { fontSize: 24, fontWeight: "800" },
-  pageSubtitle: { marginTop: 4, fontSize: 13 },
+  pageSubtitle: { marginTop: 4, fontSize: 14 },
 
   // Top row (search + stats)
   topRow: {
@@ -805,7 +806,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 8,
   },
-  searchInput: { flex: 1, fontSize: 14, padding: 0, outlineStyle: "none" },
+  searchInput: { flex: 1, fontSize: 15, padding: 0, outlineStyle: "none" },
   statsRow: { flexDirection: "row", gap: 10 },
   // Small screens: the cards sit centred under the search bar
   statsRowNarrow: { justifyContent: "center", flexWrap: "wrap" },
@@ -822,16 +823,16 @@ const styles = StyleSheet.create({
     width: 104,
   },
   statValue: { fontSize: 16, fontWeight: "800" },
-  statLabel: { fontSize: 10, fontWeight: "600" },
+  statLabel: { fontSize: 12, fontWeight: "600" },
 
   tabsRow: { marginBottom: 16 },
   cardHeart: { position: "absolute", top: 8, right: 8 },
   detailActions: { flexDirection: "row", gap: 10, marginTop: 16, flexWrap: "wrap" },
-  plannedNote: { fontSize: 12, fontWeight: "700", marginTop: 16 },
+  plannedNote: { fontSize: 14, fontWeight: "700", marginTop: 16 },
 
   // Results
   resultTitle: { fontSize: 18, fontWeight: "700" },
-  resultCount: { fontSize: 12 },
+  resultCount: { fontSize: 14 },
   resultActions: { flexDirection: "row", alignItems: "center", gap: 10 },
 
   // Exercise Grid
@@ -869,7 +870,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 4,
   },
-  equipmentText: { fontSize: 10, color: colors.textMuted, marginTop: 4 },
+  equipmentText: { fontSize: 12, color: colors.textMuted, marginTop: 4 },
   viewBtnRow: { marginTop: 10 },
   viewBtn: {
     flexDirection: "row",
@@ -880,7 +881,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingVertical: 7,
   },
-  viewBtnText: { fontSize: 11, fontWeight: "600", color: colors.white },
+  viewBtnText: { fontSize: 13, fontWeight: "600", color: colors.white },
 
   // Load more
   loadMoreBtn: {
@@ -897,7 +898,7 @@ const styles = StyleSheet.create({
 
   emptyWrap: { alignItems: "center", paddingVertical: 60 },
   emptyTitle: { fontSize: 18, fontWeight: "700", marginTop: 14 },
-  emptySubtitle: { fontSize: 13, marginTop: 4 },
+  emptySubtitle: { fontSize: 14, marginTop: 4 },
 
   // Modal (centered dialog for web)
   modalOverlay: {
@@ -941,10 +942,10 @@ const styles = StyleSheet.create({
 
   modalTitle: { fontSize: 24, fontWeight: "800", marginBottom: 10 },
   modalBadge: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 6 },
-  modalBadgeText: { fontSize: 12, fontWeight: "600" },
+  modalBadgeText: { fontSize: 14, fontWeight: "600" },
   modalSection: { marginBottom: 14 },
-  modalSectionTitle: { fontSize: 13, fontWeight: "700", marginBottom: 8 },
-  modalDesc: { fontSize: 14, lineHeight: 22 },
+  modalSectionTitle: { fontSize: 14, fontWeight: "700", marginBottom: 8 },
+  modalDesc: { fontSize: 15, lineHeight: 22 },
 
   extraImagesRow: { flexDirection: "row", gap: 10, marginTop: 4 },
   extraImage: { width: 140, height: 110, borderRadius: 8 },

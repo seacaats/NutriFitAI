@@ -114,7 +114,7 @@ const loginMfaEnable = asyncHandler(async (req, res) => {
 // factor must not be possible from a borrowed session alone
 async function requirePasswordFor(req, password, method) {
   const user = await User.getById(req.userId);
-  if (!user) throw ApiError.notFound('User not found');
+  if (!user) throw ApiError.notFound("We couldn't find your account.");
   if (mfaMethodOf(user) !== method) throw ApiError.forbidden('That option isn\'t available for this account.');
   if (!(await verifyPassword(password, user.passwordHash))) {
     await logAction(req, { action: 'auth.password.verify_failed', targetType: 'user' });

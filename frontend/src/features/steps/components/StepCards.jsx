@@ -11,6 +11,7 @@ import { addDays, formatNumber, friendlyDate, todayISO } from "@/shared/utils/da
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { fs } from "@/shared/theme/fontScale";
 
 // The Steps page's shared pieces, used by both web and mobile.
 // Steps are edit-only: a saved day becomes "manual", which phone syncs never
@@ -29,7 +30,7 @@ export function dayLabel(day) {
 export const styles = StyleSheet.create({
   todayHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   quickRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
-  quickInput: { minWidth: 120, fontSize: 14, fontWeight: "600", borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12, paddingVertical: 8 },
+  quickInput: { minWidth: 120, fontSize: fs(15, 14), fontWeight: "600", borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12, paddingVertical: 8 },
   goalCard: { borderWidth: 1, borderRadius: radii.md, padding: 18, gap: 10 },
   goalTitle: { fontSize: 17, fontWeight: "800" },
   form: { gap: 12 },
@@ -42,22 +43,22 @@ export const styles = StyleSheet.create({
   month: { gap: 8 },
   monthHead: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 },
   monthTitle: { fontSize: 15, fontWeight: "800" },
-  monthSummary: { fontSize: 12, marginLeft: "auto", flexShrink: 1 },
+  monthSummary: { fontSize: fs(14, 12), marginLeft: "auto", flexShrink: 1 },
   dot: { width: 10, height: 10, borderRadius: 5 },
   card: { borderWidth: 1, borderRadius: radii.md, paddingHorizontal: 14 },
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
   rowMain: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: 14, fontWeight: "700" },
-  rowMeta: { fontSize: 11 },
+  rowTitle: { fontSize: fs(15, 14), fontWeight: "700" },
+  rowMeta: { fontSize: fs(13, 11) },
   track: { height: 5, borderRadius: 3, overflow: "hidden", marginTop: 6, maxWidth: 220 },
   fill: { height: "100%", backgroundColor: shellColors.primary },
   value: { fontSize: 15, fontWeight: "800", minWidth: 64, textAlign: "right" },
   edit: { width: 26, alignItems: "center" },
   loading: { paddingVertical: 20, alignItems: "center" },
   more: { alignSelf: "center", borderWidth: 1, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 9 },
-  moreText: { color: shellColors.primary, fontSize: 13, fontWeight: "700" },
-  note: { fontSize: 12, textAlign: "center" },
-  error: { color: "#e5484d", fontSize: 13 },
+  moreText: { color: shellColors.primary, fontSize: fs(14, 13), fontWeight: "700" },
+  note: { fontSize: fs(14, 12), textAlign: "center" },
+  error: { color: "#e5484d", fontSize: fs(14, 13) },
 });
 
 // ---- Today's steps -------------------------------------------------------------
@@ -342,27 +343,27 @@ function Metric({ value, label, palette }) {
 // The page widgets' styles, apart from the editing ones above
 const w = StyleSheet.create({
   flex1: { flex: 1 },
-  muted: { fontSize: 12 },
+  muted: { fontSize: fs(14, 12) },
   skeletonGap: { marginTop: 3 },
   editSpacer: { width: 18 },
 
   // Range tabs: full-width pills on mobile, a compact switch beside the chart title on web
   tabs: { flexDirection: "row", borderRadius: radii.pill, padding: 4 },
   tab: { flex: 1, paddingVertical: 8, borderRadius: radii.pill, alignItems: "center" },
-  tabText: { fontSize: 13, fontWeight: "700" },
+  tabText: { fontSize: fs(14, 13), fontWeight: "700" },
   tabsWide: { flexDirection: "row", padding: 3, borderRadius: 8 },
   tabWide: { borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 },
-  tabTextWide: { fontSize: 10, fontWeight: "700" },
+  tabTextWide: { fontSize: fs(12, 10), fontWeight: "700" },
   tabActive: { backgroundColor: shellColors.primary },
 
   // Stats
   stats: { flexDirection: "row", gap: 12 },
   statValue: { fontSize: 18, fontWeight: "800" },
-  statLabel: { fontSize: 11 },
+  statLabel: { fontSize: fs(13, 11) },
   statsWide: { flexDirection: "row", alignItems: "center", gap: 22, marginTop: 18 },
   statWideWrap: { flexDirection: "row", alignItems: "center", gap: 22 },
   statValueWide: { fontSize: 17, fontWeight: "800" },
-  statLabelWide: { marginTop: 2, fontSize: 9 },
+  statLabelWide: { marginTop: 2, fontSize: fs(11, 9) },
   statDivider: { width: 1, height: 30 },
 
   // Recent days
@@ -371,11 +372,11 @@ const w = StyleSheet.create({
   head: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { fontSize: 15, fontWeight: "700" },
   titleWide: { fontSize: 17, fontWeight: "800" },
-  subtitle: { fontSize: 11, marginTop: 2 },
-  subtitleWide: { fontSize: 10, marginTop: 3 },
+  subtitle: { fontSize: fs(13, 11), marginTop: 2 },
+  subtitleWide: { fontSize: fs(12, 10), marginTop: 3 },
   historyBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 7 },
-  historyText: { fontSize: 11, fontWeight: "700" },
-  historyTextWide: { fontSize: 10 },
+  historyText: { fontSize: fs(13, 11), fontWeight: "700" },
+  historyTextWide: { fontSize: fs(12, 10) },
   listWide: { marginTop: 13 },
 
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
@@ -385,16 +386,16 @@ const w = StyleSheet.create({
   // Columns share the row instead of fixed widths, so a narrow window
   // squeezes them rather than pushing the edit button off the card
   infoWide: { flex: 1.6, minWidth: 0 },
-  day: { fontSize: 13, fontWeight: "700" },
-  dayWide: { fontSize: 12, fontWeight: "700" },
-  source: { fontSize: 11 },
-  sourceWide: { marginTop: 3, fontSize: 9 },
+  day: { fontSize: fs(14, 13), fontWeight: "700" },
+  dayWide: { fontSize: fs(14, 12), fontWeight: "700" },
+  source: { fontSize: fs(13, 11) },
+  sourceWide: { marginTop: 3, fontSize: fs(11, 9) },
   value: { fontSize: 15, fontWeight: "800" },
   metric: { flex: 1, minWidth: 0 },
-  metricValue: { fontSize: 12, fontWeight: "800" },
-  metricLabel: { marginTop: 2, fontSize: 8 },
+  metricValue: { fontSize: fs(14, 12), fontWeight: "800" },
+  metricLabel: { marginTop: 2, fontSize: fs(10, 8) },
 
   empty: { alignItems: "center", gap: 8, paddingVertical: 34, paddingHorizontal: 20 },
-  emptyTitle: { fontSize: 14, fontWeight: "700", textAlign: "center" },
-  emptyCopy: { fontSize: 11, lineHeight: 17, textAlign: "center", maxWidth: 420 },
+  emptyTitle: { fontSize: fs(15, 14), fontWeight: "700", textAlign: "center" },
+  emptyCopy: { fontSize: fs(13, 11), lineHeight: 17, textAlign: "center", maxWidth: 420 },
 });

@@ -4,7 +4,7 @@ const { getActionDef, retentionDaysFor } = require('../../utils/audit-logs/actio
 
 const { Schema } = mongoose;
 
-// Append-only. Reads serve the admin/superadmin audit surface, and there's
+// Append-only. Reads serve the admin audit surface, and there's
 // no update or delete on purpose: a trail that can be edited is not a trail.
 // Outlives the document it tracks. Expires by severity (expiresAt, TTL index)
 const auditLogSchema = new Schema(
@@ -31,7 +31,7 @@ const auditLogSchema = new Schema(
     targetRole: { type: String, maxlength: 30, default: null },
 
     // The action done. Naming convention: "auth.login.succeeded",
-    // "admin.user.role_change", for filtering purposes. Actual permitted
+    // "admin.user.suspended", for filtering purposes. Actual permitted
     // values, along with their severity, and other details are in utils/audit-logs/actions/registry.js
     // Kept as a string rather than an enum to make any new tracked actions remain valid
     action: { type: String, required: true, maxlength: 100 },
@@ -126,6 +126,9 @@ function buildFilter(query) {
     filter.$nor = [{ action: 'admin.audit_log.note_added', 'details.notedAction': { $nin: query.actions } }];
   }
 
+  // Only these rows (the "Noted" filter). Malformed ids are dropped, not cast
+  if (Array.isArray(query.ids)) filter._id = { $in: query.ids.filter((id) => mongoose.isValidObjectId(id)) };
+
   // The actor did it.
   if (query.userId) filter.userId = query.userId;
   // It was done to them.
@@ -181,6 +184,9 @@ function hashRow(row) {
   const body = HASHED_FIELDS.map((f) => canonical(row[f] ?? null)).join('|');
   return crypto.createHash('sha256').update(body).digest('hex');
 }
+
+// Exposed for scripts/rewrite-audit-roles.js, which has to re-hash rows
+auditLogSchema.statics.hashRow = hashRow;
 
 function isDuplicateKey(err) {
   return err && (err.code === 11000 || err.code === 11001);

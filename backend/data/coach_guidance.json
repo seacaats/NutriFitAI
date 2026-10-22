@@ -1,0 +1,7 @@
+[
+  { "id": "warmup", "reviewed": false, "text": "Start a workout with a few minutes of light movement and easy versions of the first exercises, then build up." },
+  { "id": "rest-days", "reviewed": false, "text": "Rest days are part of training. Muscles recover between sessions, so easy days or full rest help progress." },
+  { "id": "progression", "reviewed": false, "text": "Increase reps, sets or weight gradually, a little at a time, and keep form clean before making things harder." },
+  { "id": "protein-spread", "reviewed": false, "text": "Protein is easier to fit in when it is spread over the day's meals and snacks instead of saved for one." },
+  { "id": "water", "reviewed": false, "text": "Drink water through the day and around workouts, more when it is hot or the session is long." }
+]

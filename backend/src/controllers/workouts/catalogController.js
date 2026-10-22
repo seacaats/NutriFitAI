@@ -93,39 +93,30 @@ const listWorkouts = asyncHandler(async (req, res) => {
   // Browse: shuffled, within any category or equipment filter. Unfiltered, the
   // user's preferred exercises come first. A search or an id list keeps its own
   // order, and so do the user's own workouts (alphabetical, a short list)
-  if (shuffle && !search && !ids && source !== 'user') {
+  if (shuffle && !(search && search.trim()) && !ids && source !== 'user') {
     const data = await listShuffled(req.userId, Number(shuffle), filter, !category && !equipment && !muscles && !musclesSecondary && !source, limit, offset);
     return sendSuccess(res, { data });
   }
 
-  let query;
-  let total;
-
-  if (search && search.trim()) {
-    /**
-     * Text search over name, muscle names and category, weighted toward the
-     * name (see the index definition in models/health/Workout.js).
-     *
-     * Ordered by relevance rather than by name: a query for "bench" should put
-     * "Bench Press" above "Incline Dumbbell Bench Fly".
-     *
-     * NOTE ON THE SORT: the free tier caps in-memory sorts at 32 MB and ignores
-     * allowDiskUse, so an uncovered sort FAILS rather than running slowly. A
-     * textScore sort is computed during the text-index scan and is safe at this
-     * collection size, but if a category filter is ever combined with a large
-     * result set and this starts erroring, narrow the match before sorting
-     * rather than adding indexes that cost storage.
-     */
-    filter.$text = { $search: search.trim() };
-
-    query = Workout.find(filter, { score: { $meta: 'textScore' }, ...projectionObject() })
-      .sort({ score: { $meta: 'textScore' } });
-  } else {
-    // Stable alphabetical order. Without an explicit sort the driver returns
-    // natural order, which shifts as documents are updated — so page 2 could
-    // repeat an item from page 1 after a sync.
-    query = Workout.find(filter, LIST_PROJECTION).collation({ locale: 'en', strength: 1 }).sort({ name: 1 });
+  /**
+   * Search: a case-insensitive substring match over name, muscle names and
+   * category, like the client-side filter this replaced. Not $text: that only
+   * matches whole words, so "ben" would never find "Bench Press" and a
+   * half-typed name would show nothing. The collection is small, so a scan
+   * is cheap. Applied to the user's own workouts too, as they share the
+   * collection and the visibility clause above is in the same $and.
+   */
+  const term = typeof search === 'string' ? search.trim().slice(0, 100) : '';
+  if (term) {
+    const rx = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    filter.$and.push({ $or: [{ name: rx }, { 'muscles.name': rx }, { 'category.name': rx }] });
   }
+
+  // Stable alphabetical order. Without an explicit sort the driver returns
+  // natural order, which shifts as documents are updated, so page 2 could
+  // repeat an item from page 1 after a sync.
+  const query = Workout.find(filter, LIST_PROJECTION).collation({ locale: 'en', strength: 1 }).sort({ name: 1 });
+  let total;
 
   const [items, count] = await Promise.all([
     query.skip(offset).limit(limit).lean(),
@@ -243,7 +234,7 @@ async function listShuffled(userId, shuffle, base, usePrefs, limit, offset) {
 const getWorkout = asyncHandler(async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {
-    throw ApiError.badRequest('Invalid exercise id');
+    throw ApiError.badRequest("We couldn't find that exercise.");
   }
 
   const doc = await Workout.findOne({ _id: id, ...Workout.visibleTo(req.userId) }).lean();

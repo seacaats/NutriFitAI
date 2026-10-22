@@ -4,11 +4,10 @@ import DetailGrid from "@/features/admin/components/DetailGrid";
 import FilterRow from "@/features/admin/components/FilterRow";
 import Pager from "@/features/admin/components/Pager";
 import RowNotesAndHold from "@/features/admin/components/RowNotesAndHold";
-import { BY_USER, HELD, useAuditLogs, useUserSearch } from "@/features/admin/hooks/useAuditLogs";
+import { BY_USER, HELD, NOTED, useAuditLogs, useUserSearch } from "@/features/admin/hooks/useAuditLogs";
 import Skeleton from "@/shared/components/Skeleton";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
 import { useFocusRing } from "@/shared/components/ui/FormInput";
-import { useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { adminStyles } from "@/shared/theme/screenStyles";
@@ -27,10 +26,9 @@ import {
   View,
 } from "react-native";
 
-// Server decides which rows and fields each role sees, and words them
-// (message + fields)
+// Server words each row (message + fields)
 
-// Rows this close to their TTL get a badge, so a superadmin can hold them in time
+// Rows this close to their TTL get a badge, so an admin can hold them in time
 const EXPIRY_WARNING_DAYS = 30;
 
 // Skeleton gray for blocks on the page background in light mode (the default
@@ -62,7 +60,7 @@ const SUBJECT_MODES = [
   { value: "self", label: "Self" },
 ];
 
-const ROLE_LABELS = { user: "User", admin: "Admin", superadmin: "Superadmin" };
+const ROLE_LABELS = { user: "User", admin: "Admin" };
 
 // A full user id (UUID), searchable only when no name or email matches
 const USER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -85,7 +83,6 @@ export default function AuditLogsScreen() {
   const [expandedId, setExpandedId] = useState(null);
   const [exportNotice, setExportNotice] = useState(null);
   const [exporting, setExporting] = useState(false);
-  const { role } = useAuth();
   // These sit on the page background, where the default skeleton gray is
   // nearly invisible in light mode: a step darker there
   const skeletonTint = darkMode ? null : { backgroundColor: LIGHT_SKELETON_ON_PAGE };
@@ -112,10 +109,10 @@ export default function AuditLogsScreen() {
         label: CATEGORY_LABELS[category] || category,
       })),
       { value: BY_USER, label: "By User" },
-      // Held copies, superadmin only
-      ...(log.viewerRole === "superadmin" ? [{ value: HELD, label: "Held" }] : []),
+      { value: NOTED, label: "Noted" },
+      { value: HELD, label: "Held" },
     ];
-  }, [log.meta, log.viewerRole]);
+  }, [log.meta]);
 
   /** Actions within the chosen category, for the second-level drill-in. Only
    *  shown once a category narrows it to a readable handful. */
@@ -193,15 +190,6 @@ export default function AuditLogsScreen() {
     },
   ];
 
-  /**
-   * The IP column is dropped entirely for an admin rather than rendered as a
-   * column of dashes. A column that is structurally always empty reads as a
-   * bug in the table; the banner below says why it is missing instead.
-   */
-  const visibleColumns = log.redacted
-    ? columns.filter((column) => column.key !== "ipAddress")
-    : columns;
-
   const renderExpanded = (row) => (
     <View style={styles.expandedWrap}>
       <Text selectable style={[styles.fullMessage, { color: tone.text }]}>{row.message}</Text>
@@ -229,18 +217,15 @@ export default function AuditLogsScreen() {
           { label: "Subject", value: row.target },
           { label: "Subject role", value: row.targetRole ? ROLE_LABELS[row.targetRole] || row.targetRole : null },
           { label: "Subject type", value: row.targetType },
-          // Present only for a superadmin; DetailGrid drops null entries, so
-          // an admin's drawer simply has fewer cells rather than empty ones.
+          // DetailGrid drops null entries, so a row without them has fewer cells
           { label: "Actor ID", value: row.actorId },
           { label: "Subject ID", value: row.targetId },
           { label: "IP address", value: row.ipAddress },
           { label: "Client", value: row.userAgent },
-          // The admin fallback: which fields moved, without their values.
-          { label: "Fields changed", value: row.changeFields },
         ]}
       />
 
-      {/* Before/after values, superadmin only. A small table rather than a
+      {/* Before/after values. A small table rather than a
           sentence, because comparing two values is a scanning task. */}
       {Array.isArray(row.changes) && row.changes.length > 0 && (
         <View style={[styles.changesBox, { borderColor: tone.border }]}>
@@ -267,7 +252,7 @@ export default function AuditLogsScreen() {
         </View>
       )}
 
-      <RowNotesAndHold row={row} log={log} isSuper={log.viewerRole === "superadmin"} tone={tone} />
+      <RowNotesAndHold row={row} log={log} tone={tone} />
     </View>
   );
 
@@ -283,9 +268,9 @@ export default function AuditLogsScreen() {
           </Text>
         </View>
         <View style={styles.headerActions}>
-          {/* The session already says who may export; the button waits for the filter menu */}
-          {log.firstLoad && role === "superadmin" && <Skeleton width={128} height={38} borderRadius={radii.sm} style={skeletonTint} />}
-          {!log.firstLoad && log.viewerRole === "superadmin" && (
+          {/* The button waits for the filter menu */}
+          {log.firstLoad && <Skeleton width={128} height={38} borderRadius={radii.sm} style={skeletonTint} />}
+          {!log.firstLoad && (
             <Pressable
               onPress={runExport}
               disabled={exporting}
@@ -307,17 +292,6 @@ export default function AuditLogsScreen() {
         <Text style={[styles.exportNotice, { color: exportNotice.ok ? tone.muted : colors.danger }]}>
           {exportNotice.message}
         </Text>
-      )}
-
-      {/*Says what is being withheld and why.*/}
-      {!log.firstLoad && log.redacted && (
-        <View style={[styles.banner, { backgroundColor: tone.soft, borderColor: tone.border }]}>
-          <Ionicons name="eye-off-outline" size={16} color={tone.muted} />
-          <Text style={[styles.bannerText, { color: tone.muted }]}>
-            Standard Admin View. Extended session data and full audit differentials 
-            are restricted to Superadmins.
-          </Text>
-        </View>
       )}
 
       <View style={styles.filters}>
@@ -425,7 +399,7 @@ export default function AuditLogsScreen() {
       </View>
 
       <DataTable
-        columns={visibleColumns}
+        columns={columns}
         rows={log.rows}
         keyExtractor={(row) => row.id}
         loading={log.loading}
@@ -457,18 +431,6 @@ export default function AuditLogsScreen() {
 
 const styles = StyleSheet.create({
   ...adminStyles,
-
-  banner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderRadius: radii.sm,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 16,
-  },
-  bannerText: { flex: 1, fontSize: 12, lineHeight: 17 },
 
   filters: { gap: 8, marginBottom: 16 },
 

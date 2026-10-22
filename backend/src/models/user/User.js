@@ -143,12 +143,16 @@ const userSchema = new Schema(
     // Sync with authMiddleware.js, and Authcontext.js in the frontend
     role: {
       type: String,
-      enum: ['user', 'admin', 'superadmin'],
+      enum: ['user', 'admin'],
       default: 'user',
       required: true,
     },
 
     emailVerifiedAt: { type: Date, default: null },
+    // A change of email waits here until the code sent to the new address is entered
+    pendingEmail: { type: String, maxlength: 255, default: null },
+    pendingEmailExpiresAt: { type: Date, default: null },
+    emailChangedAt: { type: Date, default: null },
 
     // Unverified accounts only. The TTL index (migration 001) deletes the account at
     // this time; verifying the email unsets it (and pendingWeightKg)
@@ -161,9 +165,16 @@ const userSchema = new Schema(
     // Set by an admin. A suspended account can't sign in or refresh a session
     suspendedAt: { type: Date, default: null },
     suspendedReason: { type: String, maxlength: 300, default: null },
+    // Display name of the admin who suspended (or scheduled the deletion), kept as
+    // text so it survives that admin's own deletion
+    suspendedBy: { type: String, maxlength: 150, default: null },
+    // Set by an admin's delete. The account is suspended until this date, then purged
+    deletionScheduledFor: { type: Date, default: null },
     // Set by an admin's forced reset. Sign-in is refused until the user
     // resets through Forgot password, which clears it (updatePasswordHash)
     passwordResetRequiredAt: { type: Date, default: null },
+    passwordResetRequiredReason: { type: String, maxlength: 300, default: null },
+    passwordResetRequiredBy: { type: String, maxlength: 150, default: null },
 
     mfa: { type: mfaSchema, default: () => ({}) },
 
@@ -283,6 +294,9 @@ userSchema.statics.createAccount = async function createAccount(input, client) {
         firstName: input.firstName || null,
         lastName: input.lastName || null,
         termsAcceptedAt: input.termsAcceptedAt || null,
+        // Set for an account an admin adds: the person proves the address by resetting their password
+        emailVerifiedAt: input.emailVerifiedAt || null,
+        passwordResetRequiredAt: input.passwordResetRequiredAt || null,
         unverifiedExpiresAt: input.unverifiedExpiresAt,
         pendingWeightKg: input.pendingWeightKg,
         createdAt: new Date(),
@@ -345,8 +359,30 @@ userSchema.statics.updatePasswordHash = async function updatePasswordHash(id, pa
   return withId(
     await this.findByIdAndUpdate(
       id,
-      { $set: { passwordHash, passwordResetRequiredAt: null } },
+      { $set: { passwordHash, passwordResetRequiredAt: null, passwordResetRequiredReason: null, passwordResetRequiredBy: null } },
       { new: true, ...opts(client) },
+    ).lean(),
+  );
+};
+
+// Starts an email change. The address only becomes the account's at applyPendingEmail
+userSchema.statics.setPendingEmail = async function setPendingEmail(id, email, expiresAt, client) {
+  await this.updateOne(
+    { _id: id },
+    { $set: { pendingEmail: email.toLowerCase(), pendingEmailExpiresAt: expiresAt } },
+    opts(client),
+  );
+};
+
+// Swaps in the pending address in one step. Returns the document as it was BEFORE
+// (the old address is needed for the notice), null when nothing valid was pending.
+// The unique index rejects an address taken in the meantime (E11000)
+userSchema.statics.applyPendingEmail = async function applyPendingEmail(id, client) {
+  return withId(
+    await this.findOneAndUpdate(
+      { _id: id, pendingEmail: { $ne: null }, pendingEmailExpiresAt: { $gt: new Date() } },
+      [{ $set: { email: '$pendingEmail', emailChangedAt: new Date(), pendingEmail: null, pendingEmailExpiresAt: null } }],
+      { new: false, ...opts(client) },
     ).lean(),
   );
 };
@@ -392,6 +428,32 @@ userSchema.statics.enableMfa = async function enableMfa(id, { secretEnc, recover
     opts(client),
   );
   return result.modifiedCount === 1;
+};
+
+// Back to first-time setup: the secret, any setup in progress and the recovery codes
+// are dropped. 2FA stays on, so the next sign-in goes through setup again
+userSchema.statics.resetAuthenticator = async function resetAuthenticator(id, client) {
+  return withId(
+    await this.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          mfa: {
+            enabled: true,
+            secretEnc: null,
+            pendingSecretEnc: null,
+            pendingExpiresAt: null,
+            recoveryHashes: [],
+            lastUsedStep: 0,
+            failedAttempts: 0,
+            lockedUntil: null,
+            enabledAt: null,
+          },
+        },
+      },
+      { new: true, fields: PRIVATE_FIELDS, ...opts(client) },
+    ).lean(),
+  );
 };
 
 // Email two-factor (regular users) has no secret: on or off, nothing else
@@ -696,9 +758,9 @@ userSchema.statics.countByRole = async function countByRole(client) {
   }, {});
 };
 
-// Who may grant what is decided in controllers/admin/usersController, not here. runValidators
+// Used by scripts/create-admins.js and POST /admin/users to set a role. runValidators
 // keeps a typo'd role from slipping past the enum.
-// 2FA follows the role: admins and superadmins always have it on (the
+// 2FA follows the role: admins always have it on (the
 // authenticator app is set up at their next sign-in, until then there's no secret),
 // and an account going back to 'user' drops the authenticator, since regular users
 // use the emailed code and choose for themselves
@@ -716,20 +778,37 @@ userSchema.statics.updateRole = async function updateRole(id, role, client) {
 };
 
 // null clears it (reinstate). Returns the updated user, without the hash
-userSchema.statics.setSuspension = async function setSuspension(id, reason, client) {
+userSchema.statics.setSuspension = async function setSuspension(id, reason, by, client) {
   const update = reason
-    ? { suspendedAt: new Date(), suspendedReason: reason }
-    : { suspendedAt: null, suspendedReason: null };
+    ? { suspendedAt: new Date(), suspendedReason: reason, suspendedBy: by }
+    : { suspendedAt: null, suspendedReason: null, suspendedBy: null };
   return withId(
     await this.findByIdAndUpdate(id, { $set: update }, { new: true, fields: PRIVATE_FIELDS, ...opts(client) }).lean(),
   );
 };
 
-userSchema.statics.requirePasswordReset = async function requirePasswordReset(id, client) {
+// A date suspends the account and schedules its purge, null cancels both
+// The admin's reason and name are kept on the suspension, so the row shows why and who
+userSchema.statics.setDeletion = async function setDeletion(id, purgeAt, { reason, by } = {}, client) {
+  const update = purgeAt
+    ? { suspendedAt: new Date(), suspendedReason: reason, suspendedBy: by, deletionScheduledFor: purgeAt }
+    : { suspendedAt: null, suspendedReason: null, suspendedBy: null, deletionScheduledFor: null };
+  return withId(
+    await this.findByIdAndUpdate(id, { $set: update }, { new: true, fields: PRIVATE_FIELDS, ...opts(client) }).lean(),
+  );
+};
+
+// Accounts whose grace period has ended
+userSchema.statics.listDueForDeletion = async function listDueForDeletion(client) {
+  const docs = await this.find({ deletionScheduledFor: { $lte: new Date() } }, 'role email fullName', opts(client)).lean();
+  return docs.map(withId);
+};
+
+userSchema.statics.requirePasswordReset = async function requirePasswordReset(id, { reason, by } = {}, client) {
   return withId(
     await this.findByIdAndUpdate(
       id,
-      { $set: { passwordResetRequiredAt: new Date() } },
+      { $set: { passwordResetRequiredAt: new Date(), passwordResetRequiredReason: reason, passwordResetRequiredBy: by } },
       { new: true, fields: PRIVATE_FIELDS, ...opts(client) },
     ).lean(),
   );
@@ -740,7 +819,7 @@ userSchema.statics.cancelPasswordReset = async function cancelPasswordReset(id, 
   return withId(
     await this.findByIdAndUpdate(
       id,
-      { $set: { passwordResetRequiredAt: null } },
+      { $set: { passwordResetRequiredAt: null, passwordResetRequiredReason: null, passwordResetRequiredBy: null } },
       { new: true, fields: PRIVATE_FIELDS, ...opts(client) },
     ).lean(),
   );

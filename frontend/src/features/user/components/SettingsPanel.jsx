@@ -11,10 +11,11 @@ import TimeStepper, { formatTime, QUIET_END, QUIET_START } from "@/shared/compon
 import { useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
-import { validatePassword } from "@/shared/utils/formValidators";
+import { isValidEmail, validatePassword } from "@/shared/utils/formValidators";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { Platform, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { fs } from "@/shared/theme/fontScale";
 
 // Settings body, shared by the web and mobile pages:
 // Appearance, Notifications, Region, Account & security
@@ -240,6 +241,135 @@ function ChangePassword({ settings, darkMode }) {
         onConfirm={save}
         onCancel={() => setConfirming(false)}
       />
+    </View>
+  );
+}
+
+// ---- Change email (regular users) -------------------------------------------------
+//
+// 1. the new address and the current password
+// 2. the code sent to the new address
+// Other devices are signed out once it's done (server side)
+
+function ChangeEmail({ settings, email, darkMode }) {
+  const tone = getScreenTones(darkMode);
+  const { refresh } = useAuth();
+  const [step, setStep] = useState("idle"); // idle | form | code
+  const [newEmail, setNewEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState("");
+
+  const reset = () => {
+    setStep("idle");
+    setNewEmail("");
+    setPassword("");
+    setCode("");
+    setShow(false);
+    setError("");
+  };
+
+  async function sendCode() {
+    if (!isValidEmail(newEmail)) return setError("Please enter a valid email address.");
+    if (!password) return setError("Please enter your password.");
+    setBusy(true);
+    setError("");
+    try {
+      await settings.requestEmailChange(newEmail.trim().toLowerCase(), password);
+      setStep("code");
+    } catch (err) {
+      setError(err?.message || "Couldn't send the code.");
+    } finally {
+      setBusy(false);
+    }
+    return null;
+  }
+
+  async function confirm() {
+    if (!/^\d{4,8}$/.test(code.trim())) return setError("Enter the code from your email.");
+    setBusy(true);
+    setError("");
+    try {
+      await settings.confirmEmailChange(code.trim());
+      reset();
+      setDone("Your email was changed. Your other devices were signed out.");
+      settings.reload();
+      refresh();
+    } catch (err) {
+      setError(err?.message || "Couldn't change your email.");
+    } finally {
+      setBusy(false);
+    }
+    return null;
+  }
+
+  return (
+    <View style={[styles.row, styles.column, { borderBottomColor: tone.border, borderBottomWidth: 1 }]}>
+      <View style={styles.inline}>
+        <View style={styles.rowText}>
+          <Text style={[styles.rowLabel, { color: tone.text }]}>Email</Text>
+          <Text numberOfLines={1} style={[styles.value, { color: tone.text }]}>{email}</Text>
+          {step === "code" && <Text style={[styles.rowHint, { color: tone.muted }]}>Enter the code we sent to {newEmail.trim().toLowerCase()}.</Text>}
+        </View>
+        {step === "idle" && (
+          <ActionButton compact variant="secondary" label="Change email" onPress={() => { setDone(""); setStep("form"); }} darkMode={darkMode} />
+        )}
+      </View>
+
+      <FormAlert message={done} tone="success" onDismiss={() => setDone("")} />
+
+      {step === "form" && (
+        <View style={styles.form}>
+          <FormInput
+            icon="mail-outline"
+            placeholder="New email"
+            value={newEmail}
+            maxLength={254}
+            onChangeText={setNewEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+          <FormInput
+            icon="lock-closed-outline"
+            placeholder="Current password"
+            value={password}
+            maxLength={200}
+            onChangeText={setPassword}
+            secureTextEntry
+            showToggle
+            visible={show}
+            onToggleVisible={() => setShow((v) => !v)}
+            autoCapitalize="none"
+          />
+          <ScreenError message={error} onDismiss={() => setError("")} />
+          <View style={styles.formActions}>
+            <ActionButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
+            <ActionButton compact label="Send code" onPress={sendCode} loading={busy} darkMode={darkMode} />
+          </View>
+        </View>
+      )}
+
+      {step === "code" && (
+        <View style={styles.form}>
+          <FormInput
+            icon="keypad-outline"
+            placeholder="Code"
+            value={code}
+            maxLength={8}
+            onChangeText={setCode}
+            keyboardType="number-pad"
+            autoCapitalize="none"
+          />
+          <ScreenError message={error} onDismiss={() => setError("")} />
+          <View style={styles.formActions}>
+            <ActionButton compact variant="secondary" label="Cancel" onPress={reset} darkMode={darkMode} />
+            <ActionButton compact label="Confirm" onPress={confirm} loading={busy} darkMode={darkMode} />
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -508,11 +638,16 @@ export default function SettingsPanel() {
       </Section>
 
       <Section icon="shield-checkmark-outline" title="Account & security" darkMode={darkMode}>
-        <Row label="Email" darkMode={darkMode}>
-          {loading
-            ? <Skeleton width={170} height={16} />
-            : <Text numberOfLines={1} style={[styles.value, { color: tone.text }]}>{profile.email}</Text>}
-        </Row>
+        {/* Regular users can change it; an admin's address stays as set */}
+        {!loading && role === "user" ? (
+          <ChangeEmail settings={settings} email={profile.email} darkMode={darkMode} />
+        ) : (
+          <Row label="Email" darkMode={darkMode}>
+            {loading
+              ? <Skeleton width={170} height={16} />
+              : <Text numberOfLines={1} style={[styles.value, { color: tone.text }]}>{profile.email}</Text>}
+          </Row>
+        )}
 
         {loading ? (
           <Row label="Password" hint="Change the password you sign in with." darkMode={darkMode}>
@@ -592,15 +727,15 @@ const styles = StyleSheet.create({
   column: { flexDirection: "column", alignItems: "stretch", flexWrap: "nowrap" },
   inline: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 12 },
   rowText: { flex: 1, minWidth: 180 },
-  rowLabel: { fontSize: 14, fontWeight: "700" },
-  rowHint: { fontSize: 12, marginTop: 2, lineHeight: 17 },
-  value: { fontSize: 13, fontWeight: "700", maxWidth: 260 },
+  rowLabel: { fontSize: fs(15, 14), fontWeight: "700" },
+  rowHint: { fontSize: fs(14, 12), marginTop: 2, lineHeight: 17 },
+  value: { fontSize: fs(14, 13), fontWeight: "700", maxWidth: 260 },
   segment: { flexDirection: "row", borderWidth: 1, borderRadius: radii.pill, overflow: "hidden" },
   segBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 8 },
-  segText: { fontSize: 13, fontWeight: "700" },
+  segText: { fontSize: fs(14, 13), fontWeight: "700" },
   form: { gap: 10, maxWidth: 420 },
   endAction: { marginLeft: "auto" },
   formActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
   badge: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: radii.pill, paddingHorizontal: 10, paddingVertical: 5 },
-  badgeText: { fontSize: 12, fontWeight: "700" },
+  badgeText: { fontSize: fs(14, 12), fontWeight: "700" },
 });

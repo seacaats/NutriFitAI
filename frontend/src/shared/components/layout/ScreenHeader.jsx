@@ -18,7 +18,7 @@ export default function ScreenHeader({ title, subtitle = null, right, fallback =
   return (
     <View style={styles.header}>
       <Pressable onPress={back} style={styles.side} hitSlop={8} accessibilityRole="button" accessibilityLabel="Go back">
-        <Ionicons name="arrow-back" size={22} color={c.sidebarText} />
+        <Ionicons name="chevron-back" size={22} color={c.sidebarText} />
       </Pressable>
       <View style={styles.center}>
         <Text style={[styles.title, { color: c.sidebarText }]} numberOfLines={1}>{title}</Text>

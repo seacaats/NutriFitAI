@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { fs } from "@/shared/theme/fontScale";
 
 // Water tracker pieces: the dashboard card, the Water page body and the
 // edit-a-day dialog. Both screens read from useWater, so each keeps its own
@@ -76,13 +77,13 @@ export function EditIcon({ onPress, label }) {
 export const styles = StyleSheet.create({
   monthHead: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 },
   monthTitle: { fontSize: 15, fontWeight: "800" },
-  monthSummary: { fontSize: 12, marginLeft: "auto", flexShrink: 1 },
+  monthSummary: { fontSize: fs(14, 12), marginLeft: "auto", flexShrink: 1 },
   flex1: { flex: 1 },
   center: { textAlign: "center" },
   cardHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   editIcon: { width: 26, alignItems: "center" },
   link: { flexDirection: "row", alignItems: "center", gap: 2 },
-  linkText: { color: WATER_BLUE, fontSize: 12, fontWeight: "700" },
+  linkText: { color: WATER_BLUE, fontSize: fs(14, 12), fontWeight: "700" },
   editList: { gap: 10 },
   editRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   editIndex: { width: 24 },
@@ -92,9 +93,9 @@ export const styles = StyleSheet.create({
   historyCard: { borderWidth: 1, borderRadius: radii.md, paddingHorizontal: 14 },
   historyRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
   historyDot: { width: 10, height: 10, borderRadius: 5 },
-  historyDay: { fontSize: 14, fontWeight: "700" },
+  historyDay: { fontSize: fs(15, 14), fontWeight: "700" },
   more: { alignSelf: "center", borderWidth: 1, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 9 },
-  moreText: { color: WATER_BLUE, fontSize: 13, fontWeight: "700" },
+  moreText: { color: WATER_BLUE, fontSize: fs(14, 13), fontWeight: "700" },
   historyValue: { fontSize: 15, fontWeight: "800", minWidth: 70, textAlign: "right" },
 
   // Page: same card rhythm as Steps (a wide card beside a narrow one)
@@ -106,12 +107,12 @@ export const styles = StyleSheet.create({
   narrowCard: { flex: 1, minWidth: 240, padding: 18 },
   shrink: { flexShrink: 1, minWidth: 0 },
   heroIcon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: WATER_BLUE },
-  kicker: { fontSize: 9, fontWeight: "800", letterSpacing: 1 },
+  kicker: { fontSize: fs(11, 9), fontWeight: "800", letterSpacing: 1 },
   percent: { color: WATER_BLUE, fontSize: 20, fontWeight: "800" },
   sectionTitle: { fontSize: 17, fontWeight: "800" },
-  sectionSubtitle: { fontSize: 11, marginTop: 2 },
+  sectionSubtitle: { fontSize: fs(13, 11), marginTop: 2 },
   historyBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 7 },
-  historyBtnText: { fontSize: 11, fontWeight: "700" },
+  historyBtnText: { fontSize: fs(13, 11), fontWeight: "700" },
   weekList: { marginTop: 8 },
   emptyText: { marginTop: 8 },
   loading: { paddingVertical: 48, alignItems: "center" },
@@ -127,9 +128,9 @@ export const styles = StyleSheet.create({
   cardActions: { flexDirection: "row", marginTop: 4 },
   bigNum: { fontSize: 24, fontWeight: "800", marginTop: 4 },
   hero: { fontSize: 30, lineHeight: 34, fontWeight: "800" },
-  suffix: { fontSize: 14, fontWeight: "600" },
-  small: { fontSize: 12 },
-  error: { fontSize: 12, color: "#e5484d" },
+  suffix: { fontSize: fs(15, 14), fontWeight: "600" },
+  small: { fontSize: fs(14, 12) },
+  error: { fontSize: fs(14, 12), color: "#e5484d" },
   track: { height: 8, borderRadius: radii.pill, overflow: "hidden", marginTop: 4 },
   fill: { height: "100%", borderRadius: radii.pill, backgroundColor: WATER_BLUE },
   glasses: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
@@ -138,10 +139,10 @@ export const styles = StyleSheet.create({
   customInput: { width: 70, fontSize: 15, fontWeight: "700", outlineStyle: "none" },
   goalRow: { flexDirection: "row", alignItems: "flex-end", flexWrap: "wrap", gap: 12 },
   entry: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 },
-  entryAmount: { fontSize: 14, fontWeight: "700" },
+  entryAmount: { fontSize: fs(15, 14), fontWeight: "700" },
   entryTime: { flex: 1 },
   dayRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 20 },
-  dayLabel: { width: 64, fontSize: 13, fontWeight: "600" },
+  dayLabel: { width: 64, fontSize: fs(14, 13), fontWeight: "600" },
   dayTrack: { flex: 1, height: 10, borderRadius: radii.pill, overflow: "hidden" },
   dayFill: { height: "100%", borderRadius: radii.pill, backgroundColor: WATER_BLUE },
   dayValue: { width: 64, textAlign: "right" },

@@ -121,7 +121,7 @@ const changePasswordSchema = z.object({
 const deleteAccountSchema = z.object({
   currentPassword: z.string({ required_error: 'Please enter your current password.' }).min(1, 'Please enter your current password.').max(200),
   confirm: z.literal('DELETE'),
-  // Admins and superadmins: authenticator code or a recovery code
+  // Admins: authenticator code or a recovery code
   code: z.string().min(1).max(30).optional(),
 }).strict();
 

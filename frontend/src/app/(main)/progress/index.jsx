@@ -15,8 +15,8 @@ export default function ProgressScreen() {
   const { darkMode } = useTheme();
   const progress = useProgress();
   const { width } = useWindowDimensions();
-  // Macros and weight sit side by side unless the phone is too narrow
-  const compact = width < 400;
+  // Macros and weight are stacked on the phone: weight goes below macros
+  const compact = true;
 
   return (
     <DashboardLayout hideTabBar>

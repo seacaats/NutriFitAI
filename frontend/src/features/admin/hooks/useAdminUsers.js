@@ -2,13 +2,9 @@ import { apiClient, ApiClientError } from "@/shared/api/apiClient";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * Backs both the users management table and the admins management table.
+ * Backs the users management table.
  *
- * ONE HOOK FOR BOTH, because they are the same query against the same
- * collection with a different endpoint and a different default filter -- an
- * admin IS a user with a role
- *
- * @param {{ endpoint?: string, role?: string|null, limit?: number }} options
+ * @param {{ role?: string|null, limit?: number }} options
  */
 
 /** Long enough that typing a name is one request, short enough to feel live. */
@@ -17,7 +13,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 // Account actions want the whole envelope, for the server's message
 const options = { auth: true, full: true };
 
-export function useAdminUsers({ endpoint = "/admin/users", role = null, limit = 25 } = {}) {
+export function useAdminUsers({ role = null, limit = 25 } = {}) {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState(role);
   const [page, setPage] = useState(1);
@@ -52,7 +48,7 @@ export function useAdminUsers({ endpoint = "/admin/users", role = null, limit = 
     if (roleFilter) params.set("role", roleFilter);
 
     try {
-      const data = await apiClient.get(`${endpoint}?${params.toString()}`, { auth: true });
+      const data = await apiClient.get(`/admin/users?${params.toString()}`, { auth: true });
       if (id !== requestId.current) return;
 
       setRows(data.rows || []);
@@ -69,7 +65,7 @@ export function useAdminUsers({ endpoint = "/admin/users", role = null, limit = 
     } finally {
       if (id === requestId.current) setLoading(false);
     }
-  }, [endpoint, page, limit, search, roleFilter]);
+  }, [page, limit, search, roleFilter]);
 
   /**
    * Debounced on `search` only. Changing the page or the role filter fires
@@ -97,35 +93,9 @@ export function useAdminUsers({ endpoint = "/admin/users", role = null, limit = 
     setPage(1);
   }, []);
 
-  /**
-   * Promote or demote. Returns { ok, message } rather than throwing, because
-   * every caller wants to show the server's own message either way -- the
-   * failures here are deliberate, specific and worth reading verbatim
-   * ("This is the only superadmin", "You cannot change your own role")
-   */
-  const changeRole = useCallback(
-    async (userId, nextRole, reason) => {
-      try {
-        const payload = await apiClient.patch(
-          `/admin/users/${userId}/role`,
-          { role: nextRole, reason },
-          { auth: true, full: true },
-        );
-        await load();
-        return { ok: true, message: payload.message || "Role updated" };
-      } catch (err) {
-        return {
-          ok: false,
-          message:
-            err instanceof ApiClientError ? err.message : "Couldn't update that role.",
-        };
-      }
-    },
-    [load],
-  );
-
-  // Every other account action. Same { ok, message } contract as changeRole,
-  // and every one takes the reason the audit entry records
+  // Account actions. Return { ok, message } rather than throwing, because
+  // every caller wants to show the server's own message either way, and
+  // every one takes the reason the audit entry records
   const runAction = useCallback(
     async (request, fallback) => {
       try {
@@ -162,9 +132,38 @@ export function useAdminUsers({ endpoint = "/admin/users", role = null, limit = 
       runAction(() => apiClient.post(`/admin/users/${userId}/password-reset/cancel`, { reason }, options), "Couldn't cancel the password reset."),
     [runAction],
   );
+  // The email is not editable and no password is set here: the person is emailed
+  // how to choose their own (the server decides, see POST /admin/users)
+  const createUser = useCallback(
+    (fields, reason) => runAction(() => apiClient.post("/admin/users", { ...fields, reason }, options), "Couldn't create that account."),
+    [runAction],
+  );
+  // Clears their authenticator, they set up a new one at their next sign-in
+  const resetAuthenticator = useCallback(
+    (userId, reason) =>
+      runAction(() => apiClient.post(`/admin/users/${userId}/authenticator-reset`, { reason }, options), "Couldn't reset the authenticator."),
+    [runAction],
+  );
+  // Read only, so it skips runAction (which reloads the table). Throws with the server's message
+  const loadSessions = useCallback((userId) => apiClient.get(`/admin/users/${userId}/sessions`, { auth: true }), []);
+  const revokeSession = useCallback(
+    (userId, sessionId, reason) =>
+      runAction(() => apiClient.delete(`/admin/users/${userId}/sessions/${sessionId}`, { ...options, body: { reason } }), "Couldn't end that session."),
+    [runAction],
+  );
+  const revokeAllSessions = useCallback(
+    (userId, reason) =>
+      runAction(() => apiClient.delete(`/admin/users/${userId}/sessions`, { ...options, body: { reason } }), "Couldn't sign them out."),
+    [runAction],
+  );
   const deleteUser = useCallback(
     (userId, reason) =>
-      runAction(() => apiClient.delete(`/admin/users/${userId}`, { ...options, body: { reason } }), "Couldn't delete that account."),
+      runAction(() => apiClient.delete(`/admin/users/${userId}`, { ...options, body: { reason } }), "Couldn't schedule that deletion."),
+    [runAction],
+  );
+  const cancelDeletion = useCallback(
+    (userId, reason) =>
+      runAction(() => apiClient.post(`/admin/users/${userId}/deletion/cancel`, { reason }, options), "Couldn't cancel the deletion."),
     [runAction],
   );
 
@@ -181,12 +180,17 @@ export function useAdminUsers({ endpoint = "/admin/users", role = null, limit = 
     page,
     setPage,
     refresh: load,
-    changeRole,
     updateName,
     suspend,
     reinstate,
     forcePasswordReset,
     cancelPasswordReset,
+    createUser,
+    resetAuthenticator,
+    loadSessions,
+    revokeSession,
+    revokeAllSessions,
     deleteUser,
+    cancelDeletion,
   };
 }

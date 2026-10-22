@@ -1,7 +1,8 @@
 import Skeleton from "@/shared/components/Skeleton";
 import { chipTints, colors, getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { fs } from "@/shared/theme/fontScale";
 
 // Shared by the web and phone dashboards
 
@@ -101,31 +102,128 @@ export function PlannedWorkouts({ view, summary, darkMode, onOpen }) {
   );
 }
 
+// Icon and tint per recommendation kind (the backend's Recommendation.KINDS)
+const REC_KINDS = {
+  food: { icon: "nutrition", tint: "orange" },
+  workout: { icon: "barbell", tint: "purple" },
+  general: { icon: "sparkles", tint: "green" },
+};
+
+/**
+ * The dashboard's "For You" strip: today's recommendation cards from
+ * useRecommendations. Each has one action button, a close and a thumbs up or
+ * down. Shows skeleton cards on the first load, then renders nothing until
+ * there is a card, so it never leaves a gap
+ */
+export function RecommendationsStrip({ recs, darkMode, onOpen, style }) {
+  const tone = getScreenTones(darkMode);
+  // First load only: same card and row shapes as below
+  if (recs.loading && !recs.loaded) {
+    return (
+      <View style={[recStyles.wrap, { backgroundColor: tone.card, borderColor: tone.border }, style]}>
+        <Skeleton width={70} height={16} />
+        {[0, 1].map((i) => (
+          <View key={i} style={[recStyles.row, { borderColor: tone.border }]}>
+            <Skeleton width={36} height={36} borderRadius={18} />
+            <View style={[recStyles.text, { gap: 6 }]}>
+              <Skeleton width="55%" height={14} />
+              <Skeleton width="90%" height={12} />
+              <Skeleton width={90} height={13} style={{ marginTop: 4 }} />
+            </View>
+          </View>
+        ))}
+      </View>
+    );
+  }
+  if (!recs.items.length && !recs.error) return null;
+
+  return (
+    <View style={[recStyles.wrap, { backgroundColor: tone.card, borderColor: tone.border }, style]}>
+      <View style={recStyles.header}>
+        <Text style={[recStyles.title, { color: tone.text }]}>For You</Text>
+        {recs.canRefresh && (
+          <Pressable onPress={recs.refresh} disabled={recs.busy} hitSlop={8} accessibilityRole="button" accessibilityLabel="Refresh recommendations">
+            {recs.busy ? <ActivityIndicator size="small" color={shellColors.primary} /> : <Ionicons name="refresh" size={18} color={tone.muted} />}
+          </Pressable>
+        )}
+      </View>
+      {!!recs.error && <Text style={[recStyles.meta, { color: tone.muted }]}>{recs.error}</Text>}
+
+      {recs.items.map((item) => {
+        const kind = REC_KINDS[item.kind] || REC_KINDS.general;
+        const tint = chipTints[kind.tint];
+        return (
+          <View key={item.id} style={[recStyles.row, { borderColor: tone.border }]}>
+            <View style={[recStyles.icon, { backgroundColor: darkMode ? tint.dark : tint.light }]}>
+              <Ionicons name={kind.icon} size={18} color={tint.icon} />
+            </View>
+            <View style={recStyles.text}>
+              <Text style={[recStyles.name, { color: tone.text }]}>{item.title}</Text>
+              <Text style={[recStyles.meta, { color: tone.muted }]}>{item.body}</Text>
+              {/* Figures from the food table or the catalog, not the model */}
+              {!!item.detail && <Text style={[recStyles.detail, { color: tone.text }]}>{item.detail}</Text>}
+              <View style={recStyles.actions}>
+                <Pressable onPress={() => onOpen(item)} hitSlop={8} accessibilityRole="button">
+                  <Text style={recStyles.link}>{item.action.label}</Text>
+                </Pressable>
+                <Pressable onPress={() => recs.rate(item.id, "up")} hitSlop={8} accessibilityLabel="Helpful">
+                  <Ionicons name={item.feedback === "up" ? "thumbs-up" : "thumbs-up-outline"} size={15} color={tone.muted} />
+                </Pressable>
+                <Pressable onPress={() => recs.rate(item.id, "down")} hitSlop={8} accessibilityLabel="Not helpful">
+                  <Ionicons name={item.feedback === "down" ? "thumbs-down" : "thumbs-down-outline"} size={15} color={tone.muted} />
+                </Pressable>
+              </View>
+            </View>
+            <Pressable onPress={() => recs.close(item.id, "dismissed")} hitSlop={8} accessibilityLabel="Dismiss">
+              <Ionicons name="close" size={18} color={tone.muted} />
+            </Pressable>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const recStyles = StyleSheet.create({
+  wrap: { borderWidth: 1, borderRadius: radii.md, padding: 14, gap: 8 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  title: { fontSize: fs(16, 15), fontWeight: "800" },
+  row: { flexDirection: "row", alignItems: "flex-start", gap: 10, borderWidth: 1, borderRadius: radii.sm, padding: 10 },
+  icon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  text: { flex: 1, minWidth: 0 },
+  name: { fontSize: fs(15, 14), fontWeight: "700" },
+  meta: { fontSize: fs(13, 12), marginTop: 2, lineHeight: 18 },
+  detail: { fontSize: fs(13, 12), fontWeight: "600", marginTop: 4 },
+  actions: { flexDirection: "row", alignItems: "center", gap: 14, marginTop: 8 },
+  link: { fontSize: fs(14, 13), fontWeight: "700", color: shellColors.primary },
+});
+
 const plannedStyles = StyleSheet.create({
   wrap: { gap: 8 },
   row: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: radii.sm, padding: 10 },
   icon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   text: { flex: 1, minWidth: 0 },
   name: { fontSize: 14, fontWeight: "700" },
-  meta: { fontSize: 12, marginTop: 2 },
+  meta: { fontSize: 13, marginTop: 4 },
   gap: { marginTop: 6 },
-  footer: { fontSize: 12, fontWeight: "600" },
+  footer: { fontSize: 13, fontWeight: "600" },
 });
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: 8, marginTop: 16 },
-  box: { flex: 1, borderRadius: 8, borderWidth: 1, padding: 8 },
-  name: { fontSize: 12, fontWeight: "700" },
-  value: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
-  track: { marginTop: 6, height: 4, borderRadius: 2, overflow: "hidden" },
+  box: { flex: 1, borderRadius: 8, borderWidth: 1, padding: 10 },
+  name: { fontSize: 13, fontWeight: "700" },
+  value: { fontSize: 12, color: colors.textMuted, marginTop: 4 },
+  track: { marginTop: 8, height: 4, borderRadius: 2, overflow: "hidden" },
   fill: { height: 4, borderRadius: 2 },
 });
 
+// Narrow cards: nothing under 11px
 const smallStyles = StyleSheet.create({
   ...styles,
-  row: { flexDirection: "row", gap: 4, marginTop: 16 },
-  box: { flex: 1, borderRadius: 6, borderWidth: 1, padding: 6 },
-  name: { fontSize: 10, fontWeight: "700" },
-  value: { fontSize: 8, color: colors.textMuted },
-  track: { marginTop: 4, height: 4, borderRadius: 2, overflow: "hidden" },
+  row: { flexDirection: "row", gap: 6, marginTop: 16 },
+  box: { flex: 1, borderRadius: 6, borderWidth: 1, padding: 8 },
+  name: { fontSize: 12, fontWeight: "700" },
+  value: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  track: { marginTop: 6, height: 4, borderRadius: 2, overflow: "hidden" },
 });

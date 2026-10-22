@@ -34,7 +34,7 @@ const VARIANTS = {
     icon: "desktop-outline",
     emoji: "🖥️",
     title: "Please use the web app",
-    body: "Admin and superadmin accounts aren't supported on mobile. Please sign in from the web interface instead.",
+    body: "Admin accounts aren't supported on mobile. Please sign in from the web interface instead.",
     action: "Logout and Go to Login",
   },
 };

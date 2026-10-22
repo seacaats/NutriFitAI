@@ -101,7 +101,7 @@ export function useVerifyResetPassword() {
       });
 
       if (!data?.resetToken) {
-        setError("The server didn't return a reset authorization. Please try again.");
+        setError("We couldn't verify your code. Please try again.");
         otp.reset();
         return;
       }

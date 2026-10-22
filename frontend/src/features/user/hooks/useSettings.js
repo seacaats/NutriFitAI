@@ -73,6 +73,17 @@ export function useSettings() {
     [],
   );
 
+  // Changing the email takes two calls: the new address and password, then the code
+  // sent to the new address. Both throw with the server's message
+  const requestEmailChange = useCallback(
+    (newEmail, password) => apiClient.post("/auth/email/request", { newEmail, password }, { auth: true }),
+    [],
+  );
+  const confirmEmailChange = useCallback(
+    (code) => apiClient.post("/auth/email/confirm", { code }, { auth: true }),
+    [],
+  );
+
   // Throws with the server's message. Sends the password along with the typed DELETE,
   // and the authenticator / recovery code for admins
   const deleteAccount = useCallback(
@@ -94,6 +105,8 @@ export function useSettings() {
     setNotificationPrefs,
     verifyPassword,
     changePassword,
+    requestEmailChange,
+    confirmEmailChange,
     deleteAccount,
   };
 }

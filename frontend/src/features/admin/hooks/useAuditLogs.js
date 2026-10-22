@@ -3,21 +3,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 
 /**
- * Backs the audit log table for BOTH roles.
- *
- * There is no admin variant and no superadmin variant, because the client
- * does not decide what it sees. GET /admin/audit-logs reads the caller's role
- * from their session -- refreshed against the database, not taken from the
- * token -- and returns rows already filtered and already redacted. This hook
- * fetches and paginates; it holds no visibility logic at all, which is the
- * only arrangement where the client cannot be talked into showing more than
- * it should
+ * Backs the audit log table.
  *
  * What comes back per row is a rendered sentence (`message`) plus the columns
  * the table sorts on. The phrasing lives in the backend's
- * src/utils/auditActions.js registry, deliberately not mirrored here: a second
- * copy of the templates would drift, and would have to carry the
- * superadmin-only strings into a bundle every user downloads
+ * src/utils/audit-logs/actions registry, deliberately not mirrored here: a
+ * second copy of the templates would drift, and would ship them in a bundle
+ * every user downloads
  */
 
 const DEFAULT_LIMIT = 25;
@@ -27,8 +19,11 @@ const DEFAULT_LIMIT = 25;
 export const BY_USER = "__byUser";
 
 // Pseudo-category for the "Held" tab: held copies (audit_holds) instead of
-// the live log. Superadmin only, the server refuses it otherwise
+// the live log
 export const HELD = "__held";
+
+// Pseudo-category for the "Noted" tab: live rows that have notes
+export const NOTED = "__noted";
 
 // Notes and holds want the whole envelope, for the server's message
 const options = { auth: true, full: true };
@@ -43,6 +38,7 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
   const [subjectMode, setSubjectMode] = useState("all");
   const byUser = category === BY_USER;
   const held = category === HELD;
+  const noted = category === NOTED;
 
   const [rows, setRows] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, pageCount: 1, total: 0 });
@@ -104,8 +100,9 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
     params.set("page", String(page));
     params.set("limit", String(limit));
     if (held) params.set("held", "true");
-    if (category && !byUser && !held) params.set("category", category);
-    if (action && !byUser && !held) params.set("action", action);
+    if (noted) params.set("noted", "true");
+    if (category && !byUser && !held && !noted) params.set("category", category);
+    if (action && !byUser && !held && !noted) params.set("action", action);
     const subjectToUse = byUser ? subject?.id : subjectId;
     if (subjectToUse) params.set("subjectId", subjectToUse);
     if (byUser && subjectMode !== "all") params.set("subjectMode", subjectMode);
@@ -129,7 +126,7 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
         setLoadedOnce(true);
       }
     }
-  }, [page, limit, category, action, subjectId, byUser, held, subject, subjectMode]);
+  }, [page, limit, category, action, subjectId, byUser, held, noted, subject, subjectMode]);
 
   useEffect(() => {
     load();
@@ -165,7 +162,7 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
     [run],
   );
 
-  // Superadmin only (the server enforces it). Same filters as the table, no
+  // Same filters as the table, no
   // paging. Web downloads the file; native has nowhere useful to put a CSV,
   // so it points to the web dashboard instead. Returns { ok, message }
   const exportCsv = useCallback(async () => {
@@ -226,11 +223,6 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
     metaLoading,
     // Filters and Export show as skeletons until both have arrived
     firstLoad: metaLoading || !loadedOnce,
-    /** True when the server withheld IPs and before/after values from this
-     *  viewer -- the table labels the omission rather than rendering blank
-     *  columns, which reads as a bug */
-    redacted: meta ? meta.redacted : true,
-    viewerRole: meta ? meta.viewerRole : null,
     category,
     setCategory: updateCategory,
     action,
@@ -245,6 +237,7 @@ export function useAuditLogs({ subjectId = null, limit = DEFAULT_LIMIT } = {}) {
     refresh: load,
     exportCsv,
     held,
+    noted,
     listNotes,
     addNote,
     hold,

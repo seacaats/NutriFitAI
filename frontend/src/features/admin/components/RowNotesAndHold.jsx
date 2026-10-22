@@ -9,10 +9,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
  * The drawer's notes thread and hold control for one row. Its own component
  * so each open drawer keeps its own draft and status.
  *
- * Notes: admins and superadmins, append-only (a correction is a new note).
- * Hold: superadmin only, needs a reason, and is itself audited
+ * Notes: append-only (a correction is a new note).
+ * Hold: needs a reason, and is itself audited
  */
-export default function RowNotesAndHold({ row, log, isSuper, tone }) {
+export default function RowNotesAndHold({ row, log, tone }) {
   const [notes, setNotes] = useState(null);
   const [draft, setDraft] = useState("");
   const [reason, setReason] = useState("");
@@ -77,34 +77,39 @@ export default function RowNotesAndHold({ row, log, isSuper, tone }) {
         </Pressable>
       </View>
 
-      {isSuper && (
-        <View style={[styles.holdRow, { borderTopColor: tone.border }]}>
-          <Text style={[styles.noteMeta, { color: tone.muted }]}>
-            {row.held
-              ? "Held: this entry is kept after it expires."
-              : "Hold this entry to keep it after it expires."}
+      <View style={[styles.holdRow, { borderTopColor: tone.border }]}>
+        <Text style={[styles.noteMeta, { color: tone.muted }]}>
+          {row.held
+            ? "Held: this entry is kept after it expires."
+            : "Hold this entry to keep it after it expires."}
+        </Text>
+        {/* Why it was held, by whom and when (sent with the row) */}
+        {row.hold && (
+          <Text selectable style={[styles.noteBody, { color: tone.text }]}>
+            <Text style={{ fontWeight: "700" }}>Hold reason: </Text>{row.hold.reason}
+            <Text style={[styles.noteMeta, { color: tone.muted }]}>{`\n${row.hold.by || "Unknown"} · ${formatTimestamp(row.hold.at)}`}</Text>
           </Text>
-          <View style={styles.noteForm}>
-            <RingInput
-              value={reason}
-              onChangeText={setReason}
-              placeholder={row.held ? "Reason for releasing (required)" : "Reason for holding (required)"}
-              placeholderTextColor={tone.muted}
-              // Same box as the note above: wraps, then scrolls
-              multiline
-              maxLength={300}
-              style={[styles.noteInput, { backgroundColor: tone.card, borderColor: tone.border, color: tone.text }]}
-            />
-            <Pressable
-              onPress={() => submit(() => (row.held ? log.release(row.id, reason.trim()) : log.hold(row.id, reason.trim())))}
-              disabled={busy || reason.trim().length < 3}
-              style={[styles.smallBtn, { borderColor: tone.border }, (busy || reason.trim().length < 3) && styles.disabled]}
-            >
-              <Text style={[styles.smallBtnText, { color: tone.text }]}>{row.held ? "Release hold" : "Hold"}</Text>
-            </Pressable>
-          </View>
+        )}
+        <View style={styles.noteForm}>
+          <RingInput
+            value={reason}
+            onChangeText={setReason}
+            placeholder={row.held ? "Reason for releasing (required)" : "Reason for holding (required)"}
+            placeholderTextColor={tone.muted}
+            // Same box as the note above: wraps, then scrolls
+            multiline
+            maxLength={300}
+            style={[styles.noteInput, { backgroundColor: tone.card, borderColor: tone.border, color: tone.text }]}
+          />
+          <Pressable
+            onPress={() => submit(() => (row.held ? log.release(row.id, reason.trim()) : log.hold(row.id, reason.trim())))}
+            disabled={busy || reason.trim().length < 3}
+            style={[styles.smallBtn, { borderColor: tone.border }, (busy || reason.trim().length < 3) && styles.disabled]}
+          >
+            <Text style={[styles.smallBtnText, { color: tone.text }]}>{row.held ? "Release hold" : "Hold"}</Text>
+          </Pressable>
         </View>
-      )}
+      </View>
 
       {notice && (
         <Text style={[styles.noteMeta, { color: notice.ok ? tone.muted : colors.danger }]}>{notice.message}</Text>

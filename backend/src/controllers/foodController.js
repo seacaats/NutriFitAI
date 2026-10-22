@@ -8,6 +8,7 @@ const { logAction } = require('../utils/audit-logs/auditLogger');
 const { today } = require('../utils/calendarDay');
 const { asyncHandler, sendSuccess, ApiError } = require('../utils/httpResponse');
 const { userTimeZone } = require('../services/user/userTimeZone');
+const { invalidateRecommendations } = require('./recommendationController');
 const { round1 } = require('../utils/numbers');
 
 // Daily calorie and macro targets on the active goal; null when not set
@@ -208,6 +209,8 @@ const logMeal = asyncHandler(async (req, res) => {
   const mealDate = today(await userTimeZone(req));
   const meal = await Meal.logConsumed({ userId: req.userId, mealType, mealDate, items: mealItems });
 
+  // What's left of today's calories changed, so the food cards may
+  invalidateRecommendations(req.userId);
   return sendSuccess(res, { statusCode: 201, message: 'Meal logged', data: meal });
 });
 
@@ -234,6 +237,7 @@ const getMealHistory = asyncHandler(async (req, res) => {
 const removeMeal = asyncHandler(async (req, res) => {
   const meal = await Meal.removeOwned(req.params.id, req.userId);
   if (!meal) throw ApiError.notFound('Meal not found');
+  invalidateRecommendations(req.userId);
   return sendSuccess(res, { message: 'Meal removed', data: { id: meal.id } });
 });
 
@@ -252,8 +256,9 @@ const setNutritionGoals = asyncHandler(async (req, res) => {
   for (const key of NUTRITION_TARGETS) {
     if (req.body[key] === undefined) continue;
     goal = await User.setGoalTarget(req.userId, key, req.body[key]);
-    if (!goal) throw ApiError.notFound('User not found');
+    if (!goal) throw ApiError.notFound('We couldn\'t find your account. Please sign in again.');
   }
+  invalidateRecommendations(req.userId);
   return sendSuccess(res, { message: 'Nutrition goals saved', data: nutritionGoalsOf(goal) });
 });
 

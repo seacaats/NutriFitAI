@@ -2,7 +2,7 @@ import { RoleGuard } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { Stack } from "expo-router";
 
-/** Admin + superadmin screens (web only). Rules: ROUTE_ROLES in AuthContext.js */
+/** Admin screens (web only). Rules: ROUTE_ROLES in AuthContext.js */
 export default function AdminLayout() {
   const { shell } = useTheme();
   return (

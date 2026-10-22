@@ -24,6 +24,7 @@ const LIMITS = {
   // (classifyRateLimit) instead of a guessed ceiling here
   groq: {},
   cerebras: {}, // same reasoning as groq
+  cloudflare: {}, // recommendations only, 429s set the cooldown as well
 };
 
 // Fallback for 429 status codes with no Retry-After header
@@ -40,8 +41,10 @@ function classifyRateLimit(err) {
   return BURST_COOLDOWN_MS;
 }
 
-function buildProviders() {
-  const registry = {
+// Every provider that can be configured, by name. Which ones run, and in
+// what order, is decided by the chains below
+function buildRegistry() {
+  return {
     ollama: createOpenAICompatibleProvider({
       name: 'ollama',
       baseUrl: env.ai.ollama.baseUrl,
@@ -71,10 +74,22 @@ function buildProviders() {
       timeoutMs: env.ai.cerebras.timeoutMs,
       maxTokens: Math.min(env.ai.cerebras.maxOutputTokens, env.ai.maxOutputTokens),
     }),
+    // Not capped by AI_MAX_OUTPUT_TOKENS: gpt-oss reasons before it answers
+    cloudflare: createOpenAICompatibleProvider({
+      name: 'cloudflare',
+      baseUrl: env.ai.cloudflare.baseUrl,
+      apiKey: env.ai.cloudflare.apiKey,
+      model: env.ai.cloudflare.model,
+      timeoutMs: env.ai.cloudflare.timeoutMs,
+      maxTokens: env.ai.cloudflare.maxOutputTokens,
+    }),
   };
+}
 
+// An ordered chain from provider names
+function buildChain(registry, names, label) {
   // Drop unconfigured providers
-  const chain = env.ai.chain
+  const chain = names
     .map((name) => registry[name])
     .filter((provider) => {
       if (!provider) return false;
@@ -86,22 +101,28 @@ function buildProviders() {
     });
 
   if (chain.length === 0) {
-    console.warn('[ai] no providers configured -- /api/coach will return 503');
+    console.warn(`[ai] no providers configured for ${label}`);
   }
 
   return chain;
 }
 
-const providers = buildProviders();
+const registry = buildRegistry();
+const providers = buildChain(registry, env.ai.chain, '/api/coach (503)');
+// Recommendations have their own chain (AI_REC_CHAIN), so they never spend
+// the chatbot's quota. Empty = the chat chain
+const recProviders = env.ai.recChain.length
+  ? buildChain(registry, env.ai.recChain, 'recommendations')
+  : providers;
 
 /**
  * @param {{ system: string, messages: Array<{role: string, content: string}>, signal?: AbortSignal }} request
  * @returns {Promise<{ text: string, provider: string, model: string, usage: object|null }>}
  */
-async function chat(request) {
+async function run(chain, request) {
   const attempts = [];
 
-  for (const provider of providers) {
+  for (const provider of chain) {
     const gate = quotaStore.canAttempt(provider.name, LIMITS[provider.name]);
     if (!gate.ok) {
       attempts.push({ provider: provider.name, skipped: gate.reason });
@@ -173,12 +194,16 @@ async function chat(request) {
   });
 }
 
+const chat = (request) => run(providers, request);
+const chatRec = (request) => run(recProviders, request);
+
 // Check live providers
 function health() {
   return {
     chain: providers.map((p) => ({ name: p.name, model: p.model })),
+    recChain: recProviders.map((p) => ({ name: p.name, model: p.model })),
     state: quotaStore.snapshot(),
   };
 }
 
-module.exports = { chat, health };
+module.exports = { chat, chatRec, health };

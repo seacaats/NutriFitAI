@@ -284,6 +284,7 @@ export function StepDayEditModal({ visible, date, current, onClose, onSaved }) {
         <View style={[styles.inputBox, { borderColor: tone.border }, ring.style]}>
           <Ionicons name="footsteps-outline" size={18} color={shellColors.primary} />
           <TextInput
+            underlineColorAndroid="transparent"
             {...ring.handlers}
             value={value}
             // Same cap as "Other amount" on the Steps card: typing past it stops at the max

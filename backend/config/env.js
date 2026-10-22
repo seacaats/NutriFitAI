@@ -178,6 +178,14 @@ module.exports = {
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),
 
+    // Providers for the dashboard recommendations only, in failover order
+    // (AI_REC_CHAIN=cloudflare,ollama). Empty = the chat chain above. Kept apart so
+    // recommendations never spend the chatbot's quota
+    recChain: (process.env.AI_REC_CHAIN || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+
     // Conversation limit per user
     historyTurns: parseInt(process.env.AI_HISTORY_TURNS || '10', 10),
 
@@ -224,6 +232,36 @@ module.exports = {
       model: process.env.CEREBRAS_MODEL || null,
       timeoutMs: parseInt(process.env.CEREBRAS_TIMEOUT_MS || '30000', 10),
       maxOutputTokens: parseInt(process.env.CEREBRAS_MAX_OUTPUT_TOKENS || '450', 10),
+    },
+
+    // Cloudflare Workers AI, for the recommendations chain (AI_REC_CHAIN).
+    // An API token with Workers AI access, from dash.cloudflare.com. The
+    // account is the R2 one (R2_ACCOUNT_ID), there is no separate id for it
+    cloudflare: {
+      baseUrl: process.env.R2_ACCOUNT_ID
+        ? `https://api.cloudflare.com/client/v4/accounts/${process.env.R2_ACCOUNT_ID}/ai/v1`
+        : null,
+      apiKey: process.env.CLOUDFLARE_AI_API_TOKEN || null,
+      model: process.env.CLOUDFLARE_AI_MODEL || '@cf/openai/gpt-oss-120b',
+      timeoutMs: parseInt(process.env.CLOUDFLARE_AI_TIMEOUT_MS || '45000', 10),
+      // gpt-oss spends part of this on reasoning before the answer, so it is
+      // not capped by AI_MAX_OUTPUT_TOKENS like the chat providers
+      maxOutputTokens: parseInt(process.env.CLOUDFLARE_AI_MAX_OUTPUT_TOKENS || '1500', 10),
+    },
+
+    // Gemini embeddings for the coach's semantic search (OpenAI-compatible path,
+    // free key from aistudio.google.com). Not part of any chat chain, so a 429
+    // here never benches the chat or recommendation providers. No key = keyword search
+    embed: {
+      baseUrl: process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai',
+      apiKey: process.env.GEMINI_API_KEY || null,
+      model: process.env.GEMINI_EMBED_MODEL || 'gemini-embedding-001',
+      // Vectors are cut to this size and re-normalised. Rebuild the index if it changes
+      dims: parseInt(process.env.GEMINI_EMBED_DIMS || '768', 10),
+      // Short: it sits in the chat path, a slow answer is as good as a failed one
+      timeoutMs: parseInt(process.env.GEMINI_EMBED_TIMEOUT_MS || '2500', 10),
+      // Cosine similarity a match needs. Tune with: node scripts/build-embeddings.js --probe "..."
+      minSimilarity: parseFloat(process.env.EMBED_MIN_SIMILARITY || '0.6'),
     },
 
     // Food detection server (FastAPI + YOLO). Only this server calls it,

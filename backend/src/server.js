@@ -10,6 +10,7 @@ const { SEVERITIES } = require('./utils/audit-logs/actions');
 const { logSystemAction } = require('./utils/audit-logs/auditLogger');
 const { runReminders, RUN_EVERY_MS: REMINDERS_EVERY_MS } = require('./services/notifications/reminders');
 const { verifyMailer } = require('./services/mailer');
+const { purgeDueDeletions } = require('./services/user/accountDeletion');
 const { runDailyRollup, RUN_EVERY_MS: ROLLUP_EVERY_MS } = require('./services/analytics/dailyRollup');
 const { runActivationFunnel, RUN_EVERY_MS: FUNNEL_EVERY_MS } = require('./services/analytics/activationFunnel');
 
@@ -17,6 +18,7 @@ const { runActivationFunnel, RUN_EVERY_MS: FUNNEL_EVERY_MS } = require('./servic
 // which sets bufferCommands:false which automatically rejects them
 let server;
 let purgeTimer;
+let deletionTimer;
 let chainTimer;
 let reminderTimer;
 let rollupTimer;
@@ -55,7 +57,7 @@ async function purgeScanImages() {
 }
 
 // Re-hashes every audit chain once a day. A break is written to the trail
-// itself (critical, superadmin) and to the server log
+// itself (critical) and to the server log
 const CHAIN_CHECK_EVERY_MS = 24 * 60 * 60 * 1000;
 
 async function checkAuditChains() {
@@ -113,6 +115,11 @@ async function start() {
   purgeTimer = setInterval(purgeScanImages, PURGE_EVERY_MS);
   purgeTimer.unref();
 
+  // Accounts past their deletion grace period: on boot, then every 6 hours
+  purgeDueDeletions();
+  deletionTimer = setInterval(purgeDueDeletions, PURGE_EVERY_MS);
+  deletionTimer.unref();
+
   checkAuditChains();
   chainTimer = setInterval(checkAuditChains, CHAIN_CHECK_EVERY_MS);
   chainTimer.unref();
@@ -147,6 +154,7 @@ async function shutdown(signal) {
   forced.unref();
 
   clearInterval(purgeTimer);
+  clearInterval(deletionTimer);
   clearInterval(chainTimer);
   clearInterval(reminderTimer);
   clearInterval(rollupTimer);

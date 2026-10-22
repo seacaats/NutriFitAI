@@ -74,10 +74,10 @@ export default function WorkoutHistoryScreen() {
 
   // The FlatList does the scrolling; a page ScrollView around it breaks its windowing
   return (
-    <DashboardLayout scrollable={false}>
+    <DashboardLayout scrollable={false} hideTabBar>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8}>
-          <Ionicons name="chevron-back" size={20} color={c.sidebarText} />
+          <Ionicons name="chevron-back" size={22} color={c.sidebarText} />
         </Pressable>
 
         <View style={{ flex: 1 }}>

@@ -9,7 +9,7 @@ const env = require('../../../config/env');
 
 // ---- Two-factor sign-in --------------------------------------------------------
 // Regular users get a code by email, the same OTP process as registration and
-// password reset, and choose whether to have it. Admins and superadmins always
+// password reset, and choose whether to have it. Admins always
 // have it, with an authenticator app (TOTP) and recovery codes: their accounts are
 // created with it on, and the app is scanned in at their first sign-in. Every
 // sign-in goes through it, whether the first step was the password or Google:

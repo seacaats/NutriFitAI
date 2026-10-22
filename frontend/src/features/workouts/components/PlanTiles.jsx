@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Chip from "./Chip";
 import SectionLabel from "./SectionLabel";
+import { fs } from "@/shared/theme/fontScale";
 
 // Workout tiles (cover, body, grid) and the catalog filters
 
@@ -200,7 +201,7 @@ export const tileStyles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  kindText: { fontSize: 10, fontWeight: "800" },
+  kindText: { fontSize: fs(12, 10), fontWeight: "800" },
   heart: { position: "absolute", top: 6, right: 6 },
   arrow: {
     position: "absolute",
@@ -221,7 +222,7 @@ export const tileStyles = StyleSheet.create({
   body: { padding: 12, gap: 4, flexGrow: 1 },
   iconBtn: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.35)" },
   title: { fontSize: 15, fontWeight: "800" },
-  meta: { fontSize: 12, lineHeight: 17 },
+  meta: { fontSize: fs(14, 12), lineHeight: 17 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
 });
 
@@ -443,12 +444,12 @@ const filterStyles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  toggleText: { fontSize: 13, fontWeight: "700" },
+  toggleText: { fontSize: fs(14, 13), fontWeight: "700" },
   count: { minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, alignItems: "center", justifyContent: "center", backgroundColor: shellColors.primary },
-  countText: { color: "#ffffff", fontSize: 11, fontWeight: "800" },
+  countText: { color: "#ffffff", fontSize: fs(13, 11), fontWeight: "800" },
   activeChip: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: radii.pill, paddingHorizontal: 12, paddingVertical: 7 },
-  activeText: { fontSize: 12, fontWeight: "700", color: shellColors.primary },
-  clear: { fontSize: 12, fontWeight: "700", textDecorationLine: "underline" },
+  activeText: { fontSize: fs(14, 12), fontWeight: "700", color: shellColors.primary },
+  clear: { fontSize: fs(14, 12), fontWeight: "700", textDecorationLine: "underline" },
   panel: { borderWidth: 1, borderRadius: radii.md, padding: 14, gap: 10 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   nested: { paddingLeft: 12 },

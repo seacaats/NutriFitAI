@@ -9,6 +9,7 @@ const foodRoutes = require('./foodRoutes');
 const progressRoutes = require('./progressRoutes');
 const adminRoutes = require('./adminRoutes');
 const notificationRoutes = require('./notificationRoutes');
+const recommendationRoutes = require('./recommendationRoutes');
 const { requireAuth, requireRole } = require('../middleware/authMiddleware');
 
 const router = Router();
@@ -19,9 +20,8 @@ const router = Router();
  *  - /auth      public + session endpoints (any role)
  *  - /profile   any signed-in role (admins have a profile page too)
  *  - /notifications   any signed-in role (account notices reach admins too)
- *  - /steps, /coach, /workouts, /water, /food, /progress   USERS ONLY. Admin/superadmin accounts get 403
- *  - /admin     admin + superadmin, with superadmin-only routes inside
- *               (adminRoutes re-reads the role from the database)
+ *  - /steps, /coach, /workouts, /water, /food, /progress, /recommendations   USERS ONLY. Admin accounts get 403
+ *  - /admin     admin only (adminRoutes re-reads the role from the database)
  *
  * The user-only check trusts the token's role claim rather than re-reading it:
  * a stale claim here can at most keep a just-promoted admin on user endpoints
@@ -39,6 +39,7 @@ router.use('/workouts', ...userOnly, workoutRoutes);
 router.use('/water', ...userOnly, waterRoutes);
 router.use('/food', ...userOnly, foodRoutes);
 router.use('/progress', ...userOnly, progressRoutes);
+router.use('/recommendations', ...userOnly, recommendationRoutes);
 
 /* ------------------------------------ */
 router.use('/admin', adminRoutes);

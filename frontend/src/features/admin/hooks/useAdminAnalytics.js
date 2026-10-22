@@ -6,7 +6,7 @@ const label = (day) => new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined
 
 /**
  * The Analytics page's data, from GET /admin/analytics. Counts only, the
- * same for admins and superadmins. `refresh` re-reads on demand; the page
+ * same for every admin. `refresh` re-reads on demand; the page
  * doesn't poll
  */
 export function useAdminAnalytics() {

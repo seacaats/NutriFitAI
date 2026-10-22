@@ -17,7 +17,7 @@ const { sendSuccess, asyncHandler } = require('../../utils/httpResponse');
 // ---------------------------------------------------------------------------
 //
 // Counts only: no names, emails or health values leave this endpoint, so
-// admins and superadmins see the same thing. Days are the viewer's own
+// every admin sees the same thing. Days are the viewer's own
 // (X-Timezone), the same rule the user screens follow
 const ANALYTICS_DAYS = 30;
 
@@ -143,7 +143,6 @@ const getAnalytics = asyncHandler(async (req, res) => {
       accounts: {
         users: roleCounts.user || 0,
         admins: roleCounts.admin || 0,
-        superadmins: roleCounts.superadmin || 0,
         verifiedUsers: verified,
         suspended,
       },

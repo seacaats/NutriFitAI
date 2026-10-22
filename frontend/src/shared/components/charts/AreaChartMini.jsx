@@ -29,10 +29,10 @@ export default function AreaChartMini({
 
   if (!data || data.length === 0) return <View style={{ width: "100%", height }} />;
 
-  const padLeft = yTicks ? 26 : 6;
+  const padLeft = yTicks ? 32 : 6;
   const padRight = 10;
   const padTop = 8;
-  const padBottom = showXLabels ? 16 : 4;
+  const padBottom = showXLabels ? 20 : 4;
 
   const min = yMin ?? Math.min(...data.map((d) => d.value));
   const max = yMax ?? Math.max(...data.map((d) => d.value));
@@ -59,7 +59,7 @@ export default function AreaChartMini({
             <Line key={`grid-${i}`} x1={padLeft} y1={yFor(t)} x2={width - padRight} y2={yFor(t)} stroke={screenTones.light.border} strokeWidth={1} />
           ))}
           {yTicks?.map((t, i) => (
-            <SvgText key={`ylabel-${i}`} x={padLeft - 6} y={yFor(t) + 3} fontSize={9} fill={colors.textMuted} textAnchor="end">
+            <SvgText key={`ylabel-${i}`} x={padLeft - 6} y={yFor(t) + 4} fontSize={11} fill={colors.textMuted} textAnchor="end">
               {yTickFormat ? yTickFormat(t) : `${t}`}
             </SvgText>
           ))}
@@ -87,7 +87,7 @@ export default function AreaChartMini({
                 key={`xlabel-${i}`}
                 x={xFor(i)}
                 y={height - 4}
-                fontSize={9}
+                fontSize={11}
                 fill={colors.textMuted}
                 textAnchor={data.length > 1 && i === 0 ? "start" : data.length > 1 && i === data.length - 1 ? "end" : "middle"}
               >

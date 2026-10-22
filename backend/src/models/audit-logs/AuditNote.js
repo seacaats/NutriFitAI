@@ -40,4 +40,9 @@ auditNoteSchema.statics.countsFor = async function countsFor(auditLogIds, client
   return Object.fromEntries(rows.map((r) => [r._id, r.count]));
 };
 
+// Ids of every audit row that has at least one note
+auditNoteSchema.statics.notedIds = async function notedIds(client) {
+  return this.distinct('auditLogId').session(opts(client).session || null);
+};
+
 module.exports = mongoose.model('AuditNote', auditNoteSchema);

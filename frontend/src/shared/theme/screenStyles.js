@@ -206,8 +206,8 @@ export const workoutsStyles = {
 };
 
 /**
- * admin / superadmin: page chrome shared by the three admin screens
- * (/admin/users, /admin/audit-logs, /superadmin/admins)
+ * admin: page chrome shared by the admin screens
+ * (/admin/users, /admin/audit-logs, /admin/analytics)
  */
 
 export const adminStyles = {
@@ -215,9 +215,9 @@ export const adminStyles = {
 
   pageHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 20 },
   pageHeaderNarrow: { flexDirection: "column", alignItems: "stretch" },
-  eyebrow: { fontSize: 10, fontWeight: "800", letterSpacing: 1 },
+  eyebrow: { fontSize: 11, fontWeight: "800", letterSpacing: 1 },
   pageTitle: { fontSize: 26, fontWeight: "800", marginTop: 2 },
-  pageSubtitle: { fontSize: 13, marginTop: 4, maxWidth: 560, lineHeight: 19 },
+  pageSubtitle: { fontSize: 14, marginTop: 6, maxWidth: 560, lineHeight: 21 },
 
   statRow: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 20 },
 

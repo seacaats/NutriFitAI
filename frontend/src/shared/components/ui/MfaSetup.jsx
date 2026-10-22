@@ -9,7 +9,7 @@ import { Platform, StyleSheet, Text, useWindowDimensions, View } from "react-nat
 // Two-factor authentication (2FA), from Settings and the onboarding.
 // method "email": regular users get a code by email at sign-in, and turn it on and
 // off here.
-// method "totp": admins and superadmins always have it on. Scanning the
+// method "totp": admins always have it on. Scanning the
 // authenticator app in happens at their first sign-in (the login screen), so here
 // there's only the status and new recovery codes. Every change re-asks the
 // password, and the server checks it again, so nothing here is trusted on its own

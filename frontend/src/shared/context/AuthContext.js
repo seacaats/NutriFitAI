@@ -27,20 +27,15 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 const AuthContext = createContext(null);
 
 /**
- * Weakest first. Used for hierarchical checks (an admin satisfies 'user').
  * Mirrors the `role` enum in the backend's models/user/User.js and
  * ROLES in its middleware/authMiddleware.js.
  *
- * Order is load-bearing: hasAtLeastRole compares indexes, so appending a
- * stronger role is safe while inserting one mid-list silently re-ranks
- * everything after it.
- *
  * Worth restating what this list is NOT: it is a rendering aid. The role it
- * ranks arrives from GET /auth/me, derived server-side from the signed token,
+ * lists arrives from GET /auth/me, derived server-side from the signed token,
  * and every decision that matters is re-made by the API. Hiding a nav item is
  * a usability choice; the endpoint behind it is what is actually protected.
  */
-export const ROLES = ["user", "admin", "superadmin"];
+export const ROLES = ["user", "admin"];
 export const DEFAULT_ROLE = "user";
 
 export const AUTH_STATUS = {
@@ -212,7 +207,6 @@ export function AuthProvider({ children }) {
 
   const value = useMemo(() => {
     const role = user?.role || DEFAULT_ROLE;
-    const rank = ROLES.indexOf(role);
 
     // Display helpers, derived once here rather than in each screen. Prefers
     // the split name columns and falls back to full_name, which is all a
@@ -250,12 +244,6 @@ export function AuthProvider({ children }) {
       /** Exact-match check: hasRole("admin"). */
       hasRole: (...allowed) => allowed.flat().includes(role),
 
-      /** Hierarchical check: an admin satisfies hasAtLeastRole("user"). */
-      hasAtLeastRole: (minimum) => {
-        const needed = ROLES.indexOf(minimum);
-        return needed >= 0 && rank >= needed;
-      },
-
       refresh: loadSession,
       signOut,
       loggedOut,
@@ -275,24 +263,22 @@ export function useAuth() {
 
 /**
  * Single source of truth for which role may open which screen, and where each
- * role lands after sign-in. Read by RoleGuard (the (main)/(admin)/(superadmin)
- * layouts), the web sidebar, and every post-login redirect.
+ * role lands after sign-in. Read by RoleGuard (the (main)/(admin) layouts),
+ * the web sidebar, and every post-login redirect.
  *
  * Mirrors the backend's mount-point guards in src/routes/index.js:
  *  - user-only screens  <-> /steps, /coach, /workouts  (requireRole('user'))
- *  - admin screens      <-> /admin                     (requireMinimumRole('admin'))
- *  - superadmin screens <-> /admin/admins, role edits  (requireMinimumRole('superadmin'))
+ *  - admin screens      <-> /admin                     (requireRole('admin'))
  *
  * This is the usability layer; the API is the security layer. Both are needed.
  */
 
-const ADMIN_ROLES = ["admin", "superadmin"];
+const ADMIN_ROLES = ["admin"];
 
 /** Where each role lands after sign-in (and when bounced off another role's screen) */
 const HOME_BY_ROLE = {
   user: "/dashboard",
   admin: "/analytics",
-  superadmin: "/analytics",
 };
 
 export function homeFor(role) {
@@ -323,13 +309,10 @@ const ROUTE_ROLES = [
   ["/notifications", ROLES],
   ["/settings", ROLES],
 
-  // Admin and superadmin
+  // Admin
   ["/analytics", ADMIN_ROLES],
   ["/users", ADMIN_ROLES],
   ["/audit-logs", ADMIN_ROLES],
-
-  // Superadmin only
-  ["/admins", ["superadmin"]],
 ];
 
 /** Allowed roles for a pathname, or null when the route isn't listed */
@@ -356,8 +339,8 @@ export function safeReturnTo(next, role) {
 }
 
 /**
- * The one guard behind the (main), (admin) and (superadmin) layouts, so the
- * three can't drift apart. Who may open what is ROUTE_ROLES above.
+ * The one guard behind the (main) and (admin) layouts, so the
+ * two can't drift apart. Who may open what is ROUTE_ROLES above.
  *
  * Deny by default: nothing renders until the session is confirmed against the
  * server, and a pathname with no rule is refused.
@@ -367,9 +350,9 @@ export function safeReturnTo(next, role) {
  *  2. not signed in                         -> /login (back here after),
  *                                              or / right after logging out
  *     email unverified                      -> /access-denied
- *  3. admin or superadmin on native         -> /access-denied (web only)
+ *  3. admin on native                       -> /access-denied (web only)
  *  4. role not allowed on this screen:
- *       - admin/superadmin on a user-only screen -> silently to their home
+ *       - admin on a user-only screen            -> silently to their home
  *         (/users), so e.g. a post-login "/dashboard" lands them there
  *       - anything else                          -> /access-denied (forbidden)
  */
@@ -420,7 +403,7 @@ export function RoleGuard({ children }) {
   else if (status === AUTH_STATUS.UNREACHABLE) cover = (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 12, backgroundColor: colors.bgMint }}>
       <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>
-        Can&apos;t reach the server
+        We can&apos;t connect right now
       </Text>
       <Text style={{ fontSize: 13, color: colors.textSecondary, textAlign: "center", maxWidth: 320, lineHeight: 19 }}>
         You&apos;re still signed in. Check your connection and try again.

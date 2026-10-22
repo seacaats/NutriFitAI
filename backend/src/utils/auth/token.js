@@ -50,12 +50,12 @@ for (const key of ['remembered', 'session']) {
  * authenticate normal API requests. Payload is intentionally minimal.
  * @param {{ id: string, email: string }} user
  */
-function signAccessToken(user) {
+function signAccessToken(user, sid = null) {
   return jwt.sign(
     // User role is embedded on the access token.
     // Access tokens are short-lived (15m by default), which
     // bounds how long a revoked/demoted role stays usable.
-    { sub: user.id, email: user.email, role: user.role || 'user', type: 'access' },
+    { sub: user.id, email: user.email, role: user.role || 'user', type: 'access', ...(sid ? { sid } : {}) },
     env.jwt.accessSecret,
     { expiresIn: env.jwt.accessExpiresIn },
   );
@@ -72,9 +72,14 @@ function signAccessToken(user) {
  *
  * @param {{ id: string }} user
  * @param {boolean} rememberMe
+ *
+ *   sid  the auth_sessions row this token belongs to, carried through every
+ *        rotation. Revoking the row ends the session at its next refresh
+ *
  * @param {number} [sessionExpiresAt] epoch ms; pass through on rotation
+ * @param {string} [sid]
  */
-function signRefreshToken(user, rememberMe = false, sessionExpiresAt = null) {
+function signRefreshToken(user, rememberMe = false, sessionExpiresAt = null, sid = null) {
   const idleMs = rememberMe ? REFRESH_TTL_MS.remembered : REFRESH_TTL_MS.session;
   const maxMs = rememberMe ? SESSION_MAX_MS.remembered : SESSION_MAX_MS.session;
   // Set once at login; every rotation passes the original value straight back
@@ -85,7 +90,7 @@ function signRefreshToken(user, rememberMe = false, sessionExpiresAt = null) {
   const expiresInSeconds = Math.max(Math.floor(Math.min(idleMs, remainingMs) / 1000), 1);
 
   return jwt.sign(
-    { sub: user.id, type: 'refresh', rmb: Boolean(rememberMe), sxp: absolute },
+    { sub: user.id, type: 'refresh', rmb: Boolean(rememberMe), sxp: absolute, ...(sid ? { sid } : {}) },
     env.jwt.refreshSecret,
     { expiresIn: expiresInSeconds },
   );

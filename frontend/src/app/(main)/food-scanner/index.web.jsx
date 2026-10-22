@@ -172,7 +172,7 @@ function SecondaryButton({ icon, label, onPress, disabled, card, darkMode }) {
 const styles = StyleSheet.create({
   pageHeader: { marginBottom: 16 },
   pageTitle: { fontSize: 24, fontWeight: "800" },
-  pageSubtitle: { marginTop: 4, fontSize: 13 },
+  pageSubtitle: { marginTop: 4, fontSize: 14 },
   ...foodScannerStyles,
 
   row: { flexDirection: "row", gap: 16 },
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
   card: { borderRadius: radii.sm, borderWidth: 1, padding: 16 },
   disabled: { opacity: 0.5 },
 
-  subheading: { fontSize: 12, marginTop: 4 },
+  subheading: { fontSize: 14, marginTop: 4 },
 
   // Scan area
   scanArea: {
@@ -222,8 +222,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
   },
-  scanningText: { color: colors.white, fontSize: 13, fontWeight: "600" },
-  fileName: { marginTop: 12, textAlign: "center", fontSize: 12 },
+  scanningText: { color: colors.white, fontSize: 14, fontWeight: "600" },
+  fileName: { marginTop: 12, textAlign: "center", fontSize: 14 },
   alert: { marginTop: 12 },
 
   actions: { flexDirection: "row", gap: 8, marginTop: 12 },
@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   analyzeBtn: { marginTop: 16 },
-  cameraBtnText: { fontSize: 14, fontWeight: "700", color: colors.white },
+  cameraBtnText: { fontSize: 15, fontWeight: "700", color: colors.white },
 
   // Stacked (narrow) children size to their content. With flex: n they get a
   // zero basis in a column, collapse, and the next card draws over them

@@ -4,7 +4,7 @@ const { USER_REF, withId } = require('../shared');
 const { Schema } = mongoose;
 
 // food_scans -- one per photo sent to the detection model. Nutrition on each
-// item is for ONE serving of the nutrition table; meals copy and multiply it
+// item is for ONE serving of the nutrition table (and per100g); meals scale it by grams
 const foodScanSchema = new Schema(
   {
     userId: USER_REF,
@@ -29,9 +29,23 @@ const foodScanSchema = new Schema(
             itemId: { type: Schema.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
             foodName: { type: String, required: true, maxlength: 150 },
             // Household serving from the nutrition table ("1 cup"). estimatedGrams
-            // is only set when the label states grams ("1 slice (100g)")
+            // is that serving's weight, the starting grams on the scanner
             serving: { type: String, default: null, maxlength: 60 },
             estimatedGrams: { type: Number, default: null },
+            // Nutrition per 100 g, what meals are calculated from. Null on
+            // scans saved before grams existed
+            per100g: {
+              type: new Schema(
+                {
+                  caloriesKcal: { type: Number, default: null },
+                  proteinG: { type: Number, default: null },
+                  carbsG: { type: Number, default: null },
+                  fatG: { type: Number, default: null },
+                },
+                { _id: false },
+              ),
+              default: null,
+            },
             caloriesKcal: { type: Number, default: null },
             proteinG: { type: Number, default: null },
             carbsG: { type: Number, default: null },

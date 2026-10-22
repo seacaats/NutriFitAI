@@ -19,14 +19,14 @@ const GOOGLE_ERROR_MESSAGES = {
   registration_required:
     "We couldn't find a verified account for that Google email. Please register first.",
   // Raised by the popup callback screen itself
-  missing_exchange_token: "Google didn't return a sign-in token. Please try again.",
+  missing_exchange_token: "Google sign-in didn't go through. Please try again.",
   exchange_failed: "We couldn't finish signing you in. Please try again.",
   // Google went through but the 2FA check couldn't carry on in the original tab
   mfa_undelivered: "Google sign-in worked, but the 2FA check couldn't continue here. Please log in again.",
   // Raised by the opener while driving the popup
   popup_blocked: "Your browser blocked the sign-in window. Allow popups for this site and try again.",
   popup_closed: "The Google sign-in window was closed before sign-in finished.",
-  no_response: "The sign-in window closed without returning a result. Please try again.",
+  no_response: "The sign-in window closed before finishing. Please try again.",
   timed_out: "Google sign-in took too long to finish. Please try again.",
   cancelled: "Google sign-in was cancelled.",
   channel_unsupported: "This browser can't complete popup sign-in. Please update it or use a different browser.",

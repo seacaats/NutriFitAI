@@ -2,6 +2,7 @@ import { chipTints, getChipTint } from "@/shared/theme/nutrifitai";
 import { workoutsStyles } from "@/shared/theme/screenStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, View } from "react-native";
+import { fs } from "@/shared/theme/fontScale";
 
 // Primary muscles, secondary muscles and equipment as tinted pills, for the
 // exercise details dialog on web and mobile. Section spacing comes from the
@@ -37,5 +38,5 @@ export default function ExercisePills({ exercise, darkMode, textColor, sectionSt
 const styles = StyleSheet.create({
   muscleRow: workoutsStyles.muscleRow,
   musclePill: workoutsStyles.musclePill,
-  musclePillText: { fontSize: 11, fontWeight: "600" },
+  musclePillText: { fontSize: fs(13, 11), fontWeight: "600" },
 });

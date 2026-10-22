@@ -2,6 +2,7 @@ import Skeleton from "@/shared/components/Skeleton";
 import { colors, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, View } from "react-native";
+import { fs } from "@/shared/theme/fontScale";
 
 // Shared by the web and phone Profile screens
 
@@ -55,10 +56,10 @@ const styles = StyleSheet.create({
   box: { flex: 1, borderRadius: radii.sm, borderWidth: 1, padding: 8 },
   boxCompact: { flexBasis: "47%" },
   labelRow: { flexDirection: "row", alignItems: "center", gap: 4, flexWrap: "wrap" },
-  label: { fontSize: 10, fontWeight: "600" },
+  label: { fontSize: fs(12, 10), fontWeight: "600" },
   value: { fontSize: 15, fontWeight: "800", marginTop: 8 },
-  unit: { fontSize: 11, fontWeight: "500", color: colors.textMuted },
-  note: { fontSize: 10, fontWeight: "700", color: shellColors.primary, marginTop: 2 },
+  unit: { fontSize: fs(13, 11), fontWeight: "500", color: colors.textMuted },
+  note: { fontSize: fs(12, 10), fontWeight: "700", color: shellColors.primary, marginTop: 2 },
   skeleton: { marginTop: 10 },
 });
 
@@ -67,9 +68,9 @@ const largeStyles = StyleSheet.create({
   row: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 20 },
   box: { flexGrow: 1, flexBasis: 180, minWidth: 0, borderRadius: radii.sm, borderWidth: 1, padding: 14 },
   labelRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  label: { fontSize: 12, fontWeight: "600" },
+  label: { fontSize: fs(14, 12), fontWeight: "600" },
   value: { marginTop: 10, fontSize: 22, fontWeight: "800" },
-  unit: { fontSize: 12, fontWeight: "500", color: colors.textMuted },
-  note: { marginTop: 2, fontSize: 11, fontWeight: "700", color: shellColors.primary },
+  unit: { fontSize: fs(14, 12), fontWeight: "500", color: colors.textMuted },
+  note: { marginTop: 2, fontSize: fs(13, 11), fontWeight: "700", color: shellColors.primary },
   skeleton: { marginTop: 12 },
 });

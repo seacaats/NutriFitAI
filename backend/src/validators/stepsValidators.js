@@ -26,7 +26,7 @@ const notFarFuture = isoDate.refine(
   { message: 'Date is in the future' },
 );
 
-// `date` is optional on /today; the controller falls back to the server's UTC date when its omitted
+// `date` is optional on /today; the controller falls back to today in the user's timezone when it's omitted
 const todayQuerySchema = z
   .object({ date: z.string().regex(CALENDAR_DAY_RE).optional() })
   .strict();

@@ -28,11 +28,16 @@ def norm(name):
     return re.sub(r"[\s_-]+", " ", name.strip().lower())
 
 
-# Grams only when the serving label states them: "1 slice (100g)", "100g".
-# "1 cup" has no weight, so it stays None rather than a guess
-def serving_grams(serving):
-    m = re.search(r"(\d+(?:\.\d+)?)\s*g\b", serving or "")
-    return float(m.group(1)) if m else None
+# Weight of one serving in grams: the table's portion_g (stated in the label,
+# or an estimate when portion_estimated is true). Nutrition is scaled from it
+# to per 100 g, so every food shares one unit
+def portion_grams(n):
+    return n and n.get("portion_g")
+
+
+# One serving's value -> per 100 g
+def per100(value, grams):
+    return round(value / grams * 100, 1)
 
 
 # What users see: the table's display_name ("Adobong Manok (Chicken Adobo)").
@@ -163,12 +168,20 @@ def detect(image: UploadFile = File(...), x_api_key: str | None = Header(None)):
     for cls, conf, box in predict(img):
         name = NAMES[cls]
         n = NUTRITION.get(norm(name))
-        # Nutrition is per ONE serving of the table's household measure
+        # The flat values are per ONE serving of the table's household measure.
+        # per100g is what the app scales by the grams the user sets
+        grams = portion_grams(n)
         item = {
             "foodName": display_name(name, n),
             "confidence": round(conf, 3),
             "serving": n and n.get("serving"),
-            "servingGrams": n and serving_grams(n.get("serving")),
+            "defaultGrams": grams,
+            "per100g": n and grams and {
+                "caloriesKcal": per100(n["calories_kcal"], grams),
+                "proteinG": per100(n["protein_g"], grams),
+                "carbsG": per100(n["carbs_g"], grams),
+                "fatG": per100(n["fats_g"], grams),
+            },
             "caloriesKcal": n and n["calories_kcal"],
             "proteinG": n and n["protein_g"],
             "carbsG": n and n["carbs_g"],

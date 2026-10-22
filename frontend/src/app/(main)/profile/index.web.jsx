@@ -41,7 +41,7 @@ export default function ProfileScreen() {
   const { width } = useWindowDimensions();
   const narrow = width < 900;
   const { darkMode } = useTheme();
-  // Admins and superadmins keep a name and an email; the body, goal and
+  // Admins keep a name and an email; the body, goal and
   // workout fields belong to ordinary users
   const isUser = useAuth().role === "user";
   const {
@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   actionBtnNarrow: { minWidth: 76, justifyContent: "center", paddingVertical: 8 },
   headerText: { flexShrink: 1, minWidth: 0, flex: 1 },
   pageTitle: { fontSize: 24, fontWeight: "700" }, // text-2xl font-bold
-  pageSubtitle: { marginTop: 4, fontSize: 13, color: colors.textMuted },
+  pageSubtitle: { marginTop: 4, fontSize: 14, color: colors.textMuted },
 
   actionBtn: {
     flexDirection: "row",
@@ -311,14 +311,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  actionBtnText: { fontSize: 12, fontWeight: "600", color: colors.white },
+  actionBtnText: { fontSize: 14, fontWeight: "600", color: colors.white },
 
   // Saved banner
   savedBanner: { marginBottom: 16, borderRadius: radii.sm, borderWidth: 1, padding: 12, alignItems: "center" },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
   cancelBtn: { paddingHorizontal: 14, paddingVertical: 9 },
-  cancelBtnText: { fontSize: 13, fontWeight: "700", color: colors.textMuted },
-  savedText: { fontSize: 12, fontWeight: "600", color: shellColors.primary },
+  cancelBtnText: { fontSize: 14, fontWeight: "700", color: colors.textMuted },
+  savedText: { fontSize: 14, fontWeight: "600", color: shellColors.primary },
 
   // Profile content
   contentRow: { flexDirection: "row", gap: 12 },
@@ -334,17 +334,17 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.35)",
   },
   avatarActions: { flexDirection: "row", gap: 12, marginTop: 8 },
-  avatarAction: { fontSize: 12, fontWeight: "700", color: shellColors.primary },
-  avatarActionMuted: { fontSize: 12, fontWeight: "700", color: colors.textMuted },
+  avatarAction: { fontSize: 14, fontWeight: "700", color: shellColors.primary },
+  avatarActionMuted: { fontSize: 14, fontWeight: "700", color: colors.textMuted },
   profileName: { marginTop: 16, fontSize: 18, fontWeight: "700" }, // mt-4 text-lg font-bold
 
   metaList: { marginTop: 16, gap: 8, alignSelf: "stretch", alignItems: "center" },
   metaLine: { flexDirection: "row", alignItems: "center", gap: 6, maxWidth: "100%" },
-  metaText: { fontSize: 12, color: colors.textMuted, flexShrink: 1 },
+  metaText: { fontSize: 14, color: colors.textMuted, flexShrink: 1 },
 
   // Sections
   sectionTitle: { fontSize: 18, fontWeight: "700" }, // text-lg font-bold
-  sectionSubtitle: { marginTop: 4, fontSize: 12, color: colors.textMuted },
+  sectionSubtitle: { marginTop: 4, fontSize: 14, color: colors.textMuted },
   sectionSpacing: { marginTop: 12 }, // mt-3
 
   // Fields

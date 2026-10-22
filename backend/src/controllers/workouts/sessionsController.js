@@ -2,6 +2,7 @@ const WorkoutSession = require('../../models/workouts/WorkoutSession');
 const { asyncHandler, sendSuccess, ApiError } = require('../../utils/httpResponse');
 const { today } = require('../../utils/calendarDay');
 const { userTimeZone } = require('../../services/user/userTimeZone');
+const { invalidateRecommendations } = require('../recommendationController');
 
 // ---- Sessions -- the user's own logged workouts -----------------------------
 // Reads are per-user, and that scoping lives in the model's filter rather than
@@ -39,6 +40,9 @@ const logSession = asyncHandler(async (req, res) => {
     : await WorkoutSession.createExerciseSession({ userId: req.userId, ...result });
 
   if (!session) throw ApiError.notFound('Scheduled session not found');
+
+  // What was just trained changes which workouts the cards offer
+  invalidateRecommendations(req.userId);
 
   return sendSuccess(res, {
     statusCode: 201,

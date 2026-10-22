@@ -2,6 +2,7 @@ import { WORKOUT_TABS } from "@/features/workouts/hooks/useWorkoutTab";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { fs } from "@/shared/theme/fontScale";
 
 // Segmented tabs for the Workouts page. Counts show only when non-zero
 
@@ -59,7 +60,7 @@ const tabStyles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 2,
   },
-  label: { fontSize: 13, fontWeight: "700" },
+  label: { fontSize: fs(14, 13), fontWeight: "700" },
   badge: { minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, alignItems: "center", justifyContent: "center" },
-  badgeText: { fontSize: 10, fontWeight: "800" },
+  badgeText: { fontSize: fs(12, 10), fontWeight: "800" },
 });

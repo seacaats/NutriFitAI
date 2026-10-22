@@ -3,11 +3,14 @@ import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
 
 // Primary (filled) or secondary (outlined) button. Text only, like every
 // other button in the app
-export default function ActionButton({ label, onPress, variant = "primary", disabled, loading, darkMode, compact = false }) {
+export default function ActionButton({ label, onPress, variant = "primary", disabled, loading, darkMode, compact = false, active = false }) {
   const tone = getScreenTones(darkMode);
   const primary = variant === "primary";
   const danger = variant === "danger";
-  const color = primary ? "#ffffff" : danger ? "#e5484d" : tone.text;
+  // A toggled-on secondary button looks like a selected filter chip: primary
+  // border and text over the soft tint
+  const selected = active && !primary && !danger;
+  const color = primary ? "#ffffff" : danger ? "#e5484d" : selected ? shellColors.primary : tone.text;
 
   return (
     <Pressable
@@ -18,7 +21,8 @@ export default function ActionButton({ label, onPress, variant = "primary", disa
         compact && styles.btnCompact,
         primary
           ? { backgroundColor: shellColors.primary }
-          : { borderWidth: 1, borderColor: danger ? "#e5484d" : tone.border },
+          : { borderWidth: 1, borderColor: danger ? "#e5484d" : selected ? shellColors.primary : tone.border },
+        selected && { backgroundColor: tone.soft },
         (disabled || loading) && styles.disabled,
         pressed && styles.pressed,
       ]}

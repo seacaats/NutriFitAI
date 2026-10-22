@@ -18,6 +18,7 @@ import FavoriteButton from "./FavoriteButton";
 import { estimateMinutes } from "./PlanModals";
 import { Cover, COVER_HEIGHT, coverImagesFor, Tile, TileBody, TileGrid, tileStyles } from "./PlanTiles";
 import SectionLabel from "./SectionLabel";
+import { fs } from "@/shared/theme/fontScale";
 
 // The Workouts page panels: favorites, recent sessions, routines and upcoming
 
@@ -76,25 +77,25 @@ const panelStyles = StyleSheet.create({
   kindIcon: { width: 36, height: 36, borderRadius: radii.sm, alignItems: "center", justifyContent: "center" },
   body: { flex: 1, minWidth: 140 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  name: { fontSize: 14, fontWeight: "800", flexShrink: 1 },
-  meta: { fontSize: 12, marginTop: 2 },
+  name: { fontSize: fs(15, 14), fontWeight: "800", flexShrink: 1 },
+  meta: { fontSize: fs(14, 12), marginTop: 2 },
   actions: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   badge: { borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 2 },
-  badgeText: { fontSize: 10, fontWeight: "800" },
+  badgeText: { fontSize: fs(12, 10), fontWeight: "800" },
   timeCol: { minWidth: 64 },
-  time: { fontSize: 13, fontWeight: "800" },
+  time: { fontSize: fs(14, 13), fontWeight: "800" },
   column: { flexDirection: "column", alignItems: "stretch", gap: 0 },
   rowInner: { flexDirection: "row", alignItems: "center", gap: 12 },
   subList: { marginTop: 6, gap: 6 },
   subRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  subName: { flex: 1, fontSize: 13, fontWeight: "600" },
+  subName: { flex: 1, fontSize: fs(14, 13), fontWeight: "600" },
   heading: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
   dayHeading: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
   dayDelete: { marginLeft: "auto", padding: 4 },
   expand: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4, alignSelf: "flex-start" },
-  expandText: { fontSize: 12, fontWeight: "700" },
+  expandText: { fontSize: fs(14, 12), fontWeight: "700" },
   headingText: { fontSize: 15, fontWeight: "800" },
-  headingCount: { fontSize: 13, fontWeight: "700" },
+  headingCount: { fontSize: fs(14, 13), fontWeight: "700" },
 });
 
 // ---- Favorites ----------------------------------------------------------------
@@ -651,12 +652,12 @@ export function ExerciseSessionModal({ visible, session: sessionProp, onClose, d
 
 const detailStyles = StyleSheet.create({
   hero: { width: "100%", height: 180, borderRadius: radii.md },
-  description: { fontSize: 13, lineHeight: 19 },
+  description: { fontSize: fs(14, 13), lineHeight: 19 },
   row: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: radii.sm, padding: 10 },
-  index: { fontSize: 13, fontWeight: "800", width: 18 },
+  index: { fontSize: fs(14, 13), fontWeight: "800", width: 18 },
   thumb: { width: 40, height: 40, borderRadius: radii.sm, alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  name: { flex: 1, fontSize: 14, fontWeight: "700" },
-  sets: { fontSize: 13, fontWeight: "700" },
+  name: { flex: 1, fontSize: fs(15, 14), fontWeight: "700" },
+  sets: { fontSize: fs(14, 13), fontWeight: "700" },
 });
 
 // ---- Upcoming ---------------------------------------------------------------------

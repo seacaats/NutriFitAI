@@ -66,6 +66,16 @@ const mfaEmailConfirmSchema = z.object({
   enable: z.boolean(),
 });
 
+// Changing the email: the new address and the password, then the code sent to the new address
+const emailChangeRequestSchema = z.object({
+  newEmail: z.string().trim().toLowerCase().email('Please enter a valid email address.').max(EMAIL_MAX, 'Email is too long.'),
+  password: z.string().min(1, 'Please enter your password.').max(200),
+});
+
+const emailChangeConfirmSchema = z.object({
+  code: z.string().trim().regex(/^\d{4,8}$/, 'Enter the code from your email.'),
+});
+
 const mfaChangeSchema = z.object({
   password: z.string().min(1, 'Please enter your password.').max(200),
   code: z.string().trim().min(6).max(24),
@@ -103,6 +113,8 @@ module.exports = {
   mfaSetupSchema,
   mfaEnableSchema,
   mfaChangeSchema,
+  emailChangeRequestSchema,
+  emailChangeConfirmSchema,
   mfaResendSchema,
   mfaEmailConfirmSchema,
   verifyRegistrationSchema,

@@ -1,6 +1,8 @@
+const crypto = require('crypto');
 const User = require('../../models/user/User');
-const { ROLES } = require('../../middleware/authMiddleware');
-const { deleteAccount } = require('../../services/user/accountDeletion');
+const Session = require('../../models/auth/Session');
+const { hashPassword } = require('../../utils/auth/password');
+const { DELETION_GRACE_DAYS } = require('../../services/user/accountDeletion');
 const { sendSuccess, ApiError, asyncHandler } = require('../../utils/httpResponse');
 const { logAction, diffFields } = require('../../utils/audit-logs/auditLogger');
 const { notify } = require('../../services/notifications/notify');
@@ -22,25 +24,26 @@ function toUserRow(user) {
     emailVerified: Boolean(user.emailVerifiedAt),
     termsAcceptedAt: user.termsAcceptedAt || null,
     createdAt: user.createdAt,
+    emailChangedAt: user.emailChangedAt || null,
     suspendedAt: user.suspendedAt || null,
     suspendedReason: user.suspendedReason || null,
+    suspendedBy: user.suspendedBy || null,
+    deletionScheduledFor: user.deletionScheduledFor || null,
     passwordResetRequired: Boolean(user.passwordResetRequiredAt),
+    passwordResetRequiredAt: user.passwordResetRequiredAt || null,
+    passwordResetReason: user.passwordResetRequiredReason || null,
+    passwordResetBy: user.passwordResetRequiredBy || null,
   };
 }
 
 // The account an admin action is aimed at, or the reason it can't be.
-// Nobody acts on themselves, and only on a strictly lower role: an admin on
-// users, a superadmin on users and admins
+// Nobody acts on themselves
 async function loadManageableTarget(req) {
   if (req.params.id === req.userId) {
     throw ApiError.forbidden("You can't do this to your own account.", { code: 'SELF_ACTION' });
   }
   const target = await User.getByIdSafe(req.params.id);
   if (!target) throw ApiError.notFound('User not found');
-
-  if (ROLES.indexOf(req.userRole) <= ROLES.indexOf(target.role || 'user')) {
-    throw ApiError.forbidden('You can only act on accounts below your own role.', { code: 'INSUFFICIENT_ROLE' });
-  }
   return target;
 }
 
@@ -77,7 +80,6 @@ const listUsers = asyncHandler(async (req, res) => {
       counts: {
         user: counts.user || 0,
         admin: counts.admin || 0,
-        superadmin: counts.superadmin || 0,
         total: Object.values(counts).reduce((sum, n) => sum + n, 0),
       },
     },
@@ -90,8 +92,7 @@ const getUser = asyncHandler(async (req, res) => {
   if (!user) throw ApiError.notFound('User not found');
 
   /**
-   * Reading a user's record is itself audited (`admin.user.viewed`, visible
-   * only to a superadmin). Not paranoia: this endpoint returns another
+   * Reading a user's record is itself audited (`admin.user.viewed`). Not paranoia: this endpoint returns another
    * person's email, profile and goal history, and an audit trail that records
    * every write but no read cannot answer "who looked at this account".
    *
@@ -110,123 +111,132 @@ const getUser = asyncHandler(async (req, res) => {
     data: {
       ...toUserRow(user),
       // The detail view is the one place the profile is exposed, to a caller
-      // already established as admin-or-above on a route that records the read.
+      // already established as admin on a route that records the read.
       profile: user.profile || null,
       goals: user.goals || [],
     },
   });
 });
 
-/**
- * PATCH /api/admin/users/:id/role   (superadmin only)
- *
- * The four guards below are the whole of the authorization model for role
- * changes, and each closes a distinct hole:
- */
-const updateUserRole = asyncHandler(async (req, res) => {
-  const { role: nextRole, reason } = req.body;
-  const targetId = req.params.id;
+// POST /api/admin/users -- adds a regular or admin account. No password is set or shown:
+// the account is created locked (passwordResetRequiredAt) with a throwaway hash, and
+// the person chooses their own through Forgot password, whose emailed code proves
+// the address is theirs. An admin sets up 2FA at their first sign-in
+const createUser = asyncHandler(async (req, res) => {
+  const { reason, email, firstName, lastName, role = 'user' } = req.body;
 
-  // 1. Self-demotion, and more importantly self-PROMOTION. Without this an
-  //    admin who somehow reached this route could grant themselves superadmin;
-  //    with it, privilege only ever flows from another account, so there is
-  //    always a second party in the trail.
-  if (targetId === req.userId) {
-    throw ApiError.forbidden("You can't change your own role.", {
-      code: 'SELF_ROLE_CHANGE',
-    });
+  if (await User.findByEmail(email)) {
+    throw ApiError.conflict('An account with that email already exists.', { code: 'EMAIL_TAKEN' });
   }
 
-  const target = await User.getByIdSafe(targetId);
+  const fullName = [firstName, lastName].filter(Boolean).join(' ') || null;
+  const passwordHash = await hashPassword(crypto.randomBytes(32).toString('hex'));
+
+  let created;
+  try {
+    created = await User.createAccount({
+      email,
+      passwordHash,
+      fullName,
+      firstName,
+      lastName: lastName || null,
+      emailVerifiedAt: new Date(),
+      passwordResetRequiredAt: new Date(),
+    });
+    // Role is written after the insert; updateRole also turns 2FA on
+    if (role === 'admin') created = await User.updateRole(created.id, role);
+  } catch (err) {
+    // Someone registered the same address a moment ago
+    if (err?.code === 11000) throw ApiError.conflict('An account with that email already exists.', { code: 'EMAIL_TAKEN' });
+    throw err;
+  }
+
+  const isAdmin = role === 'admin';
+  await logAction(req, {
+    action: isAdmin ? 'admin.admin.created' : 'admin.user.created',
+    ...targetEntry(created),
+    targetLabel: fullName || created.email,
+    details: isAdmin ? { fromRole: 'none (account created)', toRole: role, reason } : { reason },
+  });
+  notify(null, 'account_invited', { email: created.email });
+
+  return sendSuccess(res, { statusCode: 201, message: 'Account created. An email tells them how to set a password.', data: toUserRow(created) });
+});
+
+// GET /api/admin/users/:id/sessions -- the devices signed in right now
+const listUserSessions = asyncHandler(async (req, res) => {
+  const target = await User.getByIdSafe(req.params.id);
   if (!target) throw ApiError.notFound('User not found');
 
-  const currentRole = target.role || 'user';
-
-  // Only admins and superadmins have a role to change. A user's isn't touched
-  // from here
-  if (currentRole === 'user') {
-    throw ApiError.badRequest("Only admins and superadmins can have their role changed.", {
-      code: 'USER_ROLE_PROTECTED',
-    });
-  }
-
-  // 2. A no-op write would still produce a critical-severity audit entry,
-  //    which is how an audit trail becomes noise nobody reads.
-  if (currentRole === nextRole) {
-    throw ApiError.badRequest(`That user is already a ${nextRole}`, {
-      code: 'ROLE_UNCHANGED',
-    });
-  }
-
-  /**
-   * 3. Do not strand the system without a superadmin.
-   *
-   *    Demoting the last one leaves nobody who can promote anyone, and the
-   *    only recovery is a database script -- which is a genuinely bad Sunday.
-   *    The count is taken inside the request rather than cached because the
-   *    answer must be current at the moment of the write.
-   *
-   *    This is a check, not a transaction: two concurrent demotions of the
-   *    last two superadmins could both observe a count of 2 and both proceed.
-   *    Accepted rather than wrapped in withTransaction, because the race needs
-   *    two superadmins demoting each other in the same instant, and the
-   *    recovery (scripts/create-admins.js, which creates a new superadmin
-   *    out of band) already exists for the case where it somehow happens.
-   */
-  if (currentRole === 'superadmin' && nextRole !== 'superadmin') {
-    const counts = await User.countByRole();
-    if ((counts.superadmin || 0) <= 1) {
-      throw ApiError.conflict(
-        'This is the only superadmin. Promote another account before demoting this one.',
-        { code: 'LAST_SUPERADMIN' },
-      );
-    }
-  }
-
-  const updated = await User.updateRole(targetId, nextRole);
-
-  /**
-   * 4. Which entry gets written depends on the transition, not just on the
-   *    endpoint. A grant and a revocation are different events to anyone
-   *    reading the trail, and folding both into one "role changed" row would
-   *    make the most consequential action in the system unsearchable.
-   *
-   *    The role change is committed before this runs: logAction never throws,
-   *    so a failure here loses the entry rather than the change. That is the
-   *    documented trade in auditLogger -- an audit write must not be able to
-   *    fail the action it describes.
-   */
-  const grantingPrivilege = nextRole !== 'user' && currentRole === 'user';
-  const revokingPrivilege = nextRole === 'user' && currentRole !== 'user';
-
-  const action = grantingPrivilege
-    ? 'admin.admin.created'
-    : revokingPrivilege
-      ? 'admin.admin.revoked'
-      : 'admin.user.role_changed';
-
-  await logAction(req, {
-    action,
-    targetType: 'user',
-    targetId,
-    targetLabel: target.fullName || target.email,
-    details: {
-      // Both the flat pair the role templates read AND the standard changes[]
-      // array, so this row renders correctly whether a future view formats it
-      // via the specific template or the generic field-diff renderer.
-      fromRole: currentRole,
-      toRole: nextRole,
-      changes: [{ field: 'role', from: currentRole, to: nextRole }],
-      reason,
-    },
-  });
-  // Not awaited: notify never throws, and an email mustn't slow the response
-  notify(targetId, 'role_changed');
-
+  const rows = await Session.listLive(target.id);
   return sendSuccess(res, {
-    message: `Role updated to ${nextRole}`,
-    data: toUserRow(updated),
+    data: rows.map((s) => ({
+      id: s.id,
+      createdAt: s.createdAt,
+      lastUsedAt: s.lastUsedAt,
+      ip: s.ip || null,
+      userAgent: s.userAgent || null,
+    })),
   });
+});
+
+// DELETE /api/admin/users/:id/sessions/:sid
+// Admins are cut off at once (requireFreshRole), regular users at their next refresh
+const revokeUserSession = asyncHandler(async (req, res) => {
+  const target = await loadManageableTarget(req);
+
+  if (!(await Session.revoke(target.id, req.params.sid, req.userId))) {
+    throw ApiError.notFound('Session not found');
+  }
+  await logAction(req, {
+    action: 'admin.user.session_revoked',
+    ...targetEntry(target),
+    details: { reason: req.body.reason },
+  });
+
+  return sendSuccess(res, { message: 'Session ended' });
+});
+
+// DELETE /api/admin/users/:id/sessions -- every device
+const revokeAllUserSessions = asyncHandler(async (req, res) => {
+  const target = await loadManageableTarget(req);
+
+  const count = await Session.revokeAll(target.id, req.userId);
+  await logAction(req, {
+    action: 'admin.user.sessions_revoked',
+    ...targetEntry(target),
+    details: { count, reason: req.body.reason },
+  });
+  if (count > 0) notify(target.id, 'signed_out_by_admin');
+
+  return sendSuccess(res, { message: count ? `Signed out of ${count} ${count === 1 ? 'device' : 'devices'}` : 'No active sessions', data: { count } });
+});
+
+// POST /api/admin/users/:id/authenticator-reset -- for an admin who lost their device. The
+// authenticator and recovery codes are cleared and every session ended: at their next
+// sign-in they scan a new app and get fresh codes
+const resetUserAuthenticator = asyncHandler(async (req, res) => {
+  const target = await loadManageableTarget(req);
+  if (target.role !== 'admin') {
+    throw ApiError.badRequest('Only admin accounts have an authenticator app.', { code: 'NOT_ADMIN' });
+  }
+
+  // The secret is left out of the safe read, so this asks for the full record
+  const full = await User.getById(target.id);
+  if (!full.mfa || !full.mfa.secretEnc) {
+    throw ApiError.badRequest("That admin hasn't set up an authenticator app yet.", { code: 'MFA_NOT_SET_UP' });
+  }
+
+  const updated = await User.resetAuthenticator(target.id);
+  await Session.revokeAll(target.id, req.userId);
+  await logAction(req, {
+    action: 'admin.user.authenticator_reset',
+    ...targetEntry(target),
+    details: { reason: req.body.reason },
+  });
+  notify(target.id, 'mfa_reset_by_admin');
+
+  return sendSuccess(res, { message: 'Authenticator reset. They set up a new one at their next sign-in.', data: toUserRow(updated) });
 });
 
 // PATCH /api/admin/users/:id/profile -- names only (adminProfileSchema)
@@ -262,7 +272,7 @@ const suspendUser = asyncHandler(async (req, res) => {
     throw ApiError.badRequest('That account is already suspended.', { code: 'ALREADY_SUSPENDED' });
   }
 
-  const updated = await User.setSuspension(target.id, req.body.reason);
+  const updated = await User.setSuspension(target.id, req.body.reason, User.displayName(req.user));
   await logAction(req, {
     action: 'admin.user.suspended',
     ...targetEntry(target),
@@ -278,6 +288,9 @@ const reinstateUser = asyncHandler(async (req, res) => {
   const target = await loadManageableTarget(req);
   if (!target.suspendedAt) {
     throw ApiError.badRequest("That account isn't suspended.", { code: 'NOT_SUSPENDED' });
+  }
+  if (target.deletionScheduledFor) {
+    throw ApiError.badRequest('Cancel the scheduled deletion instead.', { code: 'DELETION_SCHEDULED' });
   }
 
   const updated = await User.setSuspension(target.id, null);
@@ -296,7 +309,7 @@ const reinstateUser = asyncHandler(async (req, res) => {
 const forcePasswordReset = asyncHandler(async (req, res) => {
   const target = await loadManageableTarget(req);
 
-  const updated = await User.requirePasswordReset(target.id);
+  const updated = await User.requirePasswordReset(target.id, { reason: req.body.reason, by: User.displayName(req.user) });
   await logAction(req, {
     action: 'admin.user.password_reset_forced',
     ...targetEntry(target),
@@ -326,73 +339,59 @@ const cancelPasswordReset = asyncHandler(async (req, res) => {
   return sendSuccess(res, { message: 'Password reset cancelled', data: toUserRow(updated) });
 });
 
-// DELETE /api/admin/users/:id -- superadmin only (adminRoutes)
+// DELETE /api/admin/users/:id -- doesn't delete yet: the account is suspended and signed
+// out, then purged after DELETION_GRACE_DAYS unless an admin cancels (purgeDueDeletions)
 const deleteUser = asyncHandler(async (req, res) => {
   const target = await loadManageableTarget(req);
-  const deletedCounts = await deleteAccount(target.id, target.role || 'user');
+  if (target.deletionScheduledFor) {
+    throw ApiError.badRequest('That account is already scheduled for deletion.', { code: 'ALREADY_SCHEDULED' });
+  }
+
+  const purgeAt = new Date(Date.now() + DELETION_GRACE_DAYS * 24 * 60 * 60 * 1000);
+  const updated = await User.setDeletion(target.id, purgeAt, { reason: req.body.reason, by: User.displayName(req.user) });
+  await Session.revokeAll(target.id, req.userId);
 
   await logAction(req, {
-    action: 'admin.user.deleted',
+    action: 'admin.user.deletion_scheduled',
     ...targetEntry(target),
-    details: { deletedCounts, reason: req.body.reason },
+    details: { purgeAt: purgeAt.toISOString(), reason: req.body.reason },
   });
-  // The account is gone, so the address comes from the record read before
-  notify(null, 'account_deleted', { email: target.email });
+  notify(target.id, 'account_deletion_scheduled');
 
-  return sendSuccess(res, { message: 'Account deleted', data: { id: target.id } });
+  return sendSuccess(res, { message: `Account suspended. It will be deleted in ${DELETION_GRACE_DAYS} days unless you cancel.`, data: toUserRow(updated) });
 });
 
-// ===========================================================================
-// Admins  (superadmin only)
-// ===========================================================================
+// POST /api/admin/users/:id/deletion/cancel -- takes the deletion back and reinstates the account
+const cancelUserDeletion = asyncHandler(async (req, res) => {
+  const target = await loadManageableTarget(req);
+  if (!target.deletionScheduledFor) {
+    throw ApiError.badRequest("That account isn't scheduled for deletion.", { code: 'NOT_SCHEDULED' });
+  }
 
-/**
- * GET /api/admin/admins
- *
- * A filtered view of the same collection, not a separate one -- an admin is a
- * user with a role, so a distinct endpoint exists for the route guard and the
- * default filter, not for a different data source. The query is served by the
- * users_role_privileged partial index.
- */
-const listAdmins = asyncHandler(async (req, res) => {
-  const query = req.validatedQuery || {};
-
-  const [admins, supers, counts] = await Promise.all([
-    User.listPaginated({ ...query, role: 'admin' }),
-    User.listPaginated({ ...query, role: 'superadmin', limit: 100 }),
-    User.countByRole(),
-  ]);
-
-  return sendSuccess(res, {
-    data: {
-      // Superadmins first: there are few of them, they outrank everything
-      // below, and burying them on page two of an alphabetical list would be
-      // the wrong default for the one table where "who can do what" is the
-      // entire question being asked.
-      rows: [...supers.rows, ...admins.rows].map(toUserRow),
-      pagination: {
-        page: admins.page,
-        limit: admins.limit,
-        total: admins.total + supers.total,
-        pageCount: admins.pageCount,
-      },
-      counts: {
-        admin: counts.admin || 0,
-        superadmin: counts.superadmin || 0,
-      },
-    },
+  const updated = await User.setDeletion(target.id, null);
+  await logAction(req, {
+    action: 'admin.user.deletion_cancelled',
+    ...targetEntry(target),
+    details: { reason: req.body.reason },
   });
+  notify(target.id, 'account_deletion_cancelled');
+
+  return sendSuccess(res, { message: 'Deletion cancelled', data: toUserRow(updated) });
 });
 
 module.exports = {
   listUsers,
   getUser,
-  updateUserRole,
+  createUser,
+  listUserSessions,
+  revokeUserSession,
+  revokeAllUserSessions,
+  resetUserAuthenticator,
   updateUserProfile,
   suspendUser,
   reinstateUser,
   forcePasswordReset,
   cancelPasswordReset,
   deleteUser,
-  listAdmins,
+  cancelUserDeletion,
 };

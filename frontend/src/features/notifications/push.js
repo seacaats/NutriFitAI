@@ -106,11 +106,27 @@ export async function unregisterDevice() {
   currentToken = null;
 }
 
-// Opens a tapped notification's link. Returns the unsubscribe function
+// The last tap handled. Module level, so re-subscribing never reopens it
+let lastTapId = null;
+
+// Opens a tapped notification's link, with its inbox id when the push has
+// one. Returns the unsubscribe function
 export function onNotificationTap(open) {
-  const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-    const link = response.notification.request.content.data?.link;
-    if (typeof link === "string" && link.startsWith("/")) open(link);
-  });
+  // The same tap can come from both paths below; open it once
+  const handle = (response) => {
+    const id = response?.notification?.request?.identifier;
+    if (id && id === lastTapId) return;
+    lastTapId = id;
+    const data = response?.notification?.request?.content?.data;
+    if (typeof data?.link === "string" && data.link.startsWith("/")) open(data.link, data.id);
+  };
+
+  const sub = Notifications.addNotificationResponseReceivedListener(handle);
+
+  // Tapped while the app was closed: the listener above didn't exist yet
+  Promise.resolve(Notifications.getLastNotificationResponse())
+    .then((response) => response && handle(response))
+    .catch(() => {});
+
   return () => sub.remove();
 }

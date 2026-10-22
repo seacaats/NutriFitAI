@@ -3,7 +3,7 @@ const { z } = require('zod');
 const { ROLES } = require('../middleware/authMiddleware');
 const { CATEGORIES } = require('../utils/audit-logs/actions');
 const { MAX_PAGE_SIZE } = require('../models/audit-logs/AuditLog');
-const { personName } = require('./shared/fieldSchemas');
+const { personName, EMAIL_MAX } = require('./shared/fieldSchemas');
 
 // Fetched from the model to avoid conflicts with the database
 const pagination = {
@@ -47,6 +47,9 @@ const auditLogQuerySchema = z
     // "true" lists held copies (audit_holds) instead of the live log
     held: z.enum(['true']).optional(),
 
+    // "true" lists the rows that have notes
+    noted: z.enum(['true']).optional(),
+
     ...auditFilters,
   })
   .strict()
@@ -61,20 +64,25 @@ const userListQuerySchema = z
   })
   .strict();
 
-// Body for PATCH /admin/users/:id/role.
-// admin <-> superadmin only: ordinary users are never promoted or demoted here
-const updateRoleSchema = z
-  .object({
-    role: z.enum(['admin', 'superadmin']),
-    reason: z.string().trim().min(3).max(300),
-  })
-  .strict();
-
-// Every admin action on an account carries a reason, same as a role change:
+// Every admin action on an account carries a reason:
 // it's the one part of the audit entry nothing else can reconstruct
 const reason = z.string().trim().min(3).max(300);
 
 const adminReasonSchema = z.object({ reason }).strict();
+
+// The session to end, under a user. Both ids are checked here like userIdParamSchema
+const sessionParamSchema = z.object({ id: z.string().uuid(), sid: z.string().uuid() }).strict();
+
+// A new account, regular or admin. There is no password here, the person chooses their own
+const adminCreateUserSchema = z
+  .object({
+    email: z.string().trim().toLowerCase().email('Please enter a valid email address.').max(EMAIL_MAX, 'Email is too long.'),
+    firstName: personName('First name', { required: true }),
+    lastName: personName('Last name').optional(),
+    role: z.enum(ROLES).optional(),
+    reason,
+  })
+  .strict();
 
 // Names only. Health fields stay the user's to edit, and email has no
 // verification flow to change through
@@ -105,7 +113,8 @@ module.exports = {
   auditLogQuerySchema,
   auditExportQuerySchema,
   userListQuerySchema,
-  updateRoleSchema,
   adminReasonSchema,
   adminProfileSchema,
+  adminCreateUserSchema,
+  sessionParamSchema,
 };

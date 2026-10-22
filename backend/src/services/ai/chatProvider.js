@@ -79,7 +79,7 @@ async function coachReply(input) {
   const recent = input.history.filter((m) => m.role === 'user').map((m) => m.content);
   const concerns = detectConcerns(input.message, recent);
 
-  const { system, timeZone } = await buildCoachContext(input.userId, input.ref, concerns);
+  const { system, timeZone } = await buildCoachContext(input.userId, input.ref, concerns, input.message);
 
   const messages = cleanMessages([
     ...input.history

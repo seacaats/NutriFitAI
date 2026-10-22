@@ -13,6 +13,7 @@ const { sendSuccess, ApiError, asyncHandler } = require('../utils/httpResponse')
 const { saveUploadedAvatar, clearStoredAvatar, toPublicAvatarUrl } = require('../utils/storage/avatarStore');
 const { deleteAccount: deleteAccountData } = require('../services/user/accountDeletion');
 const { clearRefreshCookie } = require('../utils/auth/refreshCookie');
+const { invalidateRecommendations } = require('./recommendationController');
 const { assertNotMfaLocked, checkAuthenticatorCode, rejectAuthenticatorCode, noteRecoveryUsed } = require('../services/auth/mfa');
 
 
@@ -20,7 +21,7 @@ const { assertNotMfaLocked, checkAuthenticatorCode, rejectAuthenticatorCode, not
 // they need the same shape of data anyway, so no refetches are made for syncing
 async function buildProfilePayload(userId) {
   const user = await User.getById(userId);
-  if (!user) throw ApiError.notFound('User not found');
+  if (!user) throw ApiError.notFound('We couldn\'t find your account. Please sign in again.');
 
   const profile = await User.getProfile(userId);
   const goal = await User.getActiveGoal(userId);
@@ -282,6 +283,9 @@ const updateProfile = asyncHandler(async (req, res) => {
     });
   }
 
+  // Diet, conditions, goal, weight and workout preferences all shape the cards
+  invalidateRecommendations(req.userId);
+
   return sendSuccess(res, { message: 'Profile updated', data });
 });
 
@@ -331,6 +335,7 @@ const completeOnboarding = asyncHandler(async (req, res) => {
     });
   }
 
+  invalidateRecommendations(req.userId);
   return sendSuccess(res, { message: 'Setup saved', data });
 });
 
@@ -373,7 +378,7 @@ const removeAvatar = asyncHandler(async (req, res) => {
 // The signed-in user, or a 400 when the current password is wrong
 async function requireCurrentPassword(req, userId, currentPassword) {
   const user = await User.getById(userId);
-  if (!user) throw ApiError.notFound('User not found');
+  if (!user) throw ApiError.notFound('We couldn\'t find your account. Please sign in again.');
   if (!(await verifyPassword(currentPassword, user.passwordHash))) {
     await logAction(req, { action: 'auth.password.verify_failed', targetType: 'user' });
     throw ApiError.badRequest('That password is incorrect.', { code: 'WRONG_PASSWORD' });
@@ -417,21 +422,21 @@ const changePassword = asyncHandler(async (req, res) => {
 // collection the user owns is cleared, the audit trail keeps one entry
 const deleteAccount = asyncHandler(async (req, res) => {
   const user = await User.getById(req.userId);
-  if (!user) throw ApiError.notFound('User not found');
+  if (!user) throw ApiError.notFound('We couldn\'t find your account. Please sign in again.');
 
   await requireCurrentPassword(req, req.userId, req.body.currentPassword);
 
-  // The last superadmin can't leave the system without one
-  if (user.role === 'superadmin') {
+  // The last admin can't leave the system without one
+  if (user.role === 'admin') {
     const counts = await User.countByRole();
-    if ((counts.superadmin || 0) <= 1) {
-      throw ApiError.conflict('You are the only superadmin. Promote another account first.', {
-        code: 'LAST_SUPERADMIN',
+    if ((counts.admin || 0) <= 1) {
+      throw ApiError.conflict('You are the only admin. Create another admin account first.', {
+        code: 'LAST_ADMIN',
       });
     }
   }
 
-  // Admins and superadmins also prove it with an authenticator or recovery code
+  // Admins also prove it with an authenticator or recovery code
   if (user.role !== 'user') {
     if (!req.body.code) throw ApiError.badRequest('Enter your authenticator code or a recovery code.', { code: 'MFA_CODE_REQUIRED' });
     assertNotMfaLocked(user);

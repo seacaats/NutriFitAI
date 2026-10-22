@@ -229,6 +229,85 @@ const NOTIFICATION_TYPES = {
       note: "If you didn't expect this, contact support.",
     },
   },
+  // An admin added the account. Email only, there is no inbox to read yet
+  account_invited: {
+    category: 'account',
+    inbox: false,
+    email: {
+      subject: 'An account was created for you on NutriFitAI',
+      title: 'Your account is ready',
+      intro: 'An administrator created a NutriFitAI account for this email. To choose your password, open the app, tap Forgot password and enter this email.',
+      note: "If you weren't expecting this, you can ignore it. The account stays locked until someone sets a password.",
+    },
+  },
+  // Email only: the account is suspended while it waits. 14 = DELETION_GRACE_DAYS
+  account_deletion_scheduled: {
+    category: 'account',
+    inbox: false,
+    email: {
+      subject: 'Your NutriFitAI account is scheduled for deletion',
+      title: 'Your account is scheduled for deletion',
+      intro: 'An administrator scheduled your NutriFitAI account for deletion. It is suspended now and will be permanently deleted in 14 days.',
+      note: 'If you think this is a mistake, contact support before then.',
+    },
+  },
+  account_deletion_cancelled: {
+    category: 'account',
+    inbox: false,
+    email: {
+      subject: 'Your NutriFitAI account will not be deleted',
+      title: 'Deletion cancelled',
+      intro: 'The scheduled deletion of your NutriFitAI account was cancelled. Your account is active again and you can sign in.',
+      note: 'If you have questions, contact support.',
+    },
+  },
+  email_changed: {
+    category: 'account',
+    inbox: true,
+    title: 'Your email was changed',
+    body: 'The email for your account was changed. Other devices were signed out.',
+    link: '/settings',
+    email: {
+      subject: 'The email on your NutriFitAI account was changed',
+      title: 'Your email was changed',
+      intro: 'The email address for your NutriFitAI account was just changed.',
+      note: "If this wasn't you, contact support right away.",
+    },
+  },
+  signed_out_by_admin: {
+    category: 'account',
+    inbox: true,
+    title: 'You were signed out',
+    body: 'An administrator signed you out of your devices. Sign in again to continue.',
+    link: '/login',
+    email: {
+      subject: 'You were signed out of NutriFitAI',
+      title: 'You were signed out',
+      intro: 'An administrator signed your NutriFitAI account out of all devices. Sign in again to continue.',
+    },
+  },
+  // The codes themselves go in a separate email to this address (usersController)
+  mfa_recovery_regenerated_by_admin: {
+    category: 'account',
+    inbox: true,
+    title: 'New recovery codes',
+    body: 'An administrator generated new recovery codes for you. They were sent to your email.',
+    link: '/settings',
+  },
+  // Inbox and email: their sessions are ended, so the email is the one they'll see first
+  mfa_reset_by_admin: {
+    category: 'account',
+    inbox: true,
+    title: 'Authenticator reset',
+    body: 'An administrator reset your authenticator app. You set up a new one at your next sign-in.',
+    link: '/settings',
+    email: {
+      subject: 'Your NutriFitAI authenticator app was reset',
+      title: 'Your authenticator app was reset',
+      intro: 'An administrator reset the authenticator app on your NutriFitAI account and signed you out. At your next sign-in you will set up a new one and get new recovery codes.',
+      note: "If you didn't expect this, contact support right away.",
+    },
+  },
   password_reset_cancelled: {
     category: 'account',
     inbox: true,
@@ -248,13 +327,6 @@ const NOTIFICATION_TYPES = {
     title: 'Your name was updated',
     body: 'An administrator updated the name on your account.',
     link: '/profile',
-  },
-  role_changed: {
-    category: 'account',
-    inbox: true,
-    title: 'Your account role changed',
-    body: 'Your account role was changed by an administrator.',
-    link: '/dashboard',
   },
 };
 
@@ -326,6 +398,8 @@ async function notify(userId, type, options = {}) {
     }
 
     // The row comes first: it's the dedupe. null = this key was already sent
+    // Its id rides along in the push so a tap can mark it read
+    let rowId = null;
     if (user && (def.inbox || def.push)) {
       const row = await Notification.record({
         userId: user.id,
@@ -339,10 +413,11 @@ async function notify(userId, type, options = {}) {
         dedupeKey: options.dedupeKey || null,
       });
       if (!row) return;
+      rowId = row.id;
     }
 
     if (def.push && user && !quiet) {
-      await sendPush({ userId: user.id, kind: type, title: def.title, body: def.body, link: def.link || null });
+      await sendPush({ userId: user.id, kind: type, title: def.title, body: def.body, link: def.link || null, id: rowId });
     }
 
     const to = options.email || user?.email;

@@ -7,7 +7,7 @@ const { Schema } = mongoose;
 // scanner, the meal history and the coach
 
 // Nutrition is copied from the scan onto each item (already multiplied by
-// `servings`) since scan images are purged on retention and the scan itself
+// the logged grams) since scan images are purged on retention and the scan itself
 // isn't meant to be read to render a meal
 const mealItemSchema = new Schema(
   {
@@ -23,7 +23,8 @@ const mealItemSchema = new Schema(
       default: null,
     },
     foodName: { type: String, required: true, maxlength: 150 },
-    // "1 cup" x 1.5. The values below are totals for the whole portion
+    // portionGrams is what the user logged. serving and servings ("1 cup" x 1.5)
+    // are only for display. The values below are totals for the whole portion
     serving: { type: String, default: null, maxlength: 60 },
     servings: { type: Number, default: 1, min: 0.25 },
     portionGrams: { type: Number, default: null },

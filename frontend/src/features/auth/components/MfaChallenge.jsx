@@ -1,4 +1,5 @@
 import OtpInputRow, { OtpHelpLine } from "@/features/auth/components/OtpInputRow";
+import Skeleton from "@/shared/components/Skeleton";
 import FormInput, { FormAlert } from "@/shared/components/ui/FormInput";
 import PrimaryButton from "@/shared/components/ui/PrimaryButton";
 import { useAuthColors } from "@/shared/context/ThemeContext";
@@ -72,7 +73,7 @@ export function MfaChallenge({ form, styles }) {
 }
 
 /**
- * First sign-in of an admin or superadmin: 2FA is already on, so the
+ * First sign-in of an admin: 2FA is already on, so the
  * authenticator app is scanned in here, on the login screen, before any session
  * exists. The first code from the app finishes the setup and the sign-in
  */
@@ -108,7 +109,10 @@ function AuthenticatorSetupStep({ form, styles }) {
             style={styles.fieldSpacing}
           />
         </>
-      ) : null}
+      ) : (
+        // While the QR code loads (a failed load shows the alert instead)
+        !form.error && <SetupSkeleton />
+      )}
 
       <FormAlert message={form.error} onDismiss={form.dismissError} style={[styles.alert, mfaStyles.alertAbove]} />
 
@@ -119,6 +123,22 @@ function AuthenticatorSetupStep({ form, styles }) {
           <Text style={styles.link}>Back to login</Text>
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+// Same layout as the loaded setup: QR box, key hint and key, code field, button.
+// Drawn in the auth border color, since the default gray vanishes on the mint background
+function SetupSkeleton() {
+  const mfaStyles = useMfaStyles();
+  const fill = { backgroundColor: useAuthColors().border };
+  return (
+    <View>
+      <Skeleton width={216} height={216} style={[fill, mfaStyles.skelCenter, mfaStyles.skelGap]} />
+      <Skeleton width="60%" height={14} style={[fill, mfaStyles.skelCenter, mfaStyles.skelGap]} />
+      <Skeleton height={40} style={[fill, mfaStyles.skelGap]} />
+      <Skeleton height={44} style={[fill, mfaStyles.skelGap]} />
+      <Skeleton height={44} style={fill} />
     </View>
   );
 }
@@ -150,6 +170,8 @@ const createMfaStyles = (colors) => StyleSheet.create({
   links: { flexDirection: "row", justifyContent: "center", marginTop: spacing.md },
   qrBox: { alignSelf: "center", backgroundColor: "#ffffff", padding: 8, borderRadius: staticRadii.sm, marginBottom: spacing.md },
   qr: { width: 200, height: 200 },
+  skelCenter: { alignSelf: "center" },
+  skelGap: { marginBottom: spacing.md },
   keyHint: { ...typography.caption, color: colors.textMuted, textAlign: "center", marginBottom: spacing.sm },
   key: {
     ...typography.caption,

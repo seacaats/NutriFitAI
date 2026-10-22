@@ -10,7 +10,7 @@ const { loginLimiter, mfaLoginLimiter, mfaManageLimiter, mfaResendLimiter, regis
 
 const { registerSchema, mfaLoginSchema, mfaSetupSchema, mfaEnableSchema, mfaChangeSchema, mfaResendSchema, mfaEmailConfirmSchema, verifyRegistrationSchema, resendRegistrationOtpSchema, 
         loginSchema, forgotPasswordSchema, verifyPasswordResetSchema, 
-        resetPasswordSchema } = require('../validators/authValidators');
+        resetPasswordSchema, emailChangeRequestSchema, emailChangeConfirmSchema } = require('../validators/authValidators');
 
 const router = Router();
 
@@ -55,7 +55,7 @@ router.post(
   controller.resendLoginMfa
 );
 
-// First sign-in of an admin or superadmin: authenticator setup, from the challenge token
+// First sign-in of an admin: authenticator setup, from the challenge token
 router.post(
   '/login/mfa/setup',
   mfaLoginLimiter,
@@ -71,11 +71,15 @@ router.post(
 );
 
 // ----- Two-factor (Settings and onboarding), signed in -----
-// Regular users: a code by email. Admins and superadmins: recovery codes only, their
+// Regular users: a code by email. Admins: recovery codes only, their
 // authenticator is set up at sign-in (above) and can't be turned off
 router.post('/mfa/email/request', requireAuth, mfaManageLimiter, validateBody(mfaSetupSchema), controller.mfaEmailRequest);
 router.post('/mfa/email/confirm', requireAuth, mfaManageLimiter, validateBody(mfaEmailConfirmSchema), controller.mfaEmailConfirm);
 router.post('/mfa/recovery-codes', requireAuth, mfaManageLimiter, validateBody(mfaChangeSchema), controller.mfaRecoveryCodes);
+
+// ----- Change email (regular users), signed in -----
+router.post('/email/request', requireAuth, otpRequestLimiter, validateBody(emailChangeRequestSchema), controller.requestEmailChange);
+router.post('/email/confirm', requireAuth, otpVerifyLimiter, validateBody(emailChangeConfirmSchema), controller.confirmEmailChange);
 
 router.post(
   '/refresh', 

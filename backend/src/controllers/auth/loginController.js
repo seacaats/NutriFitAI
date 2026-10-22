@@ -1,7 +1,8 @@
 const crypto = require('crypto');
 const User = require('../../models/user/User');
 const { hashPassword, verifyPassword } = require('../../utils/auth/password');
-const { signAccessToken, signRefreshToken, signMfaToken } = require('../../utils/auth/token');
+const { signAccessToken, signRefreshToken, signMfaToken, refreshTokenMaxAgeMs } = require('../../utils/auth/token');
+const Session = require('../../models/auth/Session');
 const { setRefreshCookie } = require('../../utils/auth/refreshCookie');
 const { sendSuccess, ApiError, asyncHandler } = require('../../utils/httpResponse');
 const { logAction } = require('../../utils/audit-logs/auditLogger');
@@ -76,8 +77,14 @@ function logHeldLogin(req, user, hold) {
 // Tokens, cookie and audit entry for a completed sign-in. `extra` rides along in
 // the response data (the recovery codes, on an admin's first sign-in)
 async function finishLogin(req, res, user, rememberMe, method, extra = {}) {
-  const accessToken = signAccessToken(user);
-  const refreshToken = signRefreshToken(user, rememberMe);
+  // One row per device, so an admin can see it and end it
+  const session = await Session.open(user.id, {
+    ip: req.ip,
+    userAgent: req.get('user-agent'),
+    expiresAt: new Date(Date.now() + refreshTokenMaxAgeMs(rememberMe)),
+  });
+  const accessToken = signAccessToken(user, session.id);
+  const refreshToken = signRefreshToken(user, rememberMe, null, session.id);
   setRefreshCookie(res, refreshToken, rememberMe, req);
 
   await logAction(

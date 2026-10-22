@@ -133,7 +133,7 @@ export function useLoginForm() {
   /** Stores the session from a finished sign-in (password, or password + code) */
   async function completeSignIn(data) {
     if (!data?.accessToken) {
-      const message = "Sign-in didn't return a session. Please try again.";
+      const message = "We couldn't sign you in. Please try again.";
       setError(message);
       Alert.alert("Login failed", message);
       return;
@@ -160,7 +160,7 @@ export function useLoginForm() {
   // The first step went through (password or Google) but a second one is needed before
   // there's a session. { token, method, setupRequired }
   async function beginMfa({ token, method, setupRequired }) {
-    // Admins and superadmins (the authenticator-app method) are web only: on a phone
+    // Admins (the authenticator-app method) are web only: on a phone
     // there's no code prompt and no QR setup, just the screen saying so. Nothing was
     // stored, so there's no session to clear
     if (Platform.OS !== "web" && method === "totp") {

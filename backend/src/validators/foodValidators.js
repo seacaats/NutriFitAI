@@ -21,7 +21,7 @@ const mealHistorySchema = z.object({
   days: z.coerce.number().int().min(1).max(31).optional(),
 }).strict();
 
-// Nutrition typed by the user, for ONE serving. Only used when the scan had
+// Nutrition typed by the user, per 100 g. Only used when the scan had
 // no nutrition data for that food (the model knows it, the table doesn't)
 const macro = (label) => z.coerce.number().min(0, `${label} can't be negative.`).max(5000).nullable().optional();
 
@@ -29,11 +29,10 @@ const macro = (label) => z.coerce.number().min(0, `${label} can't be negative.`)
 // so a client can't log different values than the model returned
 const mealItemSchema = z.object({
   scanItemId: objectId,
-  // Generous, but bounded so a typo can't log a million calories
-  servings: z.coerce.number()
-    .min(0.25, 'Servings start at a quarter.')
-    .max(50, 'Servings can be up to 50.')
-    .default(1),
+  // Grams eaten. Generous, but bounded so a typo can't log a million calories
+  grams: z.coerce.number({ invalid_type_error: 'Enter how many grams.' })
+    .min(5, 'Enter at least 5 g.')
+    .max(5000, 'Grams can be up to 5,000.'),
   caloriesKcal: macro('Calories'),
   proteinG: macro('Protein'),
   carbsG: macro('Carbs'),

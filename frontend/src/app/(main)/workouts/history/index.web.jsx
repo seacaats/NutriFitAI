@@ -172,8 +172,8 @@ const styles = StyleSheet.create({
   dayDelete: { marginLeft: "auto", padding: 4 },
   pageHeader: { marginBottom: 20 },
   eyebrow: { fontSize: 10, fontWeight: "800", letterSpacing: 1.3, color: colors.textMuted },
-  pageTitle: { marginTop: 2, fontSize: 28, fontWeight: "800" },
-  pageSubtitle: { marginTop: 4, fontSize: 13, color: colors.textMuted },
+  pageTitle: { marginTop: 2, fontSize: 24, fontWeight: "800" },
+  pageSubtitle: { marginTop: 4, fontSize: 14, color: colors.textMuted },
 
   centered: { alignItems: "center", justifyContent: "center", paddingVertical: 60 },
 

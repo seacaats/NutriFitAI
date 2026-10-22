@@ -228,12 +228,17 @@ const OTP_COPY = {
     title: 'Confirm this change',
     intro: 'Use this code to change two-factor sign-in on your NutriFitAI account.',
   },
+  email_change: {
+    subject: 'Confirm your new NutriFitAI email',
+    title: 'Confirm your new email',
+    intro: 'Use this code to make this address the email for your NutriFitAI account.',
+  },
 };
 
 /**
  * @param {string} to
  * @param {string} code
- * @param {'email_verification'|'password_reset'|'login_mfa'|'mfa_change'} purpose
+ * @param {'email_verification'|'password_reset'|'login_mfa'|'mfa_change'|'email_change'} purpose
  */
 async function sendOtpEmail(to, code, purpose) {
   const copy = OTP_COPY[purpose] || OTP_COPY.email_verification;
@@ -249,11 +254,14 @@ async function sendOtpEmail(to, code, purpose) {
   return deliver(to, copy.subject, html, `OTP for ${to} (${purpose}): ${code}`, `${purpose}:${code}`);
 }
 
-// Sent when someone registers with an email that already has a verified account
-async function sendRegistrationNoticeEmail(to) {
+// Sent when someone registers with an email that already has a verified account,
+// or (emailChange) tries to move another account onto it
+async function sendRegistrationNoticeEmail(to, { emailChange = false } = {}) {
   const html = renderEmail({
     title: 'Someone tried to register with your email',
-    intro: `A new NutriFitAI account was requested for <strong>${esc(to)}</strong>, which already has an account. No changes were made.`,
+    intro: emailChange
+      ? `Someone tried to use <strong>${esc(to)}</strong> as the email of another NutriFitAI account, but it already belongs to yours. No changes were made.`
+      : `A new NutriFitAI account was requested for <strong>${esc(to)}</strong>, which already has an account. No changes were made.`,
     actions: [
       { label: 'Log in', href: `${env.appUrl}/login` },
       { label: 'Reset password', href: `${env.appUrl}/forgot-password?email=${encodeURIComponent(to)}` },

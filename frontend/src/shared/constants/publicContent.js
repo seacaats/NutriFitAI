@@ -19,28 +19,66 @@ export const FEATURES = [
   {
     icon: "scan-outline",
     title: "Food Scanner",
+    tag: "01 / SCAN",
     tint: "green",
     body: "Snap a photo of your meal and get the calories, protein, carbs and fat in each serving. Save it as breakfast, lunch, dinner or a snack, and see how your day compares to your daily targets.",
   },
   {
     icon: "chatbubbles-outline",
     title: "AI Coach",
+    tag: "02 / COACH",
     tint: "purple",
     body: "Ask anything about food, workouts or progress. Your coach already knows your goals, diet and any health conditions you've shared, and replies in the tone you pick: friendly, direct or motivational.",
   },
   {
     icon: "barbell-outline",
     title: "Workout Tracking",
+    tag: "03 / TRAIN",
     tint: "orange",
-    body: "Browse routines and single exercises, filtered by the equipment you have. Log each session as you go, save your favorites, and look back at past workouts any time.",
+    body: "Browse single exercises and create routines, filtered by the equipment you have. Log each session as you go, save your favorites, and look back at past workouts any time.",
   },
   {
     icon: "trending-up-outline",
     title: "Progress Tracking",
+    tag: "04 / TRACK",
     tint: "blue",
     body: "Track your weight against your target, sync your steps and count your glasses of water. Charts show the trend over weeks, and gentle reminders nudge you when a goal is slipping.",
   },
 ];
+
+// Landing page previews, web only. Sample data for the interactive demos, not real user data
+export const SCAN_MEALS = [
+  { id: "adobong_manok", name: "Chicken Adobo", sub: "1 cup · sample result", kcal: 280, icon: "restaurant-outline", protein: { g: 28, pct: 40 }, carbs: { g: 4, pct: 6 }, fat: { g: 16, pct: 51 } },
+  { id: "sinigang_na_baboy", name: "Pork Sinigang", sub: "1 cup · sample result", kcal: 280, icon: "cafe-outline", protein: { g: 18, pct: 26 }, carbs: { g: 8, pct: 11 }, fat: { g: 20, pct: 64 } },
+  { id: "fried_boneless_bangus", name: "Fried Bangus", sub: "100g · sample result", kcal: 240, icon: "fish-outline", protein: { g: 20, pct: 33 }, carbs: { g: 0, pct: 0 }, fat: { g: 17, pct: 64 } },
+  { id: "mango", name: "Mango", sub: "1 medium · sample result", kcal: 130, icon: "nutrition-outline", protein: { g: 1, pct: 3 }, carbs: { g: 35, pct: 100 }, fat: { g: 0.6, pct: 4 } },
+];
+
+// Share of the daily target each meal slot fills in the ring
+export const MEAL_SLOTS = [
+  { label: "Breakfast", share: 0.4 },
+  { label: "Lunch", share: 0.65 },
+  { label: "Dinner", share: 0.87 },
+  { label: "Snack", share: 0.75 },
+];
+
+// One reply per coach tone, the same meal in each voice
+export const COACH_REPLIES = [
+  { key: "friendly", label: "Friendly", text: "Great choice with Chicken Adobo! You just hit 28g of protein. Drink 1 glass of water before your 4 PM dumbbell session, you got this!" },
+  { key: "direct", label: "Direct", text: "280 kcal logged. Remaining today: 64g protein, 1,120 kcal. Next action: 30-min Upper Body routine + 500 ml water." },
+  { key: "motivational", label: "Motivational", text: "Solid protein, watch the sodium in the sauce! Hit 3 extra glasses of water this afternoon and don't skip your last set of squats." },
+];
+
+// Two picks per equipment choice: [name, sets and reps]
+export const WORKOUT_PICKS = {
+  Dumbbells: [["DB Goblet Squat", "3 sets × 12 reps"], ["Seated Shoulder Press", "3 sets × 10 reps"]],
+  Bodyweight: [["Tempo Push-Ups", "3 sets × 12 reps"], ["Walking Lunges", "3 sets × 10 reps"]],
+  "Full Gym (Several Equipments)": [["Barbell Bench Press", "3 sets × 12 reps"], ["Lat Pulldown", "3 sets × 10 reps"]],
+};
+
+// "How it works" demo choices
+export const DEMO_GOALS = ["Lose Weight", "Build Muscle", "Improve Fitness"];
+export const DEMO_DIETS = ["High Protein", "Balanced", "Low Carb"];
 
 // Terms of Service & Privacy Policy. `icon` heads each section's card
 export const TERMS_UPDATED = "October 2026";

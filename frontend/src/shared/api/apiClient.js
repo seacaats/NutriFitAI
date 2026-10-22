@@ -71,7 +71,7 @@ setPingBase(BASE_URL);
 export function unreachableMessage() {
   return hasNoConnection()
     ? "You're not connected to the internet. Connect to Wi-Fi or mobile data and try again."
-    : "The server can't be reached right now. Please try again in a moment.";
+    : "We're having trouble connecting right now. Please try again in a moment.";
 }
 
 if (__DEV__) {
@@ -173,16 +173,16 @@ function formatValidationDetails(details) {
   return lines.join("\n");
 }
 
-/** Last-resort copy when the server sends no usable message (proxy pages, 502s, …) */
+/** Last-resort copy when the server sends no usable message (proxy pages, 502s, …). Plain wording for users; the status stays on err.status/code for admins and logs */
 function statusFallbackMessage(status) {
-  if (status === 400) return "That request wasn't valid. Please check the form and try again.";
+  if (status === 400) return "Something doesn't look right. Please check what you entered and try again.";
   if (status === 401) return "Your session has expired. Please log in again.";
   if (status === 403) return "You don't have permission to do that.";
-  if (status === 404) return "We couldn't find that on the server. Please try again later.";
-  if (status === 409) return "That conflicts with an existing record.";
+  if (status === 404) return "We couldn't find what you're looking for.";
+  if (status === 409) return "That already exists.";
   if (status === 429) return "Too many attempts. Please wait a moment and try again.";
-  if (status >= 500) return "The server ran into a problem. Please try again shortly.";
-  return `Request failed (${status})`;
+  if (status >= 500) return "Something went wrong on our end. Please try again shortly.";
+  return "Something went wrong. Please try again.";
 }
 
 /** The rate limiters reply with a bare { success:false, message } and no code */
@@ -355,7 +355,7 @@ async function request(
   } catch (networkErr) {
     if (signal?.aborted) throw cancelledError();
     if (networkErr && networkErr.name === "AbortError") {
-      throw new ApiClientError("The server took too long to respond. Please try again.", {
+      throw new ApiClientError("This is taking longer than expected. Please try again.", {
         status: 0,
         code: "TIMEOUT",
       });
@@ -467,7 +467,7 @@ async function uploadFile(path, file, { field = "file", auth = false, timeoutMs 
     result = await Promise.race([upload, timeout]);
   } catch (err) {
     if (err?.message === "timeout") {
-      throw new ApiClientError("The server took too long to respond. Please try again.", { status: 0, code: "TIMEOUT" });
+      throw new ApiClientError("This is taking longer than expected. Please try again.", { status: 0, code: "TIMEOUT" });
     }
     // The native reason (missing file, refused connection...) is shown in
     // development, where it's the one line that explains the failure

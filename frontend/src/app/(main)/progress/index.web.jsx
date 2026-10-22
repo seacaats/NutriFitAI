@@ -49,7 +49,7 @@ export default function ProgressScreen() {
 const styles = StyleSheet.create({
   pageHeader: { marginBottom: 20 },
   pageTitle: { fontSize: 24, fontWeight: "700" },
-  pageSubtitle: { marginTop: 4, fontSize: 13, color: colors.textMuted },
+  pageSubtitle: { marginTop: 6, fontSize: 14, color: colors.textMuted },
   // The tabs read better at a fixed width than stretched across the page
   periodBar: { maxWidth: 560 },
   section: { marginTop: 12 },

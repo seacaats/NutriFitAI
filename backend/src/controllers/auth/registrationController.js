@@ -17,13 +17,13 @@ const env = require('../../../config/env');
 const NOTICE_COOLDOWN_MS = 60 * 60 * 1000;
 const lastNoticeAt = new Map();
 
-function sendRegistrationNotice(email) {
+function sendRegistrationNotice(email, opts) {
   const last = lastNoticeAt.get(email);
   if (last && Date.now() - last < NOTICE_COOLDOWN_MS) return;
   if (lastNoticeAt.size > 10000) lastNoticeAt.clear();
   lastNoticeAt.set(email, Date.now());
 
-  sendRegistrationNoticeEmail(email).catch((err) => {
+  sendRegistrationNoticeEmail(email, opts).catch((err) => {
     console.error(`[auth] registration notice failed for ${email}:`, err.message);
   });
 }
@@ -215,4 +215,4 @@ const resendRegistrationOtp = asyncHandler(async (req, res) => {
   return genericResponse();
 });
 
-module.exports = { register, verifyRegistration, resendRegistrationOtp };
+module.exports = { register, verifyRegistration, resendRegistrationOtp, sendRegistrationNotice };
