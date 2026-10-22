@@ -645,6 +645,176 @@
     </li>
   </ul>
 
+  <h2>2.4 Settings: Email Change Lifecycle & Validation Matrix</h2>
+  <p>
+    Changing a user's account email address from the Settings interface (<code>SettingsPanel.jsx</code>) is a high-sensitivity security operation executed via a two-phase protocol: <strong>Phase 1 (Request &amp; Verification Challenge)</strong> at <code>POST /api/auth/email/request</code> and <strong>Phase 2 (Challenge Consumption &amp; Atomic Migration)</strong> at <code>POST /api/auth/email/confirm</code>.
+  </p>
+
+  <div class="callout warning">
+    <div class="callout-title">Anti-Account Enumeration Protocol</div>
+    To protect user privacy and prevent external adversaries from using the email change endpoint to identify registered accounts, when a requested <code>newEmail</code> is already registered to another user, the server <em>does not return an error</em>. Instead, it dispatches a private security notice to the registered owner (<code>sendRegistrationNotice</code>) and returns an identical HTTP <code>200 OK</code> response: <em>"If that address can be used, we sent a code to it."</em>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 10%;">Phase</th>
+        <th style="width: 22%;">Validation Rule / Condition</th>
+        <th style="width: 15%;">Enforcement Layer</th>
+        <th style="width: 14%;">HTTP &amp; Code</th>
+        <th style="width: 23%;">User-Facing Error Message</th>
+        <th style="width: 16%;">Security &amp; Audit Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-blue">Request</span></td>
+        <td><code>!isValidEmail(newEmail)</code> (Regex format or &gt;254 chars)</td>
+        <td>Client Pre-Flight</td>
+        <td><code>Client Block</code></td>
+        <td><em>"Please enter a valid email address."</em></td>
+        <td>Execution halted prior to dispatch.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">Request</span></td>
+        <td><code>!password</code> (Password field empty)</td>
+        <td>Client Pre-Flight</td>
+        <td><code>Client Block</code></td>
+        <td><em>"Please enter your password."</em></td>
+        <td>Execution halted prior to dispatch.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">Request</span></td>
+        <td>Missing or invalid Bearer JWT</td>
+        <td><code>requireAuth</code></td>
+        <td><span class="badge badge-red">401</span> <code>UNAUTHORIZED</code></td>
+        <td><em>"Please sign in to continue."</em></td>
+        <td>Rejects unauthenticated invocation.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">Request</span></td>
+        <td>&gt;1 request within 60s per IP:email</td>
+        <td><code>otpRequestLimiter</code></td>
+        <td><span class="badge badge-amber">429</span> <code>TOO_MANY_REQUESTS</code></td>
+        <td><em>"Please wait a minute before requesting another code."</em></td>
+        <td>Mitigates SMTP mail flooding and spam.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">Request</span></td>
+        <td>Schema parsing: invalid email format or &gt;254 chars</td>
+        <td>Zod <code>emailChangeRequestSchema</code></td>
+        <td><span class="badge badge-red">400</span> <code>BAD_REQUEST</code></td>
+        <td><em>"Please enter a valid email address."</em> / <em>"Email is too long."</em></td>
+        <td>Sanitizes payload at API boundary.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">Request</span></td>
+        <td>Role authorization: <code>user.role !== 'user'</code></td>
+        <td>Controller (<code>requireRegularUser</code>)</td>
+        <td><span class="badge badge-red">403</span> <code>FORBIDDEN</code></td>
+        <td><em>"That option isn't available for this account."</em></td>
+        <td>Restricts staff/admin credential changes to admin panels.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">Request</span></td>
+        <td>Password mismatch: <code>!verifyPassword(pwd, hash)</code></td>
+        <td>Controller &amp; bcrypt</td>
+        <td><span class="badge badge-red">400</span> <code>WRONG_PASSWORD</code></td>
+        <td><em>"That password is incorrect."</em></td>
+        <td>Logs audit security event <code>auth.password.verify_failed</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">Request</span></td>
+        <td>Identical target: <code>newEmail === user.email</code></td>
+        <td>Controller</td>
+        <td><span class="badge badge-red">400</span> <code>SAME_EMAIL</code></td>
+        <td><em>"That is already your email."</em></td>
+        <td>Rejects zero-delta email update.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">Request</span></td>
+        <td>Target already taken: <code>User.findByEmail(newEmail)</code></td>
+        <td>Controller &amp; Mailer</td>
+        <td><span class="badge badge-green">200</span> *(Anti-Enumeration)*</td>
+        <td><em>"If that address can be used, we sent a code to it."</em></td>
+        <td>Alerts existing owner; masks account existence from attacker.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">Request</span></td>
+        <td>Mailer transport failure or timeout</td>
+        <td><code>otpChallenge.js</code></td>
+        <td><span class="badge badge-red">503</span> <code>EMAIL_SEND_FAILED</code></td>
+        <td><em>"We couldn't send the email right now. Please try again in a moment."</em></td>
+        <td>Rolls back database state; notifies user.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-purple">Confirm</span></td>
+        <td><code>!/^\d{4,8}$/.test(code.trim())</code></td>
+        <td>Client Pre-Flight</td>
+        <td><code>Client Block</code></td>
+        <td><em>"Enter the code from your email."</em></td>
+        <td>Execution halted prior to dispatch.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-purple">Confirm</span></td>
+        <td>&gt;15 attempts within 5m per IP:email</td>
+        <td><code>otpVerifyLimiter</code></td>
+        <td><span class="badge badge-amber">429</span> <code>TOO_MANY_REQUESTS</code></td>
+        <td><em>"Too many attempts. Please try again in 5 minutes."</em></td>
+        <td>Audit logged; prevents OTP enumeration/brute-forcing.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-purple">Confirm</span></td>
+        <td>Expired challenge (&gt;10m) or <code>failedAttempts &ge; 5</code></td>
+        <td><code>AuthChallenge.isUsable</code></td>
+        <td><span class="badge badge-red">400</span> <code>INVALID_CODE</code></td>
+        <td><em>"Invalid or expired code. Check your latest email or request a new code."</em></td>
+        <td>Enforces 10-minute TTL and 5-attempt lockout ceiling.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-purple">Confirm</span></td>
+        <td>Mismatched code: <code>!verifyOtp(code, codeHash)</code></td>
+        <td><code>verifyOtp</code></td>
+        <td><span class="badge badge-red">400</span> <code>INVALID_CODE</code></td>
+        <td><em>"Invalid or expired code. Check your latest email or request a new code."</em></td>
+        <td>Atomically increments <code>failedAttempts</code> toward lockout.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-purple">Confirm</span></td>
+        <td>Replay attempt: challenge already consumed</td>
+        <td><code>AuthChallenge.markConsumed</code></td>
+        <td><span class="badge badge-red">400</span> <code>INVALID_CODE</code></td>
+        <td><em>"Invalid or expired code. Check your latest email or request a new code."</em></td>
+        <td>Atomic single-use guarantee prevents race collisions.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-purple">Confirm</span></td>
+        <td>Expired pending reservation in user document</td>
+        <td><code>User.applyPendingEmail</code></td>
+        <td><span class="badge badge-red">400</span> <code>INVALID_CODE</code></td>
+        <td><em>"Invalid or expired code. Check your latest email or request a new code."</em></td>
+        <td>Guarantees atomic expiration of pending email state.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-purple">Confirm</span></td>
+        <td>Unique index collision (<code>err.code === 11000</code>)</td>
+        <td>MongoDB Engine</td>
+        <td><span class="badge badge-red">409</span> <code>EMAIL_UNAVAILABLE</code></td>
+        <td><em>"That email can't be used."</em></td>
+        <td>Protects data integrity against concurrent race conditions.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>2.4.1 Security Post-Conditions &amp; Revocation Flow</h3>
+  <ul>
+    <li><strong>Universal Multi-Device Session Invalidation</strong>: Upon successful email migration, <code>Session.revokeAll(user.id, null, req.sessionId)</code> is invoked immediately. All existing sessions, refresh tokens, and cookies across other phones, tablets, or browsers are revoked. Only the current browser session remains authenticated.</li>
+    <li><strong>OAuth Identity Decoupling &amp; Stale Mismatch Guard</strong>: Third-party OAuth identities (<code>AuthIdentity</code>) linked to the old email are severed via <code>AuthIdentity.deleteMany({ userId: user.id })</code>. Furthermore, Google sign-in strictly enforces that the Google email matches the account email; stale or mismatched Google accounts are unlinked and redirected to registration.</li>
+    <li><strong>Challenge Invalidation &amp; Token Reissuance</strong>: All outstanding active OTP challenges for the user are purged via <code>AuthChallenge.invalidateActive(user.id)</code>, and a newly signed <code>accessToken</code> with the updated email claim is returned to immediately refresh local client storage.</li>
+    <li><strong>Tamper-Evident HMAC Logging</strong>: An immutable audit entry <code>auth.email.changed</code> is recorded with HMAC-SHA256 digests of the old and new email addresses (<code>oldEmailHash</code> and <code>newEmailHash</code>), ensuring forensic integrity without persisting plain PII in administrative audit logs.</li>
+    <li><strong>Distinct Dual Security Notifications</strong>: The new email and in-app inbox receive a tailored confirmation notice (<code>email_changed</code>) confirming that <code>newEmail</code> is now primary, while the old email receives a dedicated security alert (<code>email_changed_security_alert</code>) notifying that the address was changed from <code>oldEmail</code> to <code>newEmail</code>.</li>
+  </ul>
+
   <!-- SECTION 3 -->
   <div class="page-break"></div>
   <h1><span class="section-num">3</span> Vector Embeddings & Semantic Search</h1>

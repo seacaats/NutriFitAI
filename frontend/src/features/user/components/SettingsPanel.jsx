@@ -11,6 +11,7 @@ import TimeStepper, { formatTime, QUIET_END, QUIET_START } from "@/shared/compon
 import { useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
 import { getScreenTones, radii, shellColors } from "@/shared/theme/nutrifitai";
+import { setAccessToken } from "@/shared/utils/authStorage";
 import { isValidEmail, validatePassword } from "@/shared/utils/formValidators";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
@@ -293,7 +294,10 @@ function ChangeEmail({ settings, email, darkMode }) {
     setBusy(true);
     setError("");
     try {
-      await settings.confirmEmailChange(code.trim());
+      const res = await settings.confirmEmailChange(code.trim());
+      if (res?.accessToken) {
+        await setAccessToken(res.accessToken);
+      }
       reset();
       setDone("Your email was changed. Your other devices were signed out.");
       settings.reload();

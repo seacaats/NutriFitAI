@@ -1,5 +1,8 @@
 const User = require('../../models/user/User');
 const Session = require('../../models/auth/Session');
+const AuthIdentity = require('../../models/auth/AuthIdentity');
+const AuthChallenge = require('../../models/auth/AuthChallenge');
+const { signAccessToken } = require('../../utils/auth/token');
 const { verifyPassword } = require('../../utils/auth/password');
 const { otpExpiryDate } = require('../../utils/auth/otp');
 const { sendSuccess, ApiError, asyncHandler } = require('../../utils/httpResponse');
@@ -63,7 +66,19 @@ const confirmEmailChange = asyncHandler(async (req, res) => {
   }
   if (!before) throw ApiError.badRequest(INVALID_CODE_MESSAGE, { code: 'INVALID_CODE' });
 
+  // Invalidate any other active device sessions
   await Session.revokeAll(user.id, null, req.sessionId);
+
+  // Unlink all external OAuth identities (e.g. Google) bound to the old email address.
+  // This prevents the old Google account from signing into this account under the new email.
+  await AuthIdentity.deleteMany({ userId: user.id });
+
+  // Invalidate any other outstanding OTP challenges issued for the old address
+  await AuthChallenge.invalidateActive(user.id);
+
+  // Issue a fresh access token carrying the updated email claim for the current session
+  const updatedUser = { ...user, email: before.pendingEmail };
+  const accessToken = signAccessToken(updatedUser, req.sessionId);
 
   await logAction(req, {
     action: 'auth.email.changed',
@@ -72,10 +87,20 @@ const confirmEmailChange = asyncHandler(async (req, res) => {
     targetLabel: User.displayName(user),
     hash: { oldEmailHash: before.email, newEmailHash: before.pendingEmail },
   });
-  notify(user.id, 'email_changed');
-  notify(null, 'email_changed', { email: before.email });
+  notify(user.id, 'email_changed', { vars: { oldEmail: before.email, newEmail: before.pendingEmail } });
+  notify(null, 'email_changed_security_alert', {
+    email: before.email,
+    vars: { oldEmail: before.email, newEmail: before.pendingEmail },
+  });
 
-  return sendSuccess(res, { message: 'Your email was changed.', data: { email: before.pendingEmail } });
+  return sendSuccess(res, {
+    message: 'Your email was changed.',
+    data: {
+      email: before.pendingEmail,
+      accessToken,
+      user: User.toAuthPayload(updatedUser),
+    },
+  });
 });
 
 module.exports = { requestEmailChange, confirmEmailChange };

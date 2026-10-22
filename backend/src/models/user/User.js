@@ -317,7 +317,7 @@ userSchema.statics.applyPendingEmail = async function applyPendingEmail(id, clie
     await this.findOneAndUpdate(
       { _id: id, pendingEmail: { $ne: null }, pendingEmailExpiresAt: { $gt: new Date() } },
       [{ $set: { email: '$pendingEmail', emailChangedAt: new Date(), pendingEmail: null, pendingEmailExpiresAt: null } }],
-      { new: false, ...opts(client) },
+      { returnDocument: 'before', updatePipeline: true, ...opts(client) },
     ).lean(),
   );
 };

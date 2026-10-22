@@ -61,9 +61,11 @@ authChallengeSchema.statics.getById = async function getById(id, client) {
 };
 
 // Invalidate active OTP codes before issuing new ones
-authChallengeSchema.statics.invalidateActive = async function invalidateActive(userId, purpose, client) {
+authChallengeSchema.statics.invalidateActive = async function invalidateActive(userId, purpose = null, client) {
+  const filter = { userId, consumedAt: null };
+  if (purpose) filter.purpose = purpose;
   await this.updateMany(
-    { userId, purpose, consumedAt: null },
+    filter,
     { $set: { consumedAt: new Date() } },
     opts(client),
   );

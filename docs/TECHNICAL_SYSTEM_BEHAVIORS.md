@@ -18,6 +18,7 @@ This document provides an in-depth technical analysis of the core backend and cl
    - [Refresh Token Rotation (RTR) & Absolute Ceilings](#refresh-token-rotation-rtr--absolute-ceilings)
    - [Threat Modeling & Attack Defense (XSS, CSRF, Replay, Brute Force)](#threat-modeling--attack-defense-xss-csrf-replay-brute-force)
    - [Multi-Factor Authentication (MFA) & Password Reset Challenges](#multi-factor-authentication-mfa--password-reset-challenges)
+   - [Settings: Email Change Lifecycle & Validation Matrix](#settings-email-change-lifecycle--validation-matrix)
 3. [Vector Embeddings & Semantic Search](#3-vector-embeddings--semantic-search)
    - [Conceptual Overview: Layman's Terms](#conceptual-overview-laymans-terms)
    - [Deep Dive: Technical Terms & Mathematical Formulation](#deep-dive-technical-terms--mathematical-formulation)
@@ -230,6 +231,131 @@ classDiagram
   ```
   This guarantees that concurrent duplicate requests cannot reuse the same OTP code.
 - **Password Reset Security**: Verifying a password reset OTP issues a short-lived reset token (`signResetToken`, TTL: 15 minutes) cryptographically bound to the unique challenge ID (`cid`). Calling `POST /api/auth/reset-password` requires this token, resets the password hash, and immediately invokes `Session.revokeAll(userId)` to invalidate all active sessions across all devices.
+
+### Settings: Email Change Lifecycle & Validation Matrix
+
+Changing an account's primary email address within the Settings screen (`frontend/src/features/user/components/SettingsPanel.jsx`) is a high-sensitivity security operation governed by `backend/src/controllers/auth/emailChangeController.js`. It enforces a two-phase challenge-response verification protocol to protect against account takeover, address hijacking, and automated email enumeration.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User / Settings UI
+    participant Client as SettingsPanel.jsx
+    participant Limiter as Rate Limiters
+    participant Auth as Auth & Email Controller
+    participant DB as MongoDB (Users & Challenges)
+    participant Mailer as Mailer Service
+    participant Audit as Audit Logger
+
+    %% PHASE 1: REQUEST
+    rect rgb(240, 245, 255)
+    Note over User,Audit: Phase 1: Email Change Request (POST /api/auth/email/request)
+    User->>Client: Input newEmail & current password, tap "Send code"
+    Client->>Client: Client Pre-Flight (isValidEmail, password present)
+    Client->>Limiter: POST /api/auth/email/request (Bearer JWT)
+    Limiter->>Limiter: otpRequestLimiter (1 req/60s per IP:email)
+    Limiter->>Auth: Forward sanitized payload
+    Auth->>DB: User.getById(req.userId) & verify role === 'user'
+    Auth->>Auth: verifyPassword(password, user.passwordHash)
+    alt Password Invalid
+        Auth->>Audit: Log auth.password.verify_failed
+        Auth-->>Client: 400 Bad Request { code: 'WRONG_PASSWORD' }
+    else Password Valid
+        alt newEmail === user.email
+            Auth-->>Client: 400 Bad Request { code: 'SAME_EMAIL' }
+        else newEmail already taken by another account
+            Auth->>Mailer: sendRegistrationNotice(newEmail, { emailChange: true })
+            Auth-->>Client: 200 OK "If that address can be used, we sent a code to it."
+        else newEmail available
+            Auth->>DB: User.setPendingEmail(user.id, newEmail, 10m expiry)
+            Auth->>DB: issueOtpChallenge (invalidates old, stores codeHash)
+            Auth->>Mailer: sendOtpEmail(newEmail, code, 'email_change')
+            Auth->>Audit: Log auth.email.change_requested (newEmailHash)
+            Auth-->>Client: 200 OK "If that address can be used, we sent a code to it."
+            Client->>Client: Transition UI to Step: "code"
+        end
+    end
+    end
+
+    %% PHASE 2: CONFIRM
+    rect rgb(240, 255, 245)
+    Note over User,Audit: Phase 2: Email Change Confirmation (POST /api/auth/email/confirm)
+    User->>Client: Input OTP code, tap "Confirm"
+    Client->>Client: Client Pre-Flight (/^\d{4,8}$/)
+    Client->>Limiter: POST /api/auth/email/confirm { code }
+    Limiter->>Limiter: otpVerifyLimiter (15 req/5m per IP:email)
+    Limiter->>Auth: Forward validated code
+    Auth->>DB: consumeOtpChallenge: find active challenge
+    alt Code Invalid / Expired / Lockout (>=5 attempts)
+        Auth->>DB: Increment failedAttempts
+        Auth-->>Client: 400 Bad Request { code: 'INVALID_CODE' }
+    else Code Valid & Atomically Consumed
+        Auth->>DB: User.applyPendingEmail(user.id) (atomic swap & clear pending)
+        alt Unique Key Collision (Race Condition err.code === 11000)
+            Auth-->>Client: 409 Conflict { code: 'EMAIL_UNAVAILABLE' }
+        else Successful Swap
+            Auth->>DB: Session.revokeAll(user.id, null, req.sessionId)
+            Auth->>Audit: Log auth.email.changed (oldEmailHash, newEmailHash)
+            Auth->>User: notify(user.id, 'email_changed') [In-app notification]
+            Auth->>Mailer: notify(null, 'email_changed', { email: oldEmail }) [Security alert email]
+            Auth-->>Client: 200 OK { message: "Your email was changed." }
+            Client->>Client: Display success banner, reload settings, refresh auth tokens
+        end
+    end
+    end
+```
+
+#### Detailed Validation & Failure Matrix
+
+| Phase | Check / Validation Rule | Enforcement Layer | Failure Condition | HTTP Status & Error Code | User-Facing Error Message | Security & Audit Action |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Request** | Email Syntax & Length | Client (`SettingsPanel.jsx`) | `!isValidEmail(newEmail)` (Regex `/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/` or $>254$ chars) | *None (Client Pre-Flight)* | `"Please enter a valid email address."` | Request blocked before dispatch. |
+| **Request** | Password Presence | Client (`SettingsPanel.jsx`) | `!password` (Empty string) | *None (Client Pre-Flight)* | `"Please enter your password."` | Request blocked before dispatch. |
+| **Request** | Authentication Session | Transport (`requireAuth`) | Missing or invalid Bearer JWT in `Authorization` header | `401 Unauthorized`<br/>`UNAUTHORIZED` | `"Please sign in to continue."` | Access denied. Forces client re-authentication. |
+| **Request** | Request Rate Limit | Middleware (`otpRequestLimiter`) | $>1$ request within 60 seconds (`env.otp.resendCooldownSeconds`) per IP:email | `429 Too Many Requests` | `"Please wait a minute before requesting another code."` | Prevents email bombarding and SMTP exhaustion. |
+| **Request** | Payload Schema Validation | Backend Schema (`emailChangeRequestSchema`) | `newEmail` is not valid RFC 5322 email string or exceeds 254 chars | `400 Bad Request` | `"Please enter a valid email address."` or `"Email is too long."` | Input rejected by Zod schema validator. |
+| **Request** | Password Schema Validation | Backend Schema (`emailChangeRequestSchema`) | Password empty or $>200$ chars | `400 Bad Request` | `"Please enter your password."` | Input rejected by Zod schema validator. |
+| **Request** | Account Existence | Controller (`requireRegularUser`) | User ID from JWT does not exist in `users` collection | `404 Not Found`<br/>`NOT_FOUND` | `"We couldn't find your account."` | Halts execution if user record was purged. |
+| **Request** | Role Authorization | Controller (`requireRegularUser`) | `user.role !== 'user'` (e.g., admin, superadmin) | `403 Forbidden`<br/>`FORBIDDEN` | `"That option isn't available for this account."` | Admins must manage credentials through administrative tooling. |
+| **Request** | Password Verification | Controller (`verifyPassword`) | `!(await verifyPassword(password, user.passwordHash))` | `400 Bad Request`<br/>`WRONG_PASSWORD` | `"That password is incorrect."` | Logs audit event `auth.password.verify_failed` to detect brute force attempts. |
+| **Request** | Same Email Conflict | Controller | `newEmail === user.email` (Target matches current address) | `400 Bad Request`<br/>`SAME_EMAIL` | `"That is already your email."` | Prevents redundant verification cycle. |
+| **Request** | Taken Email (Anti-Enumeration) | Controller & Mailer | `await User.findByEmail(newEmail)` (Target already registered) | `200 OK`<br/>*(Silent Divergence)* | `"If that address can be used, we sent a code to it."` | **Anti-Account Enumeration**: Sends `sendRegistrationNotice(newEmail)` to existing owner. Returns identical HTTP 200 payload. |
+| **Request** | SMTP Mailer Dispatch | Mailer Service (`sendOtpWithinWait`) | SMTP socket failure, timeout, or external mail provider rejection | `503 Service Unavailable`<br/>`EMAIL_SEND_FAILED` | `"We couldn't send the email right now. Please try again in a moment."` | Database changes rolled back; user prompted to retry. |
+| **Confirm** | Code Digit Format | Client (`SettingsPanel.jsx`) | `!/^\d{4,8}$/.test(code.trim())` | *None (Client Pre-Flight)* | `"Enter the code from your email."` | Request blocked before dispatch. |
+| **Confirm** | Authentication Session | Transport (`requireAuth`) | Missing or invalid Bearer JWT | `401 Unauthorized`<br/>`UNAUTHORIZED` | `"Please sign in to continue."` | Access denied. |
+| **Confirm** | Verification Rate Limit | Middleware (`otpVerifyLimiter`) | $>15$ verification attempts within 5 minutes per IP:email | `429 Too Many Requests` | `"Too many attempts. Please try again in 5 minutes."` | Audited security event; locks out automated brute-force attacks on OTP codes. |
+| **Confirm** | Code Schema Validation | Backend Schema (`emailChangeConfirmSchema`) | `code` does not match `/^\d{4,8}$/` | `400 Bad Request` | `"Enter the code from your email."` | Input rejected by Zod schema validator. |
+| **Confirm** | Challenge Usability & TTL | Service (`AuthChallenge.isUsable`) | Challenge missing, `Date.now() > expiresAt` (10 min TTL), or `failedAttempts >= 5` | `400 Bad Request`<br/>`INVALID_CODE` | `"Invalid or expired code. Check your latest email or request a new code."` | Inactive or expired challenges cannot be consumed. Max 5 attempts limits guessing window. |
+| **Confirm** | OTP Hash Matching | Service (`verifyOtp`) | `codeHash` does not match `hashOtp(code)` | `400 Bad Request`<br/>`INVALID_CODE` | `"Invalid or expired code. Check your latest email or request a new code."` | Increments `failedAttempts` on MongoDB challenge document. Locks at 5 failures. |
+| **Confirm** | Atomic Consumption Race | Service (`AuthChallenge.markConsumed`) | Challenge already marked consumed (`consumedAt !== null`) | `400 Bad Request`<br/>`INVALID_CODE` | `"Invalid or expired code. Check your latest email or request a new code."` | Protects against concurrent replay attacks using the same OTP. |
+| **Confirm** | Pending Email Expiry | Model (`User.applyPendingEmail`) | `pendingEmail` is null or `pendingEmailExpiresAt < new Date()` | `400 Bad Request`<br/>`INVALID_CODE` | `"Invalid or expired code. Check your latest email or request a new code."` | Pending email reservation expired before code submission. |
+| **Confirm** | Concurrent Uniqueness Collision | MongoDB Engine (Unique Index) | Another user claimed `newEmail` between Phase 1 and Phase 2 (`err.code === 11000`) | `409 Conflict`<br/>`EMAIL_UNAVAILABLE` | `"That email can't be used."` | Unique database constraint prevents duplicate accounts under identical email. |
+
+#### Architectural Security Safeguards
+
+1. **Anti-Account Enumeration**:
+   When an email address requested by a user is already registered to another account, revealing `400 Email already in use` would allow malicious actors to check whether a specific person has an account on NutriFitAI. The backend mitigates this by returning the exact same success response (`HTTP 200 "If that address can be used, we sent a code to it."`) while privately sending a security notification to the address owner (`sendRegistrationNotice(..., { emailChange: true })`).
+
+2. **Single-Use Challenge with Failure Lockout**:
+   - OTP codes are generated as cryptographically pseudo-random numeric digits, hashed with SHA-256 (`codeHash`), and never persisted in cleartext.
+   - Challenges have a strict 10-minute time-to-live (`OTP_TTL_MINUTES = 10`).
+   - Challenges allow a maximum of 5 failed verification attempts (`OTP_MAX_FAILED_ATTEMPTS = 5`). Each failed attempt atomically increments `failedAttempts`. On the 5th failed attempt, `AuthChallenge.isUsable()` permanently returns `false`, rendering the challenge invalid even if the time has not expired.
+   - Challenge consumption is atomic (`findOneAndUpdate({ _id, consumedAt: null }, { $set: { consumedAt: new Date() } })`), making concurrent race-condition re-submissions mathematically impossible.
+
+3. **Mandatory Multi-Device Session Invalidation**:
+   Once the email change is committed, `Session.revokeAll(user.id, null, req.sessionId)` is invoked immediately. All active sessions, desktop logins, and mobile refresh tokens belonging to the user are terminated across the entire platform, leaving **only** the current active session open. This guarantees that if an unauthorized party had access to the account on an old device, their session is instantly severed.
+
+4. **Cryptographic Audit Trails & Distinct Dual Notifications**:
+   - The system creates a tamper-evident audit log (`auth.email.changed`) containing HMAC-SHA256 digests of both the previous and updated addresses (`oldEmailHash`, `newEmailHash`), protecting user privacy in logs while maintaining forensic verifiability.
+   - Dual distinct notifications are dispatched:
+     - **To the New Email & In-App Inbox (`email_changed`)**: Delivers confirmation that `{newEmail}` is now the primary email on the NutriFitAI account, with updated in-app inbox notice.
+     - **To the Old Email (`email_changed_security_alert`)**: Delivers a dedicated security alert advising that the account email was changed from `{oldEmail}` to `{newEmail}`, prompting immediate support contact if unauthorized.
+
+5. **OAuth Identity Decoupling & Stale Identity Defenses**:
+   - When an email change is committed, `AuthIdentity.deleteMany({ userId: user.id })` instantly unlinks all third-party OAuth identities (e.g., Google, Facebook) that were bound to the old email address.
+   - At the OAuth callback layer (`googleController.js`), the server enforces an invariant match: `if (user && user.email.toLowerCase() !== profile.email.toLowerCase())`. If a user attempts to authenticate using a Google account whose email no longer matches the account's active email, the server unlinks the stale identity and redirects to `registration_required`, preventing old Google logins from accessing the migrated account or triggering sign-in OTPs.
+   - Any outstanding active OTP challenges for the user are purged via `AuthChallenge.invalidateActive(user.id)`.
+   - A newly signed `accessToken` carrying the updated email claim is returned directly to the client, allowing the application to update active memory and `AsyncStorage` tokens without an interruption in authentication state.
 
 ---
 

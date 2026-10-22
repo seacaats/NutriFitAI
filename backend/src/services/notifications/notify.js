@@ -247,14 +247,24 @@ const NOTIFICATION_TYPES = {
   email_changed: {
     category: 'account',
     inbox: true,
-    title: 'Your email was changed',
-    body: 'The email for your account was changed. Other devices were signed out.',
+    title: 'Email updated',
+    body: 'Your account email was successfully updated to {newEmail}. Other devices were signed out.',
     link: '/settings',
     email: {
-      subject: 'The email on your NutriFitAI account was changed',
-      title: 'Your email was changed',
-      intro: 'The email address for your NutriFitAI account was just changed.',
-      note: "If this wasn't you, contact support right away.",
+      subject: 'Your NutriFitAI account email has been updated',
+      title: 'Email address confirmed',
+      intro: 'This address ({newEmail}) is now the primary email for your NutriFitAI account.',
+      note: 'You can now use this email to sign in.',
+    },
+  },
+  email_changed_security_alert: {
+    category: 'account',
+    inbox: false,
+    email: {
+      subject: 'Security Alert: Your NutriFitAI account email was changed',
+      title: 'Your account email was changed',
+      intro: 'The email address for your NutriFitAI account was changed from {oldEmail} to {newEmail}.',
+      note: "If you did not make this change, please contact support immediately to secure your account.",
     },
   },
   signed_out_by_admin: {

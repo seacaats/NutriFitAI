@@ -59,6 +59,12 @@ const googleAuthCallback = asyncHandler(async (req, res) => {
 
   let user = await User.findByProviderIdentity('google', profile.googleId);
 
+  // Stale identity check: a Google account must never authenticate as a user with a different email
+  if (user && user.email.toLowerCase() !== profile.email.toLowerCase()) {
+    await AuthIdentity.deleteOne({ provider: 'google', providerSubject: profile.googleId });
+    user = null;
+  }
+
   if (user && !user.emailVerifiedAt) {
     return registrationRequired();
   }
