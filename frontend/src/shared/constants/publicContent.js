@@ -90,7 +90,7 @@ export const SECTIONS = [
     icon: "person-circle-outline",
     body:
       "NutriFitAI helps you track food, workouts, and progress, with an AI coach to guide you. To use it, you need to be 13 or older and verify your email. Accounts that aren't verified within 48 hours are deleted.\n\n" +
-      "Please give accurate info, keep your password to yourself, and use the app honestly. We may suspend accounts that break these rules or put others at risk. We save the time you accepted these terms.",
+      "Please give accurate info, keep your credentials secure, and use the app honestly. Photos you upload (profile avatars and food scans) are screened by automated moderation to block explicit, violent, or harmful content. We may suspend or remove accounts that break these rules, upload prohibited content, or put others at risk. We save the time you accepted these terms.",
   },
   {
     title: "2. Not Medical Advice",
@@ -98,16 +98,16 @@ export const SECTIONS = [
     body:
       "NutriFitAI is a wellness app, not a doctor. Scan results are estimates, and the AI coach can make mistakes. " +
       "Check with a doctor or dietitian before big changes to how you eat or train, especially if you have a health condition, are pregnant, or are under 18. " +
-      "If something hurts or feels wrong, stop and get help.",
+      "When creating custom exercises or following workout plans, ensure the movements match your physical abilities and are performed safely. If something hurts or feels wrong, stop and get help.",
   },
   {
     title: "3. What We Collect",
     icon: "document-text-outline",
     body:
-      "• Account: your name, email, and a password (we only keep a hashed version). With Google sign-in, we also get your Google ID and profile picture (if none is set).\n" +
-      "• Profile: age, sex, height, activity level, goals, target weight, time zone, and your app settings.\n" +
-      "• Activity: weight, water, steps, workouts, meals, food scan photos, and your coach chats.\n" +
-      "• Technical: your device's notification token, the days you open the app, and sign-in records (with IP address and device info) for security.",
+      "• Account: your name, email, and a password (we only keep a hashed version). With Google sign-in, we also get your Google ID and profile picture (if none is set). If enabled, two-factor authentication configuration and hashed recovery codes.\n" +
+      "• Profile: age, sex, height, activity level, goals, target weight, time zone, notification preferences, and your app settings.\n" +
+      "• Activity: weight, water, steps, custom and catalog workouts, logged meals, food scan photos, and your coach chats.\n" +
+      "• Technical: your device's push notification token, app usage days, and security audit logs (including sign-in events, IP address, and device info).",
   },
   {
     title: "4. Health & Diet Info",
@@ -117,33 +117,35 @@ export const SECTIONS = [
       "By checking the consent box when you sign up, you let us store and use it for this. You can change such details anytime in your Profile.",
   },
   {
-    title: "5. Permissions",
-    icon: "camera-outline",
+    title: "5. Permissions & Notifications",
+    icon: "notifications-outline",
     body:
       "We only ask when a feature needs it:\n" +
       "• Camera and photos: to scan food and set a profile picture.\n" +
       "• Microphone: to talk to the AI coach. Audio is only used to turn your voice into text.\n" +
-      "• Activity or health access: to read your daily step count from your phone, Apple Health, or Health Connect. Steps only, nothing else.\n\n" +
-      "You can turn these off in your device settings. Only the related feature stops working.",
+      "• Activity or health access: to read your daily step count from your phone, Apple Health, or Health Connect. Steps only, nothing else.\n" +
+      "• Push notifications: to send reminders for meals, workouts, water, and streaks. You can choose which notifications you receive, set quiet hours, or turn them off in Settings.\n\n" +
+      "You can turn any of these off in your device settings or inside the app. Only the related feature stops working.",
   },
   {
-    title: "6. Scanner & AI Coach",
+    title: "6. Scanner, Coach & Workouts",
     icon: "sparkles-outline",
     body:
-      "Food scanner: your photo goes to our food detection service, which finds the foods and estimates their nutrition.\n\n" +
-      "AI coach: to answer you, we send your message plus a short summary of your info to an AI model. That can include your first name, age range, sex, height, weight, diet, health notes, goals, and recent steps, water, workouts, and meals. It never includes your email, last name, or password.",
+      "Food scanner: your photo is analyzed by our food detection service, which identifies foods and estimates nutrition values per portion. Uploaded photos are screened for appropriate content.\n\n" +
+      "AI coach: to answer you, we send your message plus a short summary of your info to an AI model. That can include your first name, age range, sex, height, weight, diet, health notes, goals, and recent steps, water, workouts, and meals. It never includes your email, last name, or password.\n\n" +
+      "Custom workouts: you can create, edit, and track personal exercises and routines. You are responsible for ensuring personal workout entries are appropriate and that any physical exercises you perform are safe for your condition.",
   },
   {
     title: "7. Who Sees Your Data",
     icon: "share-social-outline",
     body:
       "We don't sell your personal or health information. We only share what's needed to run the app, with:\n" +
-      "• Secure hosting and storage providers\n" +
-      "• An email service, for verification and reset codes\n" +
-      "• Expo, to send push notifications\n" +
-      "• Google, if you sign in with it\n" +
-      "• AI services, for the coach (see above)\n\n" +
-      "Our admins can see basic account details like name, email, and role, and can manage accounts. Their actions are logged. We may also share data if the law requires it.",
+      "• Secure cloud hosting and object storage providers (such as Cloudflare R2 for photos)\n" +
+      "• An email service, for verification, security alerts, and reset codes\n" +
+      "• Expo and Google Firebase, to deliver push notifications to your devices\n" +
+      "• Content moderation and AI services, to screen photos and power coach conversations\n" +
+      "• Google, if you choose to sign in with your Google account\n\n" +
+      "Our administrators can see basic account details like name, email, status, and role to assist users and maintain safety. All administrative actions are recorded in secure audit logs. We may also share data if the law requires it.",
   },
   {
     title: "8. How Long We Keep It",
@@ -162,21 +164,24 @@ export const SECTIONS = [
     title: "9. Keeping You Safe",
     icon: "lock-closed-outline",
     body:
-      "• Passwords and email codes are stored hashed, never as plain text.\n" +
-      "• You stay signed in with a secure cookie on web, or a token on your phone. \"Remember me\" lasts up to 30 days, otherwise 3 days.\n" +
-      "• So the app still works when your connection drops, it saves your recent screens on your device. Signing out clears them.\n\n" +
-      "Use a strong, unique password and sign out on shared devices. If you think someone got into your account, change your password right away.",
+      "• Passwords, recovery codes, and email verification codes are stored hashed, never as plain text.\n" +
+      "• Two-Factor Authentication (2FA): you can secure your account with an authenticator app (TOTP) and backup recovery codes in Settings.\n" +
+      "• Security audit logging: sign-in events, password updates, and sensitive account changes are logged to guard against unauthorized access.\n" +
+      "• Session security: you stay signed in with a secure cookie on web, or an encrypted token on your phone. \"Remember me\" lasts up to 30 days, otherwise 3 days.\n" +
+      "• Offline cache: to keep working during connection drops, recent screens are cached locally on your device. Signing out clears them.\n\n" +
+      "Use a strong, unique password, enable 2FA, and sign out on shared devices. If you suspect unauthorized access, change your password immediately.",
   },
   {
     title: "10. Your Choices",
     icon: "options-outline",
     body:
       "In the app, you can:\n" +
-      "• Edit your profile and health info\n" +
-      "• Change your goals and notification settings\n" +
-      "• Delete scans, meals, and chats one by one\n" +
+      "• Edit your profile, goals, and health info anytime\n" +
+      "• Manage notification preferences and quiet hours\n" +
+      "• Create, edit, or remove custom workouts, logged meals, scans, and chats\n" +
+      "• Set up or disable two-factor authentication\n" +
       "• Change or reset your password\n\n" +
-      "Want to leave? Delete your account in Settings. This permanently erases your profile, logs, meals, scans, photos, chats, notifications, and device tokens.\n\n" +
+      "Want to leave? Delete your account in Settings. This permanently erases your profile, workouts, meals, scans, photos, chats, notifications, and device tokens.\n\n" +
       "In the Philippines, the Data Privacy Act of 2012 also gives you the right to access, correct, and erase your data, and to complain to the National Privacy Commission.",
   },
   {

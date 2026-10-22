@@ -16,6 +16,17 @@ let currentToken = null;
 // Cleared by turning it on again, and on sign-out
 const OFF_KEY = "nutrifit-push-off";
 
+// EAS project id fallback when Constants is stripped in standalone release builds
+const EAS_PROJECT_ID = "d3b71476-07f7-4db8-8c2e-4ac74bdacf5e";
+
+function getProjectId() {
+  return (
+    Constants.expoConfig?.extra?.eas?.projectId ||
+    Constants.easConfig?.projectId ||
+    EAS_PROJECT_ID
+  );
+}
+
 // Shown while the app is open too, not only in the background
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -52,7 +63,7 @@ export async function registerDevice({ prompt = false } = {}) {
     if (status !== "granted" && prompt) ({ status } = await Notifications.requestPermissionsAsync());
     if (status !== "granted") return "denied";
 
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    const projectId = getProjectId();
     const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
     await apiClient.post("/notifications/tokens", { token, platform: Platform.OS }, { auth: true });
     currentToken = token;
@@ -82,7 +93,7 @@ export async function disableDevice() {
     await AsyncStorage.setItem(OFF_KEY, "1");
     let token = currentToken;
     if (!token) {
-      const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+      const projectId = getProjectId();
       token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
     }
     await apiClient.delete("/notifications/tokens", { auth: true, body: { token } });
