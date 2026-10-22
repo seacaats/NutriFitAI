@@ -123,6 +123,7 @@ export default function AdminImageReviewsScreen() {
   const [notice, setNotice] = useState(null);
 
   const startAction = (kind, row) => {
+    setExpandedId(row.id);
     setPendingChange({ kind, id: row.id });
     setReason("");
     setNotice(null);

@@ -6,6 +6,7 @@ import Pager from "@/features/admin/components/Pager";
 import StatCard from "@/features/admin/components/StatCard";
 import { useAdminUsers } from "@/features/admin/hooks/useAdminUsers";
 import DashboardLayout from "@/shared/components/layout/DashboardLayout";
+import ConfirmModal from "@/shared/components/ui/ConfirmModal";
 import { RingInput, useFocusRing } from "@/shared/components/ui/FormInput";
 import { useAuth } from "@/shared/context/AuthContext";
 import { useTheme } from "@/shared/context/ThemeContext";
@@ -142,6 +143,7 @@ export default function AdminUsersScreen() {
     && !(pendingChange?.kind === "create" && (!pendingChange.firstName.trim() || !isValidEmail(pendingChange.email)));
 
   const startAction = (kind, row, extra = {}) => {
+    setExpandedId(row.id);
     setPendingChange({ kind, id: row.id, name: row.fullName || row.email, ...extra });
     setReason("");
     setUserMessage("");
@@ -339,7 +341,7 @@ export default function AdminUsersScreen() {
       </Pressable>
     </View>
   );
-  const confirmNode = pendingChange && (
+  const confirmNode = pendingChange && pendingChange.kind !== "create" && (
     <View style={[styles.confirmCard, { backgroundColor: tone.card, borderColor: colors.danger }]}>
       <Text style={[styles.confirmTitle, { color: tone.text }]}>
         {ACTION_COPY[pendingChange.kind].title(pendingChange)}
@@ -369,58 +371,10 @@ export default function AdminUsersScreen() {
           />
         </View>
       )}
-      {pendingChange.kind === "create" && (
-        <>
-          <View style={styles.nameRow}>
-            <RingInput
-              value={pendingChange.firstName}
-              onChangeText={(firstName) => setPendingChange((p) => ({ ...p, firstName }))}
-              autoFocus
-              placeholder="First name"
-              maxLength={NAME_MAX}
-              placeholderTextColor={tone.muted}
-              style={[styles.reasonInput, styles.nameInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
-            />
-            <RingInput
-              value={pendingChange.lastName}
-              onChangeText={(lastName) => setPendingChange((p) => ({ ...p, lastName }))}
-              placeholder="Last name (optional)"
-              maxLength={NAME_MAX}
-              placeholderTextColor={tone.muted}
-              style={[styles.reasonInput, styles.nameInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
-            />
-          </View>
-          <RingInput
-            value={pendingChange.email}
-            onChangeText={(email) => setPendingChange((p) => ({ ...p, email }))}
-            placeholder="Email"
-            maxLength={254}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            placeholderTextColor={tone.muted}
-            style={[styles.reasonInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text, minHeight: 0 }]}
-          />
-          <View style={styles.roleBtnRow}>
-            {["user", "admin"].map((r) => {
-              const on = pendingChange.role === r;
-              return (
-                <Pressable
-                  key={r}
-                  onPress={() => setPendingChange((p) => ({ ...p, role: r }))}
-                  style={[styles.roleBtn, { borderColor: on ? shellColors.primary : tone.border, backgroundColor: on ? tone.soft : tone.card }]}
-                >
-                  <Text style={[styles.roleBtnText, { color: on ? shellColors.primary : tone.text }]}>{r}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </>
-      )}
       <RingInput
         value={reason}
         onChangeText={setReason}
-        autoFocus={pendingChange.kind !== "rename" && pendingChange.kind !== "create"}
+        autoFocus={pendingChange.kind !== "rename"}
         placeholder="Reason (required)"
         maxLength={300}
         placeholderTextColor={tone.muted}
@@ -506,7 +460,6 @@ export default function AdminUsersScreen() {
       </View>
 
       {notice && (!notice.id || expandedId !== notice.id) && noticeNode}
-      {pendingChange && (!pendingChange.id || expandedId !== pendingChange.id) && confirmNode}
 
       <DataTable
         columns={columns}
@@ -533,6 +486,75 @@ export default function AdminUsersScreen() {
         onChange={users.setPage}
         unit="accounts"
       />
+
+      <ConfirmModal
+        visible={pendingChange?.kind === "create"}
+        tone="confirm"
+        title="Add an account"
+        message="No password is set: they get an email explaining how to choose their own. Admins set up 2FA at first sign-in."
+        confirmLabel="Create account"
+        cancelLabel="Cancel"
+        onConfirm={submitAction}
+        onCancel={() => { setPendingChange(null); setReason(""); setUserMessage(""); }}
+        loading={submitting}
+        confirmDisabled={!canSubmit}
+      >
+        <View style={styles.createModalBody}>
+          <View style={styles.nameRow}>
+            <RingInput
+              value={pendingChange?.firstName || ""}
+              onChangeText={(firstName) => setPendingChange((p) => ({ ...p, firstName }))}
+              autoFocus
+              placeholder="First name"
+              maxLength={NAME_MAX}
+              placeholderTextColor={tone.muted}
+              style={[styles.reasonInput, styles.nameInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
+            />
+            <RingInput
+              value={pendingChange?.lastName || ""}
+              onChangeText={(lastName) => setPendingChange((p) => ({ ...p, lastName }))}
+              placeholder="Last name (optional)"
+              maxLength={NAME_MAX}
+              placeholderTextColor={tone.muted}
+              style={[styles.reasonInput, styles.nameInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
+            />
+          </View>
+          <RingInput
+            value={pendingChange?.email || ""}
+            onChangeText={(email) => setPendingChange((p) => ({ ...p, email }))}
+            placeholder="Email"
+            maxLength={254}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            placeholderTextColor={tone.muted}
+            style={[styles.reasonInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text, minHeight: 0 }]}
+          />
+          <View style={styles.roleBtnRow}>
+            {["user", "admin"].map((r) => {
+              const on = pendingChange?.role === r;
+              return (
+                <Pressable
+                  key={r}
+                  onPress={() => setPendingChange((p) => ({ ...p, role: r }))}
+                  style={[styles.roleBtn, { borderColor: on ? shellColors.primary : tone.border, backgroundColor: on ? tone.soft : tone.card }]}
+                >
+                  <Text style={[styles.roleBtnText, { color: on ? shellColors.primary : tone.text }]}>{r}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <RingInput
+            value={reason}
+            onChangeText={setReason}
+            placeholder="Reason (required)"
+            maxLength={300}
+            placeholderTextColor={tone.muted}
+            style={[styles.reasonInput, { backgroundColor: tone.soft, borderColor: tone.border, color: tone.text }]}
+            multiline
+          />
+        </View>
+      </ConfirmModal>
     </DashboardLayout>
   );
 }
@@ -555,6 +577,7 @@ const styles = StyleSheet.create({
   sessionLink: { fontSize: 12, fontWeight: "700" },
   sessionRow: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: 12, paddingVertical: 8 },
 
+  createModalBody: { gap: 10, alignSelf: "stretch" },
   confirmCard: { borderWidth: 1, borderRadius: radii.md, padding: 16, gap: 10, marginBottom: 16 },
   confirmTitle: { fontSize: 15, fontWeight: "700" },
   confirmBody: { fontSize: 12, lineHeight: 18 },
